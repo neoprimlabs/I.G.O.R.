@@ -1,0 +1,24 @@
+[Unit]
+Description=I.G.O.R. Personal AI Assistant
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=igor
+WorkingDirectory=/opt/igor
+EnvironmentFile=/opt/igor/.env
+ExecStart=/opt/igor/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Harden the service process
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/igor
+
+[Install]
+WantedBy=multi-user.target
