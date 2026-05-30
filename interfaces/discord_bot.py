@@ -34,7 +34,7 @@ class IgorBot(discord.Client):
         monitor.setup(send_fn=self.send_to_user)
 
     async def on_message(self, message: discord.Message) -> None:
-        if message.author.id == self.user.id:
+        if self.user is None or message.author.id == self.user.id:
             return
         if not isinstance(message.channel, discord.DMChannel):
             return
@@ -52,9 +52,15 @@ class IgorBot(discord.Client):
 
         if response is not None:
             try:
-                await message.channel.send(response)
+                await self._send_chunked(message.channel, response)
             except Exception as e:
                 logger.error("Failed to send response — %s: %s", type(e).__name__, e)
+
+    async def _send_chunked(self, channel: discord.abc.Messageable, content: str) -> None:
+        """Split and send content in ≤2000-character chunks (Discord's message limit)."""
+        limit = 2000
+        for i in range(0, len(content), limit):
+            await channel.send(content[i:i + limit])
 
     async def send_to_user(self, content: str) -> None:
         """Send a message to the authorized user's DM channel.
@@ -64,7 +70,7 @@ class IgorBot(discord.Client):
         """
         if self._dm_channel is not None:
             try:
-                await self._dm_channel.send(content)
+                await self._send_chunked(self._dm_channel, content)
                 return
             except discord.HTTPException:
                 self._dm_channel = None
@@ -72,7 +78,7 @@ class IgorBot(discord.Client):
         try:
             user = await self.fetch_user(config.AUTHORIZED_USER_ID)
             dm = await user.create_dm()
-            await dm.send(content)
+            await self._send_chunked(dm, content)
             self._dm_channel = dm
         except Exception as e:
             logger.error("Failed to send message to user — %s: %s", type(e).__name__, e)
