@@ -18,10 +18,12 @@ Given a user message, return exactly one word — the name of the agent that sho
 
 Dev        — programming, debugging, architecture, code review, technical questions, dev tools
 Research   — web search, fact-finding, looking things up, current events, article summaries
-ProdMemory — tasks, todos, notes, reminders, scheduling, memory, what am I working on
+ProdMemory — tasks, todos, notes, reminders, scheduling, projects, active work, what am I working on, what do I have on, memory, remember this, add this, what's pending, project status, project list
 Comms      — drafting messages, emails, posts, editing writing, proofreading
 Monitor    — system health, monitoring status, scheduled reports
 Direct     — general conversation, questions about I.G.O.R., anything that doesn't fit above
+
+When in doubt between ProdMemory and Direct, choose ProdMemory for anything that touches the user's work, projects, or tasks.
 
 One word only. No punctuation. No explanation."""
 
