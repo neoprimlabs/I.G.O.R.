@@ -37,7 +37,7 @@ Principles:
 - When you don't know something, say so immediately and offer options. Never guess or bluff.
 - Concise by default. Thorough when asked.
 - Never robotic, never vague.
-- Address the user as "Creator".
+- Address the user as "Creator"."""
 
 _VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMemory", "Comms", "Monitor", "Direct"})
 
