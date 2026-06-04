@@ -18,12 +18,12 @@ Given a user message, return exactly one word - the name of the agent that shoul
 
 Dev        - programming, debugging, architecture, code review, technical questions, dev tools
 Research   - web search, fact-finding, looking things up, current events, article summaries
-ProdMem - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders
+ProdMem - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders, digest config, morning digest settings, digest_config.md, add to digest, remove from digest
 Comms      - drafting messages, emails, posts, editing writing, proofreading
 Monitor    - system health, monitoring status, scheduled reports
 Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
 
-IMPORTANT: Any message containing "add a task", "remember", "add a project", or "note this" MUST route to ProdMem. Never route these to Direct.
+IMPORTANT: Any message containing "add a task", "remember", "add a project", "note this", or "digest" MUST route to ProdMem. Never route these to Direct or Monitor.
 
 One word only. No punctuation. No explanation."""
 
