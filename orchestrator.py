@@ -74,12 +74,13 @@ async def call_claude(
     3 times before returning a user-facing error string (never raises on rate limit).
     All other API errors are logged and re-raised for the orchestrator to handle.
     """
+    system_param = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
     max_retries = 3
     for attempt in range(max_retries):
         try:
             response = await client.messages.create(
                 model=config.MODEL,
-                system=system,
+                system=system_param,
                 messages=messages,
                 max_tokens=max_tokens,
             )

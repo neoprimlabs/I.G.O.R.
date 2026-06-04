@@ -14,6 +14,7 @@ _ALLOWED_FILES = frozenset({
 })
 
 _OVERWRITABLE_FILES = frozenset({
+    "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
@@ -42,11 +43,13 @@ content:
 <complete new file content>
 %%END%%
 
-MEMORY FILES (append only):
+MEMORY FILES:
 - tasks.md - tasks, todos, action items
 - projects.md - project details, context, status updates
 - user.md - persistent facts about the user, preferences, working style
 - agents.md - agent behavior notes
+
+Default to append for new content. Use overwrite (mode: overwrite) ONLY when the user explicitly asks to edit, remove, complete, or reorganize existing entries - never on a normal add. When overwriting, reproduce the full file with the requested changes applied.
 
 CONFIG FILES (overwrite to update):
 - digest_config.md - morning digest sections (valid: tasks, projects)

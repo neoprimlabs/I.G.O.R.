@@ -24,6 +24,9 @@ _NO_RESULTS_PROMPT = """You are I.G.O.R.'s Research agent. A web search was atte
 Tell the user clearly that the search returned no results, state what was searched for, and immediately offer alternatives (rephrase the query, suggest a specific source to check, offer to try a different approach)."""
 
 
+_QUERY_EXTRACTION_PROMPT = """Extract a concise web search query from the user's message. Return only the query (3-8 words), nothing else. No punctuation at the end."""
+
+
 def _get_synthesis_prompt() -> str:
     path = config.MEMORY_DIR / "prompt_research.md"
     if path.exists():
@@ -31,6 +34,16 @@ def _get_synthesis_prompt() -> str:
         if content:
             return content
     return _DEFAULT_SYNTHESIS_PROMPT
+
+
+async def _extract_query(message: str, context: list[dict], call_claude: Callable[..., Awaitable[str]]) -> str:
+    messages = context[-2:] + [{"role": "user", "content": message}]
+    try:
+        query = await call_claude(_QUERY_EXTRACTION_PROMPT, messages, max_tokens=20)
+        return query.strip()
+    except Exception as e:
+        logger.error("Query extraction failed - %s: %s", type(e).__name__, e)
+        return message
 
 
 async def _run_search(query: str, max_results: int = 5) -> list[dict]:
@@ -65,7 +78,8 @@ async def handle(
     context: list[dict],
     call_claude: Callable[..., Awaitable[str]],
 ) -> str:
-    results = await _run_search(message)
+    query = await _extract_query(message, context, call_claude)
+    results = await _run_search(query)
 
     if results:
         formatted = _format_results(results)
