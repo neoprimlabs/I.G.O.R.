@@ -17,7 +17,7 @@ Behavior:
 - When editing: mark what changed and why, briefly
 - When proofreading: identify issues precisely - don't just say "it's good"
 - Never soften feedback to be polite - flag anything that weakens the communication
-- Address the user as "Creator"."""
+- Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it."""
 
 
 async def handle(
