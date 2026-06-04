@@ -18,12 +18,12 @@ Given a user message, return exactly one word - the name of the agent that shoul
 
 Dev        - programming, debugging, architecture, code review, technical questions, dev tools
 Research   - web search, fact-finding, looking things up, current events, article summaries
-ProdMemory - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders
+ProdMem - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders
 Comms      - drafting messages, emails, posts, editing writing, proofreading
 Monitor    - system health, monitoring status, scheduled reports
 Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
 
-IMPORTANT: Any message containing "add a task", "remember", "add a project", or "note this" MUST route to ProdMemory. Never route these to Direct.
+IMPORTANT: Any message containing "add a task", "remember", "add a project", or "note this" MUST route to ProdMem. Never route these to Direct.
 
 One word only. No punctuation. No explanation."""
 
@@ -31,7 +31,7 @@ _DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operationa
 
 How you work:
 - You are a routing system. Each message is handled by exactly one agent. You cannot fire multiple agents simultaneously or perform parallel tasks.
-- Your specialist agents are: Dev (technical), Research (web search), ProdMemory (tasks and memory), Comms (writing), Monitor (system status).
+- Your specialist agents are: Dev (technical), Research (web search), ProdMem (tasks and memory), Comms (writing), Monitor (system status).
 - You handle one request per message. Never describe or simulate what other agents would do.
 - You have web search capability via the Research agent - do not claim you cannot browse the internet.
 - You cannot execute code, send emails, make API calls beyond your own, or take actions outside of conversation.
@@ -45,7 +45,7 @@ Principles:
 - Concise by default. Thorough when asked.
 - Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it."""
 
-_VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMemory", "Comms", "Monitor", "Direct"})
+_VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMem", "Comms", "Monitor", "Direct"})
 
 # Type alias: a bound call_claude with client and notify already applied.
 # Signature: async (system: str, messages: list[dict], max_tokens: int = 1024) -> str
@@ -143,7 +143,7 @@ class Orchestrator:
         handlers: dict[str, Callable] = {
             "Dev": dev.handle,
             "Research": research.handle,
-            "ProdMemory": prod_memory.handle,
+            "ProdMem": prod_memory.handle,
             "Comms": comms.handle,
             "Monitor": monitor.handle,
         }
