@@ -18,12 +18,12 @@ Given a user message, return exactly one word - the name of the agent that shoul
 
 Dev        - programming, debugging, architecture, code review, technical questions, dev tools
 Research   - web search, fact-finding, looking things up, current events, article summaries
-ProdMemory - tasks, todos, notes, reminders, scheduling, projects, active work, what am I working on, what do I have on, memory, remember this, add this, what's pending, project status, project list
+ProdMemory - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders
 Comms      - drafting messages, emails, posts, editing writing, proofreading
 Monitor    - system health, monitoring status, scheduled reports
 Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
 
-When in doubt between ProdMemory and Direct, choose ProdMemory for anything that touches the user's work, projects, or tasks.
+IMPORTANT: Any message containing "add a task", "remember", "add a project", or "note this" MUST route to ProdMemory. Never route these to Direct.
 
 One word only. No punctuation. No explanation."""
 
