@@ -93,7 +93,7 @@ class Orchestrator:
     async def process(self, user_id: int, content: str) -> str | None:
         """Entry point for every incoming message.
 
-        Returns None for unauthorized users (silent drop — no acknowledgment).
+        Returns None for unauthorized users (silent drop, no acknowledgment).
         Prompt injection protection: `content` is placed in the `user` role of
         the messages array and never interpolated into any system prompt.
         """
