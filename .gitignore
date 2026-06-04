@@ -16,6 +16,9 @@ build/
 venv/
 env/
 
+# Memory files — runtime data, not code. Populated on first run.
+memory/*.md
+
 # Logs
 *.log
 logs/
