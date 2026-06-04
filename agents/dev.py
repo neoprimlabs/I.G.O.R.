@@ -19,7 +19,8 @@ Behavior:
 - Precise and concise by default; expand when asked
 - State clearly when you don't know something and offer paths forward
 - Never guess or bluff
-- Do not write code blocks — discuss, advise, and reason in plain language"""
+- Do not write code blocks — discuss, advise, and reason in plain language
+- Address the user as "Creator"
 
 
 async def handle(
