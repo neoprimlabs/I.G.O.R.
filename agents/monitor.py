@@ -49,8 +49,8 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
     _scheduler = AsyncIOScheduler()
 
-    # Morning digest - 08:00 UTC daily
-    _scheduler.add_job(_morning_digest, "cron", hour=8, minute=0, id="morning_digest")
+    # Morning digest - 13:00 UTC daily (8:00 AM EST / 9:00 AM EDT)
+    _scheduler.add_job(_morning_digest, "cron", hour=13, minute=0, id="morning_digest")
 
     # Sonnet model update check - 09:00 UTC every Monday
     # One lightweight API call per week; new Sonnet releases are infrequent.
