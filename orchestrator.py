@@ -110,7 +110,7 @@ class Orchestrator:
             return f"Something went wrong ({type(e).__name__}). Details have been logged."
 
         self._update_context(content, response)
-        return response
+        return f"{response}\n\n`[{destination}]`"
 
     async def _classify(self, content: str) -> str:
         # content is passed as a user-role message, never embedded in the system prompt
