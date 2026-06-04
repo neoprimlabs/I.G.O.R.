@@ -6,11 +6,22 @@ import config
 
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FILES = frozenset({"tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md"})
+_ALLOWED_FILES = frozenset({
+    "tasks.md", "projects.md", "user.md", "agents.md",
+    "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
+    "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
+    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
+})
 
-_SYSTEM_PROMPT = """You are I.G.O.R.'s Prod+Memory agent - task tracking, organization, scheduling, and persistent memory.
+_OVERWRITABLE_FILES = frozenset({
+    "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
+    "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
+    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
+})
 
-You have access to the user's current memory files. Use them to give accurate, contextual responses.
+_DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Prod+Memory agent - task tracking, organization, scheduling, and persistent memory.
+
+You have access to the user's current memory and config files. Use them to give accurate, contextual responses.
 
 Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it.
 
@@ -23,7 +34,7 @@ content:
 <content to append>
 %%END%%
 
-Overwrite - replaces the entire file. Use ONLY for digest_config.md and other config files, never for user data:
+Overwrite - replaces the entire file. Use for all config files and prompt files:
 %%WRITE%%
 file: <filename>
 mode: overwrite
@@ -31,21 +42,23 @@ content:
 <complete new file content>
 %%END%%
 
-File selection:
+MEMORY FILES (append only):
 - tasks.md - tasks, todos, action items
 - projects.md - project details, context, status updates
 - user.md - persistent facts about the user, preferences, working style
 - agents.md - agent behavior notes
-- digest_config.md - controls what appears in the morning digest. Valid sections: tasks, projects
 
-DIGEST CONFIG - When the user asks to add or remove sections from the morning digest, overwrite digest_config.md with the updated sections list. Format:
-# Digest Config
+CONFIG FILES (overwrite to update):
+- digest_config.md - morning digest sections (valid: tasks, projects)
+- schedule_config.md - scheduled job times. Format: ## morning_digest / time: HH:MM UTC. Changes take effect after restart.
+- system_config.md - model name and context window. Changes take effect after restart.
+- watchlist.md - what Monitor tracks and reports on
 
-## Sections
-- tasks
-- projects
+AGENT PROMPTS (overwrite to update - changes take effect immediately):
+- prompt_dev.md, prompt_research.md, prompt_comms.md, prompt_prodmem.md, prompt_monitor.md, prompt_direct.md
+- If a prompt file is empty or missing, the agent uses its built-in default
 
-Then follow any write block with your confirmation message.
+Always confirm what was written and note if a restart is required for the change to take effect.
 
 READING FROM MEMORY - For queries, respond normally with no write block.
 
@@ -55,9 +68,19 @@ Behavior:
 - Proactively surface relevant pending items when asked about status"""
 
 
+def _get_system_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_prodmem.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_SYSTEM_PROMPT
+
+
 def _read_memory() -> str:
     sections = []
-    for name in ("user.md", "projects.md", "tasks.md", "digest_config.md"):
+    for name in ("user.md", "projects.md", "tasks.md", "agents.md",
+                 "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md"):
         path = config.MEMORY_DIR / name
         if path.exists():
             content = path.read_text(encoding="utf-8").strip()
@@ -66,11 +89,6 @@ def _read_memory() -> str:
 
 
 def _parse_write_instruction(response: str) -> tuple[str | None, str | None, str | None, str]:
-    """Extract a write instruction block from Claude's response.
-
-    Returns (filename, mode, content, clean_response).
-    mode is 'append' by default or 'overwrite' if specified.
-    """
     pattern = r"%%WRITE%%\s*\nfile:\s*(\S+)\s*\n(?:mode:\s*(\S+)\s*\n)?content:\s*\n(.*?)%%END%%\s*\n?"
     match = re.search(pattern, response, re.DOTALL)
     if not match:
@@ -84,31 +102,30 @@ def _parse_write_instruction(response: str) -> tuple[str | None, str | None, str
 
 
 def _write_to_memory(filename: str, content: str, mode: str = "append") -> bool:
-    """Write content to a memory file. Returns True on success.
-
-    Only writes to whitelisted filenames within MEMORY_DIR - no path traversal possible.
-    mode='append' adds to end of file. mode='overwrite' replaces entire file.
-    Overwrite is only permitted for digest_config.md.
-    """
     if filename not in _ALLOWED_FILES:
         logger.error("Memory write blocked - disallowed file: %s", filename)
         return False
 
     path = config.MEMORY_DIR / filename
+
+    if mode == "overwrite":
+        if filename not in _OVERWRITABLE_FILES:
+            logger.error("Memory overwrite blocked - not an overwritable file: %s", filename)
+            return False
+        try:
+            path.write_text(content + "\n", encoding="utf-8")
+            return True
+        except Exception as e:
+            logger.error("Memory overwrite failed for %s - %s: %s", filename, type(e).__name__, e)
+            return False
+
     if not path.exists():
         logger.error("Memory write blocked - file not found: %s", filename)
         return False
 
-    if mode == "overwrite" and filename != "digest_config.md":
-        logger.error("Memory overwrite blocked - overwrite only permitted for digest_config.md, got: %s", filename)
-        return False
-
     try:
-        if mode == "overwrite":
-            path.write_text(content + "\n", encoding="utf-8")
-        else:
-            with path.open("a", encoding="utf-8") as f:
-                f.write("\n" + content + "\n")
+        with path.open("a", encoding="utf-8") as f:
+            f.write("\n" + content + "\n")
         return True
     except Exception as e:
         logger.error("Memory write failed for %s - %s: %s", filename, type(e).__name__, e)
@@ -128,7 +145,7 @@ async def handle(
 
     user_content = f"Current memory state:\n\n{memory_content}\n\nUser: {message}"
     messages = context + [{"role": "user", "content": user_content}]
-    response = await call_claude(_SYSTEM_PROMPT, messages)
+    response = await call_claude(_get_system_prompt(), messages)
 
     filename, mode, content, clean_response = _parse_write_instruction(response)
 

@@ -1,9 +1,11 @@
 import logging
 from typing import Awaitable, Callable
 
+import config
+
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """You are I.G.O.R.'s Comms agent - drafting, editing, and proofreading written communication.
+_DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Comms agent - drafting, editing, and proofreading written communication.
 
 User context:
 - Solo indie developer operating under NeoPrimLabs
@@ -20,10 +22,19 @@ Behavior:
 - Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it."""
 
 
+def _get_system_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_comms.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_SYSTEM_PROMPT
+
+
 async def handle(
     message: str,
     context: list[dict],
     call_claude: Callable[..., Awaitable[str]],
 ) -> str:
     messages = context + [{"role": "user", "content": message}]
-    return await call_claude(_SYSTEM_PROMPT, messages)
+    return await call_claude(_get_system_prompt(), messages)

@@ -2,9 +2,11 @@ import asyncio
 import logging
 from typing import Awaitable, Callable
 
+import config
+
 logger = logging.getLogger(__name__)
 
-_SYNTHESIS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
+_DEFAULT_SYNTHESIS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
 
 You receive search results from DuckDuckGo and synthesize them into a clear, accurate response.
 
@@ -20,6 +22,15 @@ Rules:
 _NO_RESULTS_PROMPT = """You are I.G.O.R.'s Research agent. A web search was attempted but returned no results.
 
 Tell the user clearly that the search returned no results, state what was searched for, and immediately offer alternatives (rephrase the query, suggest a specific source to check, offer to try a different approach)."""
+
+
+def _get_synthesis_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_research.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_SYNTHESIS_PROMPT
 
 
 async def _run_search(query: str, max_results: int = 5) -> list[dict]:
@@ -59,7 +70,7 @@ async def handle(
     if results:
         formatted = _format_results(results)
         user_content = f"User query: {message}\n\nSearch results:\n\n{formatted}"
-        system = _SYNTHESIS_PROMPT
+        system = _get_synthesis_prompt()
     else:
         user_content = f"User query: {message}\n\nSearch returned no results."
         system = _NO_RESULTS_PROMPT

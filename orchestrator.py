@@ -27,7 +27,7 @@ IMPORTANT: Any message containing "add a task", "remember", "add a project", "no
 
 One word only. No punctuation. No explanation."""
 
-_DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition) - a personal AI assistant.
+_DEFAULT_DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition) - a personal AI assistant.
 
 How you work:
 - You are a routing system. Each message is handled by exactly one agent. You cannot fire multiple agents simultaneously or perform parallel tasks.
@@ -46,6 +46,15 @@ Principles:
 - Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it."""
 
 _VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMem", "Comms", "Monitor", "Direct"})
+
+
+def _get_direct_system_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_direct.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_DIRECT_SYSTEM_PROMPT
 
 # Type alias: a bound call_claude with client and notify already applied.
 # Signature: async (system: str, messages: list[dict], max_tokens: int = 1024) -> str
@@ -155,7 +164,7 @@ class Orchestrator:
 
     async def _handle_direct(self, content: str, context: list[dict], call: CallClaude) -> str:
         messages = context + [{"role": "user", "content": content}]
-        return await call(_DIRECT_SYSTEM_PROMPT, messages)
+        return await call(_get_direct_system_prompt(), messages)
 
     def _window(self) -> list[dict]:
         return self._context[-config.CONTEXT_WINDOW:]

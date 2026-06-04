@@ -14,32 +14,66 @@ _send_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _client: Optional[anthropic.AsyncAnthropic] = None
 _setup_done: bool = False
 
-# Tracks the last model ID we already notified about, so the user isn't
-# pinged every week for the same available update.
 _last_notified_model: Optional[str] = None
 
-_SYSTEM_PROMPT = """You are I.G.O.R.'s Monitor agent - proactive system monitoring and scheduled reporting.
+_DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Monitor agent - proactive system monitoring and scheduled reporting.
 
 Your primary function is scheduled reports that run automatically, not reactive responses to queries.
 
 When queried directly, report:
 - Scheduler status (running / not running, next scheduled jobs)
+- Current watchlist (what is being monitored)
 - Any system health issues you're aware of
-- What the monitor is currently watching
 
 IMPORTANT CONSTRAINTS:
-- You cannot reschedule, add, or modify jobs at runtime. Job schedules are defined in code. If asked to change a schedule, tell the user clearly that it requires a code change and cannot be done through conversation.
-- Do not invent action formats like %%SCHEDULE%% or similar. You have no write capabilities.
+- You cannot reschedule jobs at runtime. Schedules are read from schedule_config.md at startup. To change a schedule, tell the user to update schedule_config.md via ProdMem, then restart I.G.O.R.
+- Do not invent action formats. You have no write capabilities.
 
 Be direct and specific. If there's nothing to flag, say so."""
 
 
-def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
-    """Initialize the APScheduler and register scheduled jobs.
+def _get_system_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_monitor.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_SYSTEM_PROMPT
 
-    Called once on Discord bot on_ready. Guard ensures jobs aren't duplicated
-    on reconnect.
-    """
+
+def _get_digest_schedule() -> tuple[int, int]:
+    """Read morning_digest time from schedule_config.md. Returns (hour, minute) UTC."""
+    path = config.MEMORY_DIR / "schedule_config.md"
+    if not path.exists():
+        return 13, 0
+    current_section = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current_section = stripped[3:].strip()
+        elif current_section == "morning_digest" and stripped.lower().startswith("time:"):
+            time_str = stripped[5:].strip().split()[0]
+            parts = time_str.split(":")
+            if len(parts) == 2:
+                try:
+                    return int(parts[0]), int(parts[1])
+                except ValueError:
+                    pass
+    return 13, 0
+
+
+def _get_watchlist() -> list[str]:
+    path = config.MEMORY_DIR / "watchlist.md"
+    if not path.exists():
+        return ["Morning digest delivery", "Model update availability (weekly)", "System health"]
+    return [
+        line.strip()[2:].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("- ")
+    ]
+
+
+def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     global _scheduler, _send_fn, _client, _setup_done
     if _setup_done:
         return
@@ -49,29 +83,22 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
     _scheduler = AsyncIOScheduler()
 
-    # Morning digest - 13:00 UTC daily (8:00 AM EST / 9:00 AM EDT)
-    _scheduler.add_job(_morning_digest, "cron", hour=13, minute=0, id="morning_digest")
+    digest_hour, digest_minute = _get_digest_schedule()
+    _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, id="morning_digest")
+    logger.info("Morning digest scheduled at %02d:%02d UTC", digest_hour, digest_minute)
 
-    # Sonnet model update check - 09:00 UTC every Monday
-    # One lightweight API call per week; new Sonnet releases are infrequent.
     _scheduler.add_job(_check_model_update, "cron", day_of_week="mon", hour=9, minute=0, id="model_update_check")
 
     _scheduler.start()
-    logger.info("Monitor scheduler started - morning digest 08:00 UTC daily, model check 09:00 UTC Mondays")
+    logger.info("Monitor scheduler started")
 
 
 def _parse_sonnet_version(model_id: str) -> Optional[tuple[int, int]]:
-    """Return (major, minor) for claude-sonnet-X-Y model IDs, or None."""
     m = re.match(r"^claude-sonnet-(\d+)-(\d+)$", model_id)
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
 async def _check_model_update() -> None:
-    """Check Anthropic's model list for a newer Sonnet than config.MODEL.
-
-    Notification only - never auto-updates. Fires at most once per newly
-    discovered model ID to avoid repeat pings on the same available update.
-    """
     global _last_notified_model
     if _send_fn is None or _client is None:
         return
@@ -100,7 +127,7 @@ async def _check_model_update() -> None:
                 f"**Model Update Available**\n"
                 f"Newer Sonnet available: `{latest_id}`\n"
                 f"Current: `{config.MODEL}`\n"
-                f"Update `MODEL` in `config.py` when ready - I.G.O.R. will not update automatically."
+                f"Update system_config.md via ProdMem and restart to apply."
             )
 
     except Exception as e:
@@ -196,7 +223,10 @@ async def handle(
     else:
         status_lines.append("Scheduler: not running")
 
+    watchlist = _get_watchlist()
+    status_lines.append("Watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
+
     status_block = "\n".join(status_lines)
-    system = _SYSTEM_PROMPT + f"\n\nCurrent status:\n{status_block}"
+    system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block}"
     messages = context + [{"role": "user", "content": message}]
     return await call_claude(system, messages)

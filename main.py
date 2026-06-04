@@ -10,6 +10,10 @@ _MEMORY_TEMPLATES: dict[str, str] = {
     "projects.md": "# Projects\n",
     "tasks.md": "# Tasks\n",
     "agents.md": "# Agents\n",
+    "digest_config.md": "# Digest Config\n\n## Sections\n- tasks\n",
+    "schedule_config.md": "# Schedule Config\n\n## morning_digest\ntime: 13:00 UTC\n",
+    "system_config.md": f"# System Config\n\n## Model\n{config.MODEL}\n\n## Context Window\n{config.CONTEXT_WINDOW}\n",
+    "watchlist.md": "# Monitor Watchlist\n\n- Morning digest delivery\n- Model update availability (weekly)\n- System health\n",
 }
 
 
@@ -33,7 +37,7 @@ def _setup_logging() -> None:
 
 
 def _ensure_memory_files() -> None:
-    """Create memory files with empty templates if they don't exist (MVP item 9)."""
+    """Create memory files with empty templates if they don't exist."""
     config.MEMORY_DIR.mkdir(exist_ok=True)
     for filename, template in _MEMORY_TEMPLATES.items():
         path = config.MEMORY_DIR / filename
@@ -42,9 +46,29 @@ def _ensure_memory_files() -> None:
             logging.getLogger(__name__).info("Created memory file: %s", filename)
 
 
+def _load_system_config() -> None:
+    """Override config.MODEL and config.CONTEXT_WINDOW from system_config.md if present."""
+    path = config.MEMORY_DIR / "system_config.md"
+    if not path.exists():
+        return
+    current_section = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current_section = stripped[3:].lower().replace(" ", "_")
+        elif current_section == "model" and stripped and not stripped.startswith("#"):
+            config.MODEL = stripped
+        elif current_section == "context_window" and stripped and not stripped.startswith("#"):
+            try:
+                config.CONTEXT_WINDOW = int(stripped)
+            except ValueError:
+                pass
+
+
 def main() -> None:
     _setup_logging()
     _ensure_memory_files()
+    _load_system_config()
     asyncio.run(run_bot())
 
 
