@@ -29,7 +29,13 @@ IMPORTANT CONSTRAINTS:
 - You cannot reschedule jobs at runtime. Schedules are read from schedule_config.md at startup. To change a schedule, tell the user to update schedule_config.md via ProdMem, then restart I.G.O.R.
 - Do not invent action formats. You have no write capabilities.
 
-Be direct and specific. If there's nothing to flag, say so."""
+Be direct and specific. If there's nothing to flag, say so.
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
 def _get_system_prompt() -> str:

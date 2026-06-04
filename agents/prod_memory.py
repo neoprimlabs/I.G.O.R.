@@ -68,7 +68,13 @@ READING FROM MEMORY - For queries, respond normally with no write block.
 Behavior:
 - Summarize and synthesize memory content - never reproduce files verbatim
 - Be specific: what's active, what's pending, what was noted
-- Proactively surface relevant pending items when asked about status"""
+- Proactively surface relevant pending items when asked about status
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
 def _get_system_prompt() -> str:
