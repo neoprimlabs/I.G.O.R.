@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_SYNTHESIS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
 
-You receive search results from DuckDuckGo and synthesize them into a clear, accurate response.
+You receive search results from Exa and synthesize them into a clear, accurate response.
 
 Rules:
 - Never present information as fact without citing its source
@@ -48,18 +48,23 @@ async def _extract_query(message: str, context: list[dict], call_claude: Callabl
 
 async def _run_search(query: str, max_results: int = 5) -> list[dict]:
     def _sync() -> list[dict]:
-        from duckduckgo_search import DDGS
-        results = []
-        with DDGS() as ddgs:
-            for r in ddgs.text(query, max_results=max_results):
-                results.append(r)
-        return results
+        from exa_py import Exa
+        exa = Exa(api_key=config.EXA_API_KEY)
+        response = exa.search_and_contents(
+            query,
+            num_results=max_results,
+            text={"max_characters": 500},
+        )
+        return [
+            {"title": r.title or "No title", "url": r.url, "body": r.text or ""}
+            for r in response.results
+        ]
 
     try:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _sync)
     except Exception as e:
-        logger.error("DuckDuckGo search error - %s: %s", type(e).__name__, e)
+        logger.error("Exa search error - %s: %s", type(e).__name__, e)
         return []
 
 
@@ -67,7 +72,7 @@ def _format_results(results: list[dict]) -> str:
     lines = []
     for i, r in enumerate(results, 1):
         title = r.get("title", "No title")
-        url = r.get("href", "No URL")
+        url = r.get("url", "No URL")
         snippet = r.get("body", "No snippet")
         lines.append(f"[{i}] {title}\nURL: {url}\n{snippet}")
     return "\n\n".join(lines)

@@ -11,6 +11,7 @@ MODEL = "claude-sonnet-4-6"
 
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+EXA_API_KEY: str = os.getenv("EXA_API_KEY", "")
 
 _uid = os.getenv("AUTHORIZED_DISCORD_USER_ID", "")
 AUTHORIZED_USER_ID: int = int(_uid) if _uid.isdigit() else 0
