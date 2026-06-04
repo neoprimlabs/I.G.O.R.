@@ -107,6 +107,18 @@ async def _check_model_update() -> None:
         logger.error("Model update check failed - %s: %s", type(e).__name__, e)
 
 
+def _get_digest_sections() -> list[str]:
+    path = config.MEMORY_DIR / "digest_config.md"
+    if not path.exists():
+        return ["tasks"]
+    sections = [
+        line.strip()[2:].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith("- ")
+    ]
+    return sections if sections else ["tasks"]
+
+
 def _parse_tasks(content: str) -> list[str]:
     return [line.strip() for line in content.splitlines() if line.strip().startswith("- [ ]")]
 
@@ -128,35 +140,37 @@ async def _morning_digest() -> None:
     if _send_fn is None:
         return
 
+    sections = _get_digest_sections()
     lines = ["**Morning Digest**", ""]
 
-    tasks_path = config.MEMORY_DIR / "tasks.md"
-    if tasks_path.exists():
-        tasks = _parse_tasks(tasks_path.read_text(encoding="utf-8"))
-        lines.append("**Open Tasks:**")
-        if tasks:
-            # Deduplicate while preserving order
-            seen = set()
-            for t in tasks:
-                if t not in seen:
-                    seen.add(t)
-                    lines.append(t)
-        else:
-            lines.append("None")
-        lines.append("")
+    if "tasks" in sections:
+        tasks_path = config.MEMORY_DIR / "tasks.md"
+        if tasks_path.exists():
+            tasks = _parse_tasks(tasks_path.read_text(encoding="utf-8"))
+            lines.append("**Open Tasks:**")
+            if tasks:
+                seen = set()
+                for t in tasks:
+                    if t not in seen:
+                        seen.add(t)
+                        lines.append(t)
+            else:
+                lines.append("None")
+            lines.append("")
 
-    projects_path = config.MEMORY_DIR / "projects.md"
-    if projects_path.exists():
-        projects = _parse_projects(projects_path.read_text(encoding="utf-8"))
-        lines.append("**Active Projects:**")
-        if projects:
-            seen = set()
-            for p in projects:
-                if p not in seen:
-                    seen.add(p)
-                    lines.append(f"- {p}")
-        else:
-            lines.append("None")
+    if "projects" in sections:
+        projects_path = config.MEMORY_DIR / "projects.md"
+        if projects_path.exists():
+            projects = _parse_projects(projects_path.read_text(encoding="utf-8"))
+            lines.append("**Active Projects:**")
+            if projects:
+                seen = set()
+                for p in projects:
+                    if p not in seen:
+                        seen.add(p)
+                        lines.append(f"- {p}")
+            else:
+                lines.append("None")
 
     try:
         await _send_fn("\n".join(lines))
