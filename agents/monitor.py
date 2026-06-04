@@ -27,6 +27,10 @@ When queried directly, report:
 - Any system health issues you're aware of
 - What the monitor is currently watching
 
+IMPORTANT CONSTRAINTS:
+- You cannot reschedule, add, or modify jobs at runtime. Job schedules are defined in code. If asked to change a schedule, tell the user clearly that it requires a code change and cannot be done through conversation.
+- Do not invent action formats like %%SCHEDULE%% or similar. You have no write capabilities.
+
 Be direct and specific. If there's nothing to flag, say so."""
 
 
@@ -103,24 +107,59 @@ async def _check_model_update() -> None:
         logger.error("Model update check failed - %s: %s", type(e).__name__, e)
 
 
+def _parse_tasks(content: str) -> list[str]:
+    return [line.strip() for line in content.splitlines() if line.strip().startswith("- [ ]")]
+
+
+def _parse_projects(content: str) -> list[str]:
+    projects = []
+    current_name = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current_name = stripped[3:]
+        elif current_name and stripped and not stripped.startswith("#"):
+            projects.append(f"{current_name}: {stripped.lstrip('- ')}")
+            current_name = None
+    return projects
+
+
 async def _morning_digest() -> None:
     if _send_fn is None:
         return
 
     lines = ["**Morning Digest**", ""]
 
-    for label, filename in (("Tasks", "tasks.md"), ("Projects", "projects.md")):
-        path = config.MEMORY_DIR / filename
-        if path.exists():
-            content = path.read_text(encoding="utf-8").strip()
-            lines.append(f"**{label}:**")
-            lines.append(content or "(empty)")
+    tasks_path = config.MEMORY_DIR / "tasks.md"
+    if tasks_path.exists():
+        tasks = _parse_tasks(tasks_path.read_text(encoding="utf-8"))
+        lines.append("**Open Tasks:**")
+        if tasks:
+            # Deduplicate while preserving order
+            seen = set()
+            for t in tasks:
+                if t not in seen:
+                    seen.add(t)
+                    lines.append(t)
         else:
-            lines.append(f"**{label}:** (file not found)")
+            lines.append("None")
         lines.append("")
 
+    projects_path = config.MEMORY_DIR / "projects.md"
+    if projects_path.exists():
+        projects = _parse_projects(projects_path.read_text(encoding="utf-8"))
+        lines.append("**Active Projects:**")
+        if projects:
+            seen = set()
+            for p in projects:
+                if p not in seen:
+                    seen.add(p)
+                    lines.append(f"- {p}")
+        else:
+            lines.append("None")
+
     try:
-        await _send_fn("\n".join(lines).strip())
+        await _send_fn("\n".join(lines))
     except Exception as e:
         logger.error("Morning digest send failed - %s: %s", type(e).__name__, e)
 
