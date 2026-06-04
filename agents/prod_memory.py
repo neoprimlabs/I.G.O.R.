@@ -49,7 +49,7 @@ MEMORY FILES:
 - user.md - persistent facts about the user, preferences, working style
 - agents.md - agent behavior notes
 
-Default to append for new content. Use overwrite (mode: overwrite) ONLY when the user explicitly asks to edit, remove, complete, or reorganize existing entries - never on a normal add. When overwriting, reproduce the full file with the requested changes applied.
+Default to append for new content. Before appending, check if the exact same entry already exists in the file - if it does, skip the write and tell the user it's already there. Use overwrite (mode: overwrite) ONLY when the user explicitly asks to edit, remove, complete, or reorganize existing entries. When overwriting, reproduce the full file with the requested changes applied.
 
 CONFIG FILES (overwrite to update):
 - digest_config.md - morning digest sections (valid: tasks, projects)
