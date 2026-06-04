@@ -14,20 +14,20 @@ logger = logging.getLogger(__name__)
 
 _CLASSIFICATION_PROMPT = """You are a routing classifier for I.G.O.R., a personal AI assistant.
 
-Given a user message, return exactly one word — the name of the agent that should handle it:
+Given a user message, return exactly one word - the name of the agent that should handle it:
 
-Dev        — programming, debugging, architecture, code review, technical questions, dev tools
-Research   — web search, fact-finding, looking things up, current events, article summaries
-ProdMemory — tasks, todos, notes, reminders, scheduling, projects, active work, what am I working on, what do I have on, memory, remember this, add this, what's pending, project status, project list
-Comms      — drafting messages, emails, posts, editing writing, proofreading
-Monitor    — system health, monitoring status, scheduled reports
-Direct     — general conversation, questions about I.G.O.R., anything that doesn't fit above
+Dev        - programming, debugging, architecture, code review, technical questions, dev tools
+Research   - web search, fact-finding, looking things up, current events, article summaries
+ProdMemory - tasks, todos, notes, reminders, scheduling, projects, active work, what am I working on, what do I have on, memory, remember this, add this, what's pending, project status, project list
+Comms      - drafting messages, emails, posts, editing writing, proofreading
+Monitor    - system health, monitoring status, scheduled reports
+Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
 
 When in doubt between ProdMemory and Direct, choose ProdMemory for anything that touches the user's work, projects, or tasks.
 
 One word only. No punctuation. No explanation."""
 
-_DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition) — a personal AI assistant.
+_DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition) - a personal AI assistant.
 
 Personality: Formal but warm. Confident, composed, precise. Hyper-aware and always thinking ahead. Completely focused on serving the user.
 
@@ -105,7 +105,7 @@ class Orchestrator:
         try:
             response = await self._route(destination, content)
         except Exception as e:
-            logger.error("Route to %s failed — %s: %s", destination, type(e).__name__, e)
+            logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged."
 
         self._update_context(content, response)
@@ -125,7 +125,7 @@ class Orchestrator:
             destination = raw.strip()
             return destination if destination in _VALID_DESTINATIONS else "Direct"
         except Exception as e:
-            logger.error("Classification failed — %s: %s", type(e).__name__, e)
+            logger.error("Classification failed - %s: %s", type(e).__name__, e)
             return "Direct"
 
     async def _route(self, destination: str, content: str) -> str:

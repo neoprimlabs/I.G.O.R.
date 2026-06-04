@@ -18,7 +18,7 @@ _setup_done: bool = False
 # pinged every week for the same available update.
 _last_notified_model: Optional[str] = None
 
-_SYSTEM_PROMPT = """You are I.G.O.R.'s Monitor agent — proactive system monitoring and scheduled reporting.
+_SYSTEM_PROMPT = """You are I.G.O.R.'s Monitor agent - proactive system monitoring and scheduled reporting.
 
 Your primary function is scheduled reports that run automatically, not reactive responses to queries.
 
@@ -45,15 +45,15 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
     _scheduler = AsyncIOScheduler()
 
-    # Morning digest — 08:00 UTC daily
+    # Morning digest - 08:00 UTC daily
     _scheduler.add_job(_morning_digest, "cron", hour=8, minute=0, id="morning_digest")
 
-    # Sonnet model update check — 09:00 UTC every Monday
+    # Sonnet model update check - 09:00 UTC every Monday
     # One lightweight API call per week; new Sonnet releases are infrequent.
     _scheduler.add_job(_check_model_update, "cron", day_of_week="mon", hour=9, minute=0, id="model_update_check")
 
     _scheduler.start()
-    logger.info("Monitor scheduler started — morning digest 08:00 UTC daily, model check 09:00 UTC Mondays")
+    logger.info("Monitor scheduler started - morning digest 08:00 UTC daily, model check 09:00 UTC Mondays")
 
 
 def _parse_sonnet_version(model_id: str) -> Optional[tuple[int, int]]:
@@ -65,7 +65,7 @@ def _parse_sonnet_version(model_id: str) -> Optional[tuple[int, int]]:
 async def _check_model_update() -> None:
     """Check Anthropic's model list for a newer Sonnet than config.MODEL.
 
-    Notification only — never auto-updates. Fires at most once per newly
+    Notification only - never auto-updates. Fires at most once per newly
     discovered model ID to avoid repeat pings on the same available update.
     """
     global _last_notified_model
@@ -74,7 +74,7 @@ async def _check_model_update() -> None:
 
     current_version = _parse_sonnet_version(config.MODEL)
     if current_version is None:
-        logger.error("Model update check skipped — config.MODEL '%s' doesn't match expected sonnet pattern", config.MODEL)
+        logger.error("Model update check skipped - config.MODEL '%s' doesn't match expected sonnet pattern", config.MODEL)
         return
 
     try:
@@ -96,11 +96,11 @@ async def _check_model_update() -> None:
                 f"**Model Update Available**\n"
                 f"Newer Sonnet available: `{latest_id}`\n"
                 f"Current: `{config.MODEL}`\n"
-                f"Update `MODEL` in `config.py` when ready — I.G.O.R. will not update automatically."
+                f"Update `MODEL` in `config.py` when ready - I.G.O.R. will not update automatically."
             )
 
     except Exception as e:
-        logger.error("Model update check failed — %s: %s", type(e).__name__, e)
+        logger.error("Model update check failed - %s: %s", type(e).__name__, e)
 
 
 async def _morning_digest() -> None:
@@ -122,7 +122,7 @@ async def _morning_digest() -> None:
     try:
         await _send_fn("\n".join(lines).strip())
     except Exception as e:
-        logger.error("Morning digest send failed — %s: %s", type(e).__name__, e)
+        logger.error("Morning digest send failed - %s: %s", type(e).__name__, e)
 
 
 async def handle(

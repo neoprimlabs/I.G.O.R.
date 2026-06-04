@@ -23,7 +23,7 @@ def _setup_logging() -> None:
     console.setLevel(logging.INFO)
     console.setFormatter(fmt)
 
-    # File handler: ERROR only — technical details, never conversation content or secrets
+    # File handler: ERROR only - technical details, never conversation content or secrets
     file_handler = logging.FileHandler(config.LOG_FILE)
     file_handler.setLevel(logging.ERROR)
     file_handler.setFormatter(fmt)

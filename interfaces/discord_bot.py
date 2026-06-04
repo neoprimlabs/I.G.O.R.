@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 class IgorBot(discord.Client):
-    """Discord interface for I.G.O.R. — Phase 1.
+    """Discord interface for I.G.O.R. - Phase 1.
 
     Accepts DMs only. All messages pass through the orchestrator's security
     check before any processing occurs. Unauthorized user IDs are silently
-    dropped — no response, no acknowledgment.
+    dropped - no response, no acknowledgment.
 
     Note: message_content is a privileged intent and must also be enabled in
     the Discord Developer Portal under Bot > Privileged Gateway Intents.
@@ -29,7 +29,7 @@ class IgorBot(discord.Client):
 
     async def on_ready(self) -> None:
         logger.info("I.G.O.R. online: %s (ID: %d)", self.user, self.user.id)
-        # Fresh orchestrator on every connection — resets session context per spec
+        # Fresh orchestrator on every connection - resets session context per spec
         self._orchestrator = Orchestrator(notify=self.send_to_user)
         monitor.setup(send_fn=self.send_to_user)
 
@@ -47,14 +47,14 @@ class IgorBot(discord.Client):
         try:
             response = await self._orchestrator.process(message.author.id, message.content)
         except Exception as e:
-            logger.error("Unhandled error in message processing — %s: %s", type(e).__name__, e)
+            logger.error("Unhandled error in message processing - %s: %s", type(e).__name__, e)
             return
 
         if response is not None:
             try:
                 await self._send_chunked(message.channel, response)
             except Exception as e:
-                logger.error("Failed to send response — %s: %s", type(e).__name__, e)
+                logger.error("Failed to send response - %s: %s", type(e).__name__, e)
 
     async def _send_chunked(self, channel: discord.abc.Messageable, content: str) -> None:
         """Split and send content in ≤2000-character chunks (Discord's message limit)."""
@@ -81,7 +81,7 @@ class IgorBot(discord.Client):
             await self._send_chunked(dm, content)
             self._dm_channel = dm
         except Exception as e:
-            logger.error("Failed to send message to user — %s: %s", type(e).__name__, e)
+            logger.error("Failed to send message to user - %s: %s", type(e).__name__, e)
 
 
 async def run_bot() -> None:

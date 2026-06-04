@@ -4,7 +4,7 @@ from typing import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
-_SYNTHESIS_PROMPT = """You are I.G.O.R.'s Research agent — web search, fact-finding, and summarization.
+_SYNTHESIS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
 
 You receive search results from DuckDuckGo and synthesize them into a clear, accurate response.
 
@@ -35,7 +35,7 @@ async def _run_search(query: str, max_results: int = 5) -> list[dict]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, _sync)
     except Exception as e:
-        logger.error("DuckDuckGo search error — %s: %s", type(e).__name__, e)
+        logger.error("DuckDuckGo search error - %s: %s", type(e).__name__, e)
         return []
 
 
