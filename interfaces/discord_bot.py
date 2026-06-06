@@ -60,7 +60,7 @@ class IgorBot(discord.Client):
         """Split and send content in ≤2000-character chunks (Discord's message limit)."""
         limit = 2000
         for i in range(0, len(content), limit):
-            await channel.send(content[i:i + limit])
+            await channel.send(content[i:i + limit], suppress_embeds=True)
 
     async def send_to_user(self, content: str) -> None:
         """Send a message to the authorized user's DM channel.
