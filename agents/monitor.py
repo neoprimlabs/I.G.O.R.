@@ -307,7 +307,7 @@ async def _morning_digest() -> None:
                 lines.append("None")
             lines.append("")
 
-    if "weather" in sections:
+    if "daily_forecast" in sections:
         lines.append("**Weather:**")
         weather = await _fetch_and_synthesize_weather()
         if weather:
