@@ -140,6 +140,56 @@ async def _check_model_update() -> None:
         logger.error("Model update check failed - %s: %s", type(e).__name__, e)
 
 
+_AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into 3-5 bullet points for a morning digest. Each bullet covers one distinct AI development.
+
+Format:
+- [Topic]: One sentence summary. Source: [URL]
+
+Rules:
+- Cover distinct topics - do not repeat similar stories
+- Lead with the most significant development
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- Factual and precise"""
+
+
+async def _fetch_and_synthesize_ai_news() -> str | None:
+    if _client is None:
+        return None
+    try:
+        from agents import research
+        results = await research._run_search("artificial intelligence news", max_results=5)
+        if not results:
+            return None
+
+        seen_domains: set[str] = set()
+        unique_results = []
+        for r in results:
+            url = r.get("url", "")
+            parts = url.split("/")
+            domain = parts[2] if len(parts) > 2 else ""
+            if domain and domain not in seen_domains:
+                seen_domains.add(domain)
+                unique_results.append(r)
+
+        if not unique_results:
+            return None
+
+        formatted = research._format_results(unique_results)
+        system_param = [{"type": "text", "text": _AI_NEWS_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
+        response = await _client.messages.create(
+            model=config.MODEL,
+            system=system_param,
+            messages=[{"role": "user", "content": f"Search results:\n\n{formatted}"}],
+            max_tokens=512,
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
+        return None
+
+
 def _get_digest_sections() -> list[str]:
     path = config.MEMORY_DIR / "digest_config.md"
     if not path.exists():
@@ -204,6 +254,16 @@ async def _morning_digest() -> None:
                         lines.append(f"- {p}")
             else:
                 lines.append("None")
+            lines.append("")
+
+    if "ai_news" in sections:
+        lines.append("**AI News:**")
+        ai_news = await _fetch_and_synthesize_ai_news()
+        if ai_news:
+            lines.append(ai_news)
+        else:
+            lines.append("No results available.")
+        lines.append("")
 
     try:
         await _send_fn("\n".join(lines))
