@@ -154,6 +154,57 @@ Rules:
 - Factual and precise"""
 
 
+_WEATHER_SYNTHESIS_PROMPT = """Summarize the following weather search results into a brief forecast for a morning digest.
+
+Format:
+Current conditions and today's forecast in 2-3 sentences. Include high/low temperatures if available.
+
+Rules:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- Factual and precise"""
+
+
+def _get_user_location() -> str | None:
+    path = config.MEMORY_DIR / "user.md"
+    if not path.exists():
+        return None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("location:"):
+            location = stripped[9:].strip()
+            return location if location else None
+    return None
+
+
+async def _fetch_and_synthesize_weather() -> str | None:
+    if _client is None:
+        return None
+    location = _get_user_location()
+    if not location:
+        logger.warning("Weather skipped - no location found in user.md")
+        return None
+    try:
+        from agents import research
+        results = await research._run_search(f"weather forecast {location} today", max_results=3)
+        if not results:
+            return None
+
+        formatted = research._format_results(results)
+        system_param = [{"type": "text", "text": _WEATHER_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
+        response = await _client.messages.create(
+            model=config.MODEL,
+            system=system_param,
+            messages=[{"role": "user", "content": f"Location: {location}\n\nSearch results:\n\n{formatted}"}],
+            max_tokens=150,
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error("Weather fetch failed - %s: %s", type(e).__name__, e)
+        return None
+
+
 async def _fetch_and_synthesize_ai_news() -> str | None:
     if _client is None:
         return None
@@ -255,6 +306,15 @@ async def _morning_digest() -> None:
             else:
                 lines.append("None")
             lines.append("")
+
+    if "weather" in sections:
+        lines.append("**Weather:**")
+        weather = await _fetch_and_synthesize_weather()
+        if weather:
+            lines.append(weather)
+        else:
+            lines.append("No weather data available.")
+        lines.append("")
 
     if "ai_news" in sections:
         lines.append("**AI News:**")

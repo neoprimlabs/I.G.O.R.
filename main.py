@@ -10,7 +10,7 @@ _MEMORY_TEMPLATES: dict[str, str] = {
     "projects.md": "# Projects\n",
     "tasks.md": "# Tasks\n",
     "agents.md": "# Agents\n",
-    "digest_config.md": "# Digest Config\n\n## Sections\n- tasks\n- ai_news\n",
+    "digest_config.md": "# Digest Config\n\n## Sections\n- tasks\n- weather\n- ai_news\n",
     "schedule_config.md": "# Schedule Config\n\n## morning_digest\ntime: 13:00 UTC\n",
     "system_config.md": f"# System Config\n\n## Model\n{config.MODEL}\n\n## Context Window\n{config.CONTEXT_WINDOW}\n",
     "watchlist.md": "# Monitor Watchlist\n\n- Morning digest delivery\n- Model update availability (weekly)\n- System health\n",

@@ -52,7 +52,7 @@ MEMORY FILES:
 Default to append for new content. Before appending, check if the exact same entry already exists in the file - if it does, skip the write and tell the user it's already there. Use overwrite (mode: overwrite) ONLY when the user explicitly asks to edit, remove, complete, or reorganize existing entries. When overwriting, reproduce the full file with the requested changes applied.
 
 CONFIG FILES (overwrite to update):
-- digest_config.md - morning digest sections (valid: tasks, projects, ai_news)
+- digest_config.md - morning digest sections (valid: tasks, projects, weather, ai_news)
 - schedule_config.md - scheduled job times. Format: ## morning_digest / time: HH:MM UTC. Changes take effect after restart.
 - system_config.md - model name and context window. Changes take effect after restart.
 - watchlist.md - what Monitor tracks and reports on
