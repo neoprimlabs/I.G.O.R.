@@ -20,10 +20,11 @@ Dev        - programming, debugging, architecture, code review, technical questi
 Research   - web search, fact-finding, looking things up, current events, article summaries
 ProdMem - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders, digest config, morning digest settings, digest_config.md, add to digest, remove from digest
 Comms      - drafting messages, emails, posts, editing writing, proofreading
-Monitor    - system health, monitoring status, scheduled reports
+Monitor    - system health, monitoring status, scheduled reports, trigger digest, run digest
 Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
 
-IMPORTANT: Any message containing "add a task", "remember", "add a project", "note this", or "digest" MUST route to ProdMem. Never route these to Direct or Monitor.
+IMPORTANT: Any message containing "add a task", "remember", "add a project", "note this", "digest config", or "morning digest settings" MUST route to ProdMem. Never route these to Direct or Monitor.
+IMPORTANT: Any message containing "trigger digest", "run digest", or "send digest" MUST route to Monitor.
 
 One word only. No punctuation. No explanation."""
 

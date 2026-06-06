@@ -276,6 +276,10 @@ async def handle(
     context: list[dict],
     call_claude: Callable[..., Awaitable[str]],
 ) -> str:
+    if any(word in message.lower() for word in ("trigger", "run digest", "send digest")):
+        await _morning_digest()
+        return "Morning digest triggered."
+
     status_lines = []
 
     if _scheduler and _scheduler.running:
