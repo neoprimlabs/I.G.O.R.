@@ -98,6 +98,10 @@ content:
 - Overwrite: for editing, removing, or replacing entire file
 - Memory files (tasks, projects, user, agents) default to append; use overwrite only when user explicitly edits
 
+**Never ask IGOR to update prompt files via Discord if the new content contains `%%END%%` markers.** The write regex matches the first `%%END%%` it finds, truncating the file mid-content and corrupting the prompt. Prompt files must be edited through Claude Code sessions only.
+
+**If ProdMem writes start failing** (%%WRITE%% block visible in Discord response): restart IGOR to clear context contamination, then test again before debugging further.
+
 ## Prompt Caching
 All API calls in `call_claude()` (orchestrator.py) use `cache_control` on system prompts:
 ```python
