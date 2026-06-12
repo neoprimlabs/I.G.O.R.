@@ -72,12 +72,18 @@ def _write_skill(agent_name: str, content: str) -> None:
         logger.error("Skill write failed for %s - %s: %s", agent_name, type(e).__name__, e)
 
 
-def _extract_skills(response: str) -> str:
-    """Strip %%SKILL%% blocks from response and persist each skill to skills.md."""
+def _extract_skills(response: str) -> tuple[str, int]:
+    """Strip %%SKILL%% blocks from response and persist each skill to skills.md.
+
+    Returns (cleaned_response, number_of_skills_captured).
+    """
+    count = 0
     def _handle(match: re.Match) -> str:
+        nonlocal count
         _write_skill(match.group(1).strip(), match.group(2).strip())
+        count += 1
         return ""
-    return _SKILL_PATTERN.sub(_handle, response).strip()
+    return _SKILL_PATTERN.sub(_handle, response).strip(), count
 
 
 def _get_direct_system_prompt() -> str:
@@ -156,9 +162,10 @@ class Orchestrator:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged."
 
-        response = _extract_skills(response)
+        response, skills_captured = _extract_skills(response)
         self._update_context(content, response)
-        return f"{response}\n\n`[{destination}]`"
+        label = f"`[{destination}]`" + (" `[Skill captured]`" if skills_captured else "")
+        return f"{response}\n\n{label}"
 
     async def _classify(self, content: str) -> str:
         # content is passed as a user-role message, never embedded in the system prompt
