@@ -62,11 +62,22 @@ _SKILL_PATTERN = re.compile(
 )
 
 
+_SKILL_FILES: dict[str, str] = {
+    "Research": "skills_research.md",
+    "Dev": "skills_dev.md",
+    "Comms": "skills_comms.md",
+}
+
+
 def _write_skill(agent_name: str, content: str) -> None:
-    path = config.MEMORY_DIR / "skills.md"
+    filename = _SKILL_FILES.get(agent_name)
+    if not filename:
+        logger.warning("Skill emitted by unknown agent '%s' - skipped", agent_name)
+        return
+    path = config.MEMORY_DIR / filename
     try:
         with path.open("a", encoding="utf-8") as f:
-            f.write(f"\n[{agent_name}] {content}\n")
+            f.write(f"{content}\n")
         logger.info("Skill captured for %s", agent_name)
     except Exception as e:
         logger.error("Skill write failed for %s - %s: %s", agent_name, type(e).__name__, e)

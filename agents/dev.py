@@ -49,14 +49,13 @@ def _get_system_prompt() -> str:
 
 
 def _read_skills() -> str:
-    path = config.MEMORY_DIR / "skills.md"
+    path = config.MEMORY_DIR / "skills_dev.md"
     if not path.exists():
         return ""
-    prefix = "[Dev]"
     lines = [
-        line.strip()[len(prefix):].strip()
+        line.strip()
         for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip().startswith(prefix)
+        if line.strip() and not line.strip().startswith("#")
     ]
     return "\n".join(f"- {l}" for l in lines) if lines else ""
 

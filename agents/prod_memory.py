@@ -11,7 +11,7 @@ _ALLOWED_FILES = frozenset({
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
-    "skills.md",
+    "skills_research.md", "skills_dev.md", "skills_comms.md",
 })
 
 _OVERWRITABLE_FILES = frozenset({
@@ -19,7 +19,7 @@ _OVERWRITABLE_FILES = frozenset({
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
-    "skills.md",
+    "skills_research.md", "skills_dev.md", "skills_comms.md",
 })
 
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Prod+Memory agent - task tracking, organization, scheduling, and persistent memory.
@@ -59,6 +59,12 @@ CONFIG FILES (overwrite to update):
 - system_config.md - model name and context window. Changes take effect after restart.
 - watchlist.md - what Monitor tracks and reports on
 
+SKILLS FILES (overwrite to update):
+- skills_research.md - learned techniques for the Research agent
+- skills_dev.md - learned techniques for the Dev agent
+- skills_comms.md - learned techniques for the Comms agent
+Skills must stay concise - one sentence per entry, no duplicates, prune entries that are no longer relevant. Bloated skills increase token cost on every call.
+
 AGENT PROMPTS (overwrite to update - changes take effect immediately):
 - prompt_dev.md, prompt_research.md, prompt_comms.md, prompt_prodmem.md, prompt_monitor.md, prompt_direct.md
 - If a prompt file is empty or missing, the agent uses its built-in default
@@ -92,7 +98,7 @@ def _read_memory() -> str:
     sections = []
     for name in ("user.md", "projects.md", "tasks.md", "agents.md",
                  "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
-                 "skills.md"):
+                 "skills_research.md", "skills_dev.md", "skills_comms.md"):
         path = config.MEMORY_DIR / name
         if path.exists():
             content = path.read_text(encoding="utf-8").strip()
