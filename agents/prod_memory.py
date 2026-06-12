@@ -11,6 +11,7 @@ _ALLOWED_FILES = frozenset({
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
+    "skills.md",
 })
 
 _OVERWRITABLE_FILES = frozenset({
@@ -18,6 +19,7 @@ _OVERWRITABLE_FILES = frozenset({
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
+    "skills.md",
 })
 
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Prod+Memory agent - task tracking, organization, scheduling, and persistent memory.
@@ -89,7 +91,8 @@ def _get_system_prompt() -> str:
 def _read_memory() -> str:
     sections = []
     for name in ("user.md", "projects.md", "tasks.md", "agents.md",
-                 "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md"):
+                 "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
+                 "skills.md"):
         path = config.MEMORY_DIR / name
         if path.exists():
             content = path.read_text(encoding="utf-8").strip()

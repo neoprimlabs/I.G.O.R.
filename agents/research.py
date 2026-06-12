@@ -23,7 +23,15 @@ Style:
 - No emojis
 - No em dashes - use plain hyphens
 - No exclamation points
-- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
+
+Skill capture - If you applied a non-obvious query technique or synthesis approach that produced notably better results, append a skill block after your response:
+%%SKILL%%
+agent: Research
+content:
+<one sentence describing the reusable technique>
+%%END%%
+Only emit for genuinely non-obvious techniques. Skip for routine lookups."""
 
 _NO_RESULTS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
 
@@ -39,6 +47,19 @@ Behavior:
 
 
 _QUERY_EXTRACTION_PROMPT = """Extract a concise web search query from the user's message. Return only the query (3-8 words), nothing else. No punctuation at the end. Do not append years or dates to the query."""
+
+
+def _read_skills() -> str:
+    path = config.MEMORY_DIR / "skills.md"
+    if not path.exists():
+        return ""
+    prefix = "[Research]"
+    lines = [
+        line.strip()[len(prefix):].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(prefix)
+    ]
+    return "\n".join(f"- {l}" for l in lines) if lines else ""
 
 
 def _get_synthesis_prompt() -> str:
@@ -104,6 +125,9 @@ async def handle(
         formatted = _format_results(results)
         user_content = f"User query: {message}\n\nSearch results:\n\n{formatted}"
         system = _get_synthesis_prompt()
+        skills = _read_skills()
+        if skills:
+            system += f"\n\nLearned skills:\n{skills}"
     else:
         user_content = f"User query: {message}\n\nSearch returned no results."
         system = _NO_RESULTS_PROMPT

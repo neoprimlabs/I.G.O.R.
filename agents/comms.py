@@ -25,7 +25,15 @@ Style:
 - No emojis
 - No em dashes - use plain hyphens
 - No exclamation points
-- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
+
+Skill capture - If you applied a non-obvious tone calibration, structural approach, or communication technique that notably improved the output, append a skill block after your response:
+%%SKILL%%
+agent: Comms
+content:
+<one sentence describing the reusable technique>
+%%END%%
+Only emit for genuinely non-obvious techniques. Skip for routine drafts."""
 
 
 def _get_system_prompt() -> str:
@@ -37,10 +45,27 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
+def _read_skills() -> str:
+    path = config.MEMORY_DIR / "skills.md"
+    if not path.exists():
+        return ""
+    prefix = "[Comms]"
+    lines = [
+        line.strip()[len(prefix):].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip().startswith(prefix)
+    ]
+    return "\n".join(f"- {l}" for l in lines) if lines else ""
+
+
 async def handle(
     message: str,
     context: list[dict],
     call_claude: Callable[..., Awaitable[str]],
 ) -> str:
+    system = _get_system_prompt()
+    skills = _read_skills()
+    if skills:
+        system += f"\n\nLearned skills:\n{skills}"
     messages = context + [{"role": "user", "content": message}]
-    return await call_claude(_get_system_prompt(), messages)
+    return await call_claude(system, messages)

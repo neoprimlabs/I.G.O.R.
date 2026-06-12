@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import logging
+import re
 from typing import Awaitable, Callable
 
 import anthropic
@@ -54,6 +55,29 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 _VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMem", "Comms", "Monitor", "Direct"})
+
+_SKILL_PATTERN = re.compile(
+    r"%%SKILL%%\s*\nagent:\s*(\S+)\s*\ncontent:\s*\n(.*?)%%END%%",
+    re.DOTALL,
+)
+
+
+def _write_skill(agent_name: str, content: str) -> None:
+    path = config.MEMORY_DIR / "skills.md"
+    try:
+        with path.open("a", encoding="utf-8") as f:
+            f.write(f"\n[{agent_name}] {content}\n")
+        logger.info("Skill captured for %s", agent_name)
+    except Exception as e:
+        logger.error("Skill write failed for %s - %s: %s", agent_name, type(e).__name__, e)
+
+
+def _extract_skills(response: str) -> str:
+    """Strip %%SKILL%% blocks from response and persist each skill to skills.md."""
+    def _handle(match: re.Match) -> str:
+        _write_skill(match.group(1).strip(), match.group(2).strip())
+        return ""
+    return _SKILL_PATTERN.sub(_handle, response).strip()
 
 
 def _get_direct_system_prompt() -> str:
@@ -132,6 +156,7 @@ class Orchestrator:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged."
 
+        response = _extract_skills(response)
         self._update_context(content, response)
         return f"{response}\n\n`[{destination}]`"
 
