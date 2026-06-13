@@ -56,6 +56,18 @@ Style:
 
 _VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMem", "Comms", "Monitor", "Direct"})
 
+_GATE_PROMPT = """You are a task completion evaluator.
+
+Given an original task and an agent's latest response, determine if the task is complete.
+
+Respond with exactly one word: DONE or CONTINUE.
+- DONE: the task is fully addressed with no significant gaps remaining
+- CONTINUE: the response is incomplete or requires additional steps
+
+Be strict - only say DONE when the task is genuinely finished."""
+
+_MAX_LOOP_ITERATIONS = 5
+
 _SKILL_PATTERN = re.compile(
     r"%%SKILL%%\s*\nagent:\s*(\S+)\s*\ncontent:\s*\n(.*?)%%END%%",
     re.DOTALL,
@@ -165,17 +177,28 @@ class Orchestrator:
         if user_id != config.AUTHORIZED_USER_ID:
             return None
 
-        destination = await self._classify(content)
+        loop_mode = content.lower().startswith("loop:")
+        task = content[5:].strip() if loop_mode else content
+
+        destination = await self._classify(task)
 
         try:
-            response = await self._route(destination, content)
+            if loop_mode:
+                await self._notify("Working on it...")
+                response, iterations = await self._loop(destination, task)
+            else:
+                response = await self._route(destination, task)
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged."
 
         response, skills_captured = _extract_skills(response)
-        self._update_context(content, response)
-        label = f"`[{destination}]`" + (" `[Skill captured]`" if skills_captured else "")
+        self._update_context(task, response)
+        label = f"`[{destination}]`"
+        if loop_mode:
+            label += f" `[{iterations} loop iterations]`"
+        if skills_captured:
+            label += " `[Skill captured]`"
         return f"{response}\n\n{label}"
 
     async def _classify(self, content: str) -> str:
@@ -195,10 +218,35 @@ class Orchestrator:
             logger.error("Classification failed - %s: %s", type(e).__name__, e)
             return "Direct"
 
-    async def _route(self, destination: str, content: str) -> str:
+    async def _loop(self, destination: str, task: str) -> tuple[str, int]:
+        call: CallClaude = functools.partial(call_claude, self._client, self._notify)
+        loop_context = self._window()
+        current_message = task
+        response = ""
+
+        for i in range(1, _MAX_LOOP_ITERATIONS + 1):
+            response = await self._route(destination, current_message, loop_context)
+
+            gate_messages = [{"role": "user", "content": f"Task: {task}\n\nLatest response:\n{response}"}]
+            verdict = await call(_GATE_PROMPT, gate_messages, max_tokens=10)
+
+            if verdict.strip().upper().startswith("DONE"):
+                return response, i
+
+            loop_context = loop_context + [
+                {"role": "user", "content": current_message},
+                {"role": "assistant", "content": response},
+            ]
+            current_message = task
+
+        logger.warning("Loop hit max iterations (%d) for %s", _MAX_LOOP_ITERATIONS, destination)
+        return response, _MAX_LOOP_ITERATIONS
+
+    async def _route(self, destination: str, content: str, context: list[dict] | None = None) -> str:
         from agents import comms, dev, monitor, prod_memory, research
 
-        context = self._window()
+        if context is None:
+            context = self._window()
         call: CallClaude = functools.partial(call_claude, self._client, self._notify)
 
         handlers: dict[str, Callable] = {
