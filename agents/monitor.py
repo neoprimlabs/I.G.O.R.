@@ -235,22 +235,15 @@ Rules:
 - Factual and precise"""
 
 
-_WEATHER_SYNTHESIS_PROMPT = """Summarize the following weather search results into a brief two-day forecast for a morning digest.
-
-Format:
-Two lines if data is available for both days, one line if only today is available. Each line: conditions, high/low temp. No location header.
-
-Example:
-Today: Partly cloudy, high 91F / low 76F.
-Tomorrow: Scattered storms, high 88F / low 74F.
-
-If tomorrow data is not in the results, omit the tomorrow line entirely.
-
-Rules:
-- No emojis
-- No em dashes - use plain hyphens
-- No exclamation points
-- Factual and precise"""
+_WMO_CONDITIONS: dict[int, str] = {
+    0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast",
+    45: "Foggy", 48: "Foggy",
+    51: "Light drizzle", 53: "Drizzle", 55: "Heavy drizzle",
+    61: "Light rain", 63: "Rain", 65: "Heavy rain",
+    71: "Light snow", 73: "Snow", 75: "Heavy snow",
+    80: "Rain showers", 81: "Rain showers", 82: "Heavy showers",
+    95: "Thunderstorms", 96: "Thunderstorms", 99: "Thunderstorms",
+}
 
 
 def _get_user_location() -> str | None:
@@ -275,28 +268,57 @@ def _get_user_location() -> str | None:
     return None
 
 
-async def _fetch_and_synthesize_weather() -> str | None:
-    if _client is None:
-        return None
+async def _fetch_weather() -> str | None:
     location = _get_user_location()
     if not location:
         logger.warning("Weather skipped - no location found in user.md")
         return None
-    try:
-        from agents import research
-        results = await research._run_search(f"48 hour weather forecast {location}", max_results=3)
-        if not results:
+
+    loop = asyncio.get_running_loop()
+
+    def _sync() -> str | None:
+        import json
+        import urllib.parse
+        import urllib.request
+
+        geo_url = (
+            f"https://geocoding-api.open-meteo.com/v1/search"
+            f"?name={urllib.parse.quote(location)}&count=1"
+        )
+        with urllib.request.urlopen(geo_url, timeout=10) as r:
+            geo = json.loads(r.read())
+        if not geo.get("results"):
             return None
 
-        formatted = research._format_results(results)
-        system_param = [{"type": "text", "text": _WEATHER_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
-        response = await _client.messages.create(
-            model=config.MODEL,
-            system=system_param,
-            messages=[{"role": "user", "content": f"Location: {location}\n\nSearch results:\n\n{formatted}"}],
-            max_tokens=150,
+        lat = geo["results"][0]["latitude"]
+        lon = geo["results"][0]["longitude"]
+
+        weather_url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            f"&daily=weathercode,temperature_2m_max,temperature_2m_min"
+            f"&temperature_unit=fahrenheit"
+            f"&forecast_days=2"
+            f"&timezone=America%2FNew_York"
         )
-        return response.content[0].text
+        with urllib.request.urlopen(weather_url, timeout=10) as r:
+            data = json.loads(r.read())
+
+        daily = data["daily"]
+        codes = daily["weathercode"]
+        highs = daily["temperature_2m_max"]
+        lows = daily["temperature_2m_min"]
+
+        def _line(code: int, high: float, low: float) -> str:
+            condition = _WMO_CONDITIONS.get(code, "Mixed conditions")
+            return f"{condition}, {round(high)}F / {round(low)}F"
+
+        today = _line(codes[0], highs[0], lows[0])
+        tomorrow = _line(codes[1], highs[1], lows[1])
+        return f"Today: {today}\nTomorrow: {tomorrow}"
+
+    try:
+        return await loop.run_in_executor(None, _sync)
     except Exception as e:
         logger.error("Weather fetch failed - %s: %s", type(e).__name__, e)
         return None
@@ -443,7 +465,7 @@ async def _morning_digest() -> None:
 
     if "daily_forecast" in sections:
         lines.append("**Weather:**")
-        weather = await _fetch_and_synthesize_weather()
+        weather = await _fetch_weather()
         if weather:
             lines.append(weather)
         else:
