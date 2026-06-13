@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 
 import discord
 
@@ -8,6 +9,16 @@ from agents import monitor
 from orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)
+
+
+def _filename_from_response(content: str) -> str:
+    first_line = content.split("\n")[0].strip()
+    if first_line.startswith("#"):
+        title = first_line.lstrip("#").strip()
+        slug = re.sub(r"[^\w\s-]", "", title.lower())
+        slug = re.sub(r"[\s_]+", "-", slug).strip("-")[:60]
+        return f"{slug}.md" if slug else "response.md"
+    return "response.md"
 
 
 class IgorBot(discord.Client):
@@ -56,7 +67,7 @@ class IgorBot(discord.Client):
             try:
                 if as_file:
                     await message.channel.send(
-                        file=discord.File(io.BytesIO(response.encode()), filename="response.md")
+                        file=discord.File(io.BytesIO(response.encode()), filename=_filename_from_response(response))
                     )
                 else:
                     await self._send_chunked(message.channel, response)
