@@ -150,7 +150,8 @@ async def _check_bridgemind_videos() -> None:
             )
             summary = response.content[0].text
             await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}\n\n{summary}")
-        except Exception:
+        except Exception as e:
+            logger.error("BridgeMind transcript failed for %s - %s: %s", video_id, type(e).__name__, e)
             await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}")
 
     except Exception as e:
@@ -249,11 +250,21 @@ def _get_user_location() -> str | None:
     path = config.MEMORY_DIR / "user.md"
     if not path.exists():
         return None
+    in_location_section = False
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if stripped.lower().startswith("location:"):
             location = stripped[9:].strip()
             return location if location else None
+        if stripped.lower() == "## location":
+            in_location_section = True
+            continue
+        if in_location_section:
+            if stripped.startswith("## "):
+                break
+            if stripped.startswith("- "):
+                location = stripped[2:].strip()
+                return location if location else None
     return None
 
 
@@ -317,6 +328,43 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         return response.content[0].text
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
+        return None
+
+
+_UNREAL_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into 1-2 bullet points covering recent Unreal Engine news for a morning digest.
+
+Format:
+- [Topic]: One sentence summary. Source: [URL]
+
+Rules:
+- Cover distinct updates only - no repetition
+- Focus on engine updates, new features, or notable releases
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- Factual and precise"""
+
+
+async def _fetch_and_synthesize_unreal_news() -> str | None:
+    if _client is None:
+        return None
+    try:
+        from agents import research
+        results = await research._run_search("Unreal Engine news update", max_results=3)
+        if not results:
+            return None
+
+        formatted = research._format_results(results)
+        system_param = [{"type": "text", "text": _UNREAL_NEWS_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
+        response = await _client.messages.create(
+            model=config.MODEL,
+            system=system_param,
+            messages=[{"role": "user", "content": f"Search results:\n\n{formatted}"}],
+            max_tokens=256,
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error("Unreal news fetch failed - %s: %s", type(e).__name__, e)
         return None
 
 
@@ -400,6 +448,15 @@ async def _morning_digest() -> None:
         ai_news = await _fetch_and_synthesize_ai_news()
         if ai_news:
             lines.append(ai_news)
+        else:
+            lines.append("No results available.")
+        lines.append("")
+
+    if "unreal_news" in sections:
+        lines.append("**Unreal Engine:**")
+        unreal_news = await _fetch_and_synthesize_unreal_news()
+        if unreal_news:
+            lines.append(unreal_news)
         else:
             lines.append("No results available.")
         lines.append("")
