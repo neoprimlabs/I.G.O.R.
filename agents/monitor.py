@@ -281,9 +281,10 @@ async def _fetch_weather() -> str | None:
         import urllib.parse
         import urllib.request
 
+        city = location.split(",")[0].strip()
         geo_url = (
             f"https://geocoding-api.open-meteo.com/v1/search"
-            f"?name={urllib.parse.quote(location)}&count=1"
+            f"?name={urllib.parse.quote(city)}&count=1"
         )
         with urllib.request.urlopen(geo_url, timeout=10) as r:
             geo = json.loads(r.read())
