@@ -167,18 +167,26 @@ class Orchestrator:
         self._notify = notify
         self._context: list[dict] = []
 
-    async def process(self, user_id: int, content: str) -> str | None:
+    async def process(self, user_id: int, content: str) -> tuple[str, bool] | None:
         """Entry point for every incoming message.
 
         Returns None for unauthorized users (silent drop, no acknowledgment).
+        Returns (response, as_file) where as_file signals the bot to send a file attachment.
         Prompt injection protection: `content` is placed in the `user` role of
         the messages array and never interpolated into any system prompt.
+        Prefixes stack in order: "file: loop: <task>"
         """
         if user_id != config.AUTHORIZED_USER_ID:
             return None
 
-        loop_mode = content.lower().startswith("loop:")
-        task = content[5:].strip() if loop_mode else content
+        task = content
+        file_mode = task.lower().startswith("file:")
+        if file_mode:
+            task = task[5:].strip()
+
+        loop_mode = task.lower().startswith("loop:")
+        if loop_mode:
+            task = task[5:].strip()
 
         destination = await self._classify(task)
 
@@ -190,7 +198,7 @@ class Orchestrator:
                 response = await self._route(destination, task)
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
-            return f"Something went wrong ({type(e).__name__}). Details have been logged."
+            return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
 
         response, skills_captured = _extract_skills(response)
         self._update_context(task, response)
@@ -199,7 +207,7 @@ class Orchestrator:
             label += f" `[{iterations} loop iterations]`"
         if skills_captured:
             label += " `[Skill captured]`"
-        return f"{response}\n\n{label}"
+        return f"{response}\n\n{label}", file_mode
 
     async def _classify(self, content: str) -> str:
         # content is passed as a user-role message, never embedded in the system prompt

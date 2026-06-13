@@ -1,3 +1,4 @@
+import io
 import logging
 
 import discord
@@ -45,14 +46,20 @@ class IgorBot(discord.Client):
         self._dm_channel = message.channel
 
         try:
-            response = await self._orchestrator.process(message.author.id, message.content)
+            result = await self._orchestrator.process(message.author.id, message.content)
         except Exception as e:
             logger.error("Unhandled error in message processing - %s: %s", type(e).__name__, e)
             return
 
-        if response is not None:
+        if result is not None:
+            response, as_file = result
             try:
-                await self._send_chunked(message.channel, response)
+                if as_file:
+                    await message.channel.send(
+                        file=discord.File(io.BytesIO(response.encode()), filename="response.md")
+                    )
+                else:
+                    await self._send_chunked(message.channel, response)
             except Exception as e:
                 logger.error("Failed to send response - %s: %s", type(e).__name__, e)
 
