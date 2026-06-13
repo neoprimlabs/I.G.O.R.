@@ -227,7 +227,7 @@ class Orchestrator:
             return "Direct"
 
     async def _loop(self, destination: str, task: str, file_mode: bool = False) -> tuple[str, int]:
-        call: CallClaude = functools.partial(call_claude, self._client, self._notify)
+        call: CallClaude = functools.partial(call_claude, self._client, self._notify)  # gate only, always small
         loop_context = self._window()
         current_message = task
         response = ""
@@ -250,6 +250,16 @@ class Orchestrator:
         logger.warning("Loop hit max iterations (%d) for %s", _MAX_LOOP_ITERATIONS, destination)
         return response, _MAX_LOOP_ITERATIONS
 
+    def _make_caller(self, file_mode: bool = False) -> CallClaude:
+        base = functools.partial(call_claude, self._client, self._notify)
+        if not file_mode:
+            return base
+
+        async def _file_caller(system: str, messages: list, max_tokens: int = 4096) -> str:
+            return await base(system, messages, max_tokens)
+
+        return _file_caller
+
     async def _route(self, destination: str, content: str, context: list[dict] | None = None, file_mode: bool = False) -> str:
         from agents import comms, dev, monitor, prod_memory, research
 
@@ -257,7 +267,7 @@ class Orchestrator:
             context = self._window()
         if file_mode:
             content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
-        call: CallClaude = functools.partial(call_claude, self._client, self._notify)
+        call = self._make_caller(file_mode=file_mode)
 
         handlers: dict[str, Callable] = {
             "Dev": dev.handle,
