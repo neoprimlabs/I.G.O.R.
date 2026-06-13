@@ -220,12 +220,13 @@ async def _check_model_update() -> None:
         logger.error("Model update check failed - %s: %s", type(e).__name__, e)
 
 
-_AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into 3-5 bullet points for a morning digest. Each bullet covers one distinct AI development.
+_AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.
 
 Format:
-- [Topic]: One sentence summary. Source: [URL]
+- [Topic]: One sentence. Source: [URL]
 
 Rules:
+- Exactly 3 bullets - no more, no fewer
 - Cover distinct topics - do not repeat similar stories
 - Lead with the most significant development
 - No emojis
@@ -331,13 +332,13 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         return None
 
 
-_UNREAL_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into 1-2 bullet points covering recent Unreal Engine news for a morning digest.
+_UNREAL_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 1 bullet point covering the most relevant recent Unreal Engine news for a morning digest.
 
 Format:
-- [Topic]: One sentence summary. Source: [URL]
+- [Topic]: One sentence. Source: [URL]
 
 Rules:
-- Cover distinct updates only - no repetition
+- Exactly 1 bullet - the single most relevant update
 - Focus on engine updates, new features, or notable releases
 - No emojis
 - No em dashes - use plain hyphens
