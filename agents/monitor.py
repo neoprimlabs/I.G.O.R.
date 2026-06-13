@@ -235,10 +235,14 @@ Rules:
 - Factual and precise"""
 
 
-_WEATHER_SYNTHESIS_PROMPT = """Summarize the following weather search results into a brief forecast for a morning digest.
+_WEATHER_SYNTHESIS_PROMPT = """Summarize the following weather search results into a brief two-day forecast for a morning digest.
 
 Format:
-Current conditions and today's forecast in 2-3 sentences. Include high/low temperatures if available.
+Two lines - one for today, one for tomorrow. Each line: conditions, high/low temp. No location header.
+
+Example:
+Today: Partly cloudy, high 91F / low 76F.
+Tomorrow: Scattered storms, high 88F / low 74F.
 
 Rules:
 - No emojis
@@ -278,7 +282,7 @@ async def _fetch_and_synthesize_weather() -> str | None:
         return None
     try:
         from agents import research
-        results = await research._run_search(f"weather forecast {location} today", max_results=3)
+        results = await research._run_search(f"weather forecast {location} today tomorrow", max_results=3)
         if not results:
             return None
 
