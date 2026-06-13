@@ -57,10 +57,21 @@ class IgorBot(discord.Client):
                 logger.error("Failed to send response - %s: %s", type(e).__name__, e)
 
     async def _send_chunked(self, channel: discord.abc.Messageable, content: str) -> None:
-        """Split and send content in ≤2000-character chunks (Discord's message limit)."""
         limit = 2000
-        for i in range(0, len(content), limit):
-            await channel.send(content[i:i + limit], suppress_embeds=True)
+        if len(content) <= limit:
+            await channel.send(content, suppress_embeds=True)
+            return
+        chunk = ""
+        for line in content.split("\n"):
+            candidate = chunk + ("\n" if chunk else "") + line
+            if len(candidate) > limit:
+                if chunk:
+                    await channel.send(chunk, suppress_embeds=True)
+                chunk = line
+            else:
+                chunk = candidate
+        if chunk:
+            await channel.send(chunk, suppress_embeds=True)
 
     async def send_to_user(self, content: str) -> None:
         """Send a message to the authorized user's DM channel.
