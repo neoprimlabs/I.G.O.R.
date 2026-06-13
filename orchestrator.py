@@ -193,9 +193,9 @@ class Orchestrator:
         try:
             if loop_mode:
                 await self._notify("Working on it...")
-                response, iterations = await self._loop(destination, task)
+                response, iterations = await self._loop(destination, task, file_mode=file_mode)
             else:
-                response = await self._route(destination, task)
+                response = await self._route(destination, task, file_mode=file_mode)
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
@@ -226,14 +226,14 @@ class Orchestrator:
             logger.error("Classification failed - %s: %s", type(e).__name__, e)
             return "Direct"
 
-    async def _loop(self, destination: str, task: str) -> tuple[str, int]:
+    async def _loop(self, destination: str, task: str, file_mode: bool = False) -> tuple[str, int]:
         call: CallClaude = functools.partial(call_claude, self._client, self._notify)
         loop_context = self._window()
         current_message = task
         response = ""
 
         for i in range(1, _MAX_LOOP_ITERATIONS + 1):
-            response = await self._route(destination, current_message, loop_context)
+            response = await self._route(destination, current_message, loop_context, file_mode=file_mode)
 
             gate_messages = [{"role": "user", "content": f"Task: {task}\n\nLatest response:\n{response}"}]
             verdict = await call(_GATE_PROMPT, gate_messages, max_tokens=10)
@@ -250,11 +250,13 @@ class Orchestrator:
         logger.warning("Loop hit max iterations (%d) for %s", _MAX_LOOP_ITERATIONS, destination)
         return response, _MAX_LOOP_ITERATIONS
 
-    async def _route(self, destination: str, content: str, context: list[dict] | None = None) -> str:
+    async def _route(self, destination: str, content: str, context: list[dict] | None = None, file_mode: bool = False) -> str:
         from agents import comms, dev, monitor, prod_memory, research
 
         if context is None:
             context = self._window()
+        if file_mode:
+            content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
         call: CallClaude = functools.partial(call_claude, self._client, self._notify)
 
         handlers: dict[str, Callable] = {
