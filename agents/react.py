@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
@@ -39,6 +40,18 @@ _TOOLS = [
                 }
             },
             "required": ["file"],
+        },
+    },
+    {
+        "name": "python_run",
+        "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (anthropic, exa_py, requests, etc.).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Python code to execute"},
+                "timeout": {"type": "integer", "description": "Timeout in seconds (default 10, max 30)"},
+            },
+            "required": ["code"],
         },
     },
     {
@@ -121,7 +134,42 @@ def _read_skills() -> str:
     return "\n".join(f"- {l}" for l in lines) if lines else ""
 
 
+async def _run_code(code: str, timeout: int = 10) -> str:
+    import subprocess
+    import sys
+
+    timeout = min(max(timeout, 1), 30)
+
+    def _sync() -> str:
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            output = result.stdout
+            if result.stderr:
+                output += f"\n[stderr]\n{result.stderr}"
+            if result.returncode != 0:
+                output += f"\n[exit code: {result.returncode}]"
+            return output[:3000] if output else "(no output)"
+        except subprocess.TimeoutExpired:
+            return f"[timed out after {timeout}s]"
+        except Exception as e:
+            return f"[execution error: {type(e).__name__}: {e}]"
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sync)
+
+
 async def _execute_tool(name: str, inputs: dict) -> str:
+    if name == "python_run":
+        code = inputs.get("code", "")
+        timeout = inputs.get("timeout", 10)
+        logger.info("ReAct python_run: %s", code[:80])
+        return await _run_code(code, timeout)
+
     if name == "search":
         from agents import research
         query = inputs.get("query", "")
