@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _client: Optional[anthropic.AsyncAnthropic] = None
 
 _MAX_ITERATIONS = 10
+_THINKING_BUDGET = 8000
 
 _TOOLS = [
     {
@@ -210,6 +211,9 @@ async def handle(
     system_param = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
     messages = context + [{"role": "user", "content": message}]
 
+    # thinking budget must be less than max_tokens - leave room for response
+    effective_max = max(max_tokens, _THINKING_BUDGET + 2000)
+
     for i in range(_MAX_ITERATIONS):
         try:
             response = await client.messages.create(
@@ -217,7 +221,9 @@ async def handle(
                 system=system_param,
                 messages=messages,
                 tools=_TOOLS,
-                max_tokens=max_tokens,
+                max_tokens=effective_max,
+                thinking={"type": "enabled", "budget_tokens": _THINKING_BUDGET},
+                betas=["interleaved-thinking-2025-05-14"],
             )
         except Exception as e:
             logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
@@ -230,16 +236,14 @@ async def handle(
             return ""
 
         if response.stop_reason == "tool_use":
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use":
-                    logger.info("ReAct tool: %s %s", block.name, str(block.input)[:100])
-                    result = await _execute_tool(block.name, block.input)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
+            tool_blocks = [b for b in response.content if b.type == "tool_use"]
+            for b in tool_blocks:
+                logger.info("ReAct tool: %s %s", b.name, str(b.input)[:100])
+            results = await asyncio.gather(*[_execute_tool(b.name, b.input) for b in tool_blocks])
+            tool_results = [
+                {"type": "tool_result", "tool_use_id": b.id, "content": r}
+                for b, r in zip(tool_blocks, results)
+            ]
             messages = messages + [
                 {"role": "assistant", "content": response.content},
                 {"role": "user", "content": tool_results},
