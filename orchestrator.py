@@ -279,6 +279,7 @@ class Orchestrator:
         try:
             verdict = await call(_CRITIC_PROMPT, messages, max_tokens=60)
             verdict = verdict.strip()
+            logger.info("Critic verdict for %s: %s", destination, verdict[:80])
             if verdict.upper().startswith("CAPTURE:"):
                 _write_skill(destination, verdict[8:].strip())
                 return True
