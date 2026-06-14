@@ -56,6 +56,29 @@ _TOOLS = [
         },
     },
     {
+        "name": "read_file",
+        "description": "Read a file from IGOR's codebase on the server. Use this to inspect source code before modifying it. Path is relative to IGOR's root directory.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to IGOR root (e.g. 'agents/react.py', 'orchestrator.py')"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "write_file",
+        "description": "Write a file to IGOR's codebase on the server. Use to modify source code for self-improvement. Only .py and .md files allowed. Changes take effect after restart.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to IGOR root (e.g. 'agents/react.py')"},
+                "content": {"type": "string", "description": "Full file content to write"},
+            },
+            "required": ["path", "content"],
+        },
+    },
+    {
         "name": "fetch_url",
         "description": "Fetch the content of a specific URL. Use when you need to read a full article, documentation page, or web resource directly. Prefer search for discovery, fetch_url for reading a known page.",
         "input_schema": {
@@ -175,6 +198,45 @@ async def _run_code(code: str, timeout: int = 10) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
+def _safe_path(relative: str):
+    try:
+        resolved = (config.BASE_DIR / relative).resolve()
+        if not str(resolved).startswith(str(config.BASE_DIR.resolve())):
+            return None
+        return resolved
+    except Exception:
+        return None
+
+
+async def _read_server_file(path: str) -> str:
+    resolved = _safe_path(path)
+    if resolved is None:
+        return "[access denied: path outside IGOR root]"
+    if not resolved.exists():
+        return f"[not found: {path}]"
+    try:
+        content = resolved.read_text(encoding="utf-8")
+        return content[:10000] if len(content) > 10000 else content
+    except Exception as e:
+        return f"[read error: {type(e).__name__}: {e}]"
+
+
+async def _write_server_file(path: str, content: str) -> str:
+    from pathlib import Path
+    resolved = _safe_path(path)
+    if resolved is None:
+        return "[access denied: path outside IGOR root]"
+    if Path(path).suffix not in {".py", ".md"}:
+        return "[access denied: only .py and .md files allowed]"
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+        logger.info("ReAct write_file: %s (%d bytes)", path, len(content))
+        return f"Written: {path} ({len(content)} bytes). Restart required for changes to take effect."
+    except Exception as e:
+        return f"[write error: {type(e).__name__}: {e}]"
+
+
 async def _fetch_url(url: str) -> str:
     import httpx
 
@@ -203,6 +265,12 @@ async def _execute_tool(name: str, inputs: dict) -> str:
         timeout = inputs.get("timeout", 10)
         logger.info("ReAct python_run: %s", code[:80])
         return await _run_code(code, timeout)
+
+    if name == "read_file":
+        return await _read_server_file(inputs.get("path", ""))
+
+    if name == "write_file":
+        return await _write_server_file(inputs.get("path", ""), inputs.get("content", ""))
 
     if name == "fetch_url":
         url = inputs.get("url", "")
