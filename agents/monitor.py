@@ -173,7 +173,6 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     logger.info("Morning digest scheduled at %02d:%02d UTC", digest_hour, digest_minute)
 
     _scheduler.add_job(_check_model_update, "cron", day_of_week="mon", hour=9, minute=0, id="model_update_check")
-    _scheduler.add_job(_check_bridgemind_videos, "interval", minutes=20, id="bridgemind_check")
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
