@@ -56,6 +56,17 @@ _TOOLS = [
         },
     },
     {
+        "name": "fetch_url",
+        "description": "Fetch the content of a specific URL. Use when you need to read a full article, documentation page, or web resource directly. Prefer search for discovery, fetch_url for reading a known page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The URL to fetch"},
+            },
+            "required": ["url"],
+        },
+    },
+    {
         "name": "memory_write",
         "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences.",
         "input_schema": {
@@ -164,12 +175,39 @@ async def _run_code(code: str, timeout: int = 10) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
+async def _fetch_url(url: str) -> str:
+    import httpx
+
+    def _sync() -> str:
+        try:
+            with httpx.Client(follow_redirects=True, timeout=15) as client:
+                resp = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "")
+                if "text" not in content_type and "json" not in content_type:
+                    return f"[non-text content type: {content_type}]"
+                text = resp.text
+                return text[:8000] if len(text) > 8000 else text
+        except httpx.HTTPStatusError as e:
+            return f"[HTTP {e.response.status_code}: {url}]"
+        except Exception as e:
+            return f"[fetch error: {type(e).__name__}: {e}]"
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sync)
+
+
 async def _execute_tool(name: str, inputs: dict) -> str:
     if name == "python_run":
         code = inputs.get("code", "")
         timeout = inputs.get("timeout", 10)
         logger.info("ReAct python_run: %s", code[:80])
         return await _run_code(code, timeout)
+
+    if name == "fetch_url":
+        url = inputs.get("url", "")
+        logger.info("ReAct fetch_url: %s", url)
+        return await _fetch_url(url)
 
     if name == "search":
         from agents import research

@@ -19,20 +19,21 @@ _MONITOR_TRIGGERS = frozenset({
 
 _CRITIC_PROMPT = """You are a skill evaluator for an AI assistant system.
 
-Given a task and an agent's response, determine if the agent applied a non-obvious technique worth capturing for future use.
+Given a task and a response, decide if the approach used is worth capturing as a reusable skill.
 
-Worth capturing:
-- A search or query strategy that improved results beyond the obvious approach
-- A synthesis method that produced unusually clear or structured output
-- A technical pattern or approach that solved a non-trivial problem in a reusable way
+Capture if the response shows:
+- A multi-step search sequence that worked well (e.g. checked memory first, then searched for X before Y)
+- A domain insight or constraint that filtered results usefully (e.g. applied hardware limits to narrow recommendations)
+- A synthesis pattern that organized a complex answer clearly
+- A user-specific adaptation that improved relevance
 
-Not worth capturing:
-- Routine lookups or standard responses
-- Generic advice applicable to any situation
-- Common patterns any competent agent would use
+Skip if:
+- The response is a single lookup or a factual answer from training data
+- The approach was obvious given the question
+- Nothing about the method would help future responses
 
 Respond with exactly one line:
-CAPTURE: [one sentence describing the reusable technique]
+CAPTURE: [one concrete sentence - what to do, not just what happened]
 SKIP
 
 One line only. No explanation."""
@@ -145,7 +146,7 @@ class Orchestrator:
         call = functools.partial(call_claude, self._client, self._notify)
         messages = [{"role": "user", "content": f"Task: {task}\n\nResponse:\n{response}"}]
         try:
-            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=60)
+            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=120)
             verdict = verdict.strip()
             logger.info("Critic verdict for %s: %s", destination, verdict[:80])
             if verdict.upper().startswith("CAPTURE:"):
