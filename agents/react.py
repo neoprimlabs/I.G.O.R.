@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _client: Optional[anthropic.AsyncAnthropic] = None
 
-_MAX_ITERATIONS = 10
+_MAX_ITERATIONS = 20
 _THINKING_BUDGET = 8000
 
 _TOOLS = [
