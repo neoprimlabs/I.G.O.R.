@@ -68,6 +68,26 @@ Be strict - only say DONE when the task is genuinely finished."""
 
 _MAX_LOOP_ITERATIONS = 5
 
+_CRITIC_PROMPT = """You are a skill evaluator for an AI assistant system.
+
+Given a task and an agent's response, determine if the agent applied a non-obvious technique worth capturing for future use.
+
+Worth capturing:
+- A search or query strategy that improved results beyond the obvious approach
+- A synthesis method that produced unusually clear or structured output
+- A technical pattern or approach that solved a non-trivial problem in a reusable way
+
+Not worth capturing:
+- Routine lookups or standard responses
+- Generic advice applicable to any situation
+- Common patterns any competent agent would use
+
+Respond with exactly one line:
+CAPTURE: [one sentence describing the reusable technique]
+SKIP
+
+One line only. No explanation."""
+
 _SKILL_PATTERN = re.compile(
     r"%%SKILL%%\s*\nagent:\s*(\S+)\s*\ncontent:\s*\n(.*?)%%END%%",
     re.DOTALL,
@@ -200,12 +220,13 @@ class Orchestrator:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
 
-        response, skills_captured = _extract_skills(response)
+        response, _ = _extract_skills(response)
+        skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(task, response)
         label = f"`[{destination}]`"
         if loop_mode:
             label += f" `[{iterations} loop iterations]`"
-        if skills_captured:
+        if skill_captured:
             label += " `[Skill captured]`"
         return f"{response}\n\n{label}", file_mode
 
@@ -249,6 +270,21 @@ class Orchestrator:
 
         logger.warning("Loop hit max iterations (%d) for %s", _MAX_LOOP_ITERATIONS, destination)
         return response, _MAX_LOOP_ITERATIONS
+
+    async def _critic_pass(self, destination: str, task: str, response: str) -> bool:
+        if destination not in _SKILL_FILES:
+            return False
+        call = functools.partial(call_claude, self._client, self._notify)
+        messages = [{"role": "user", "content": f"Task: {task}\n\nResponse:\n{response}"}]
+        try:
+            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=60)
+            verdict = verdict.strip()
+            if verdict.upper().startswith("CAPTURE:"):
+                _write_skill(destination, verdict[8:].strip())
+                return True
+        except Exception as e:
+            logger.error("Critic pass failed for %s - %s: %s", destination, type(e).__name__, e)
+        return False
 
     def _make_caller(self, file_mode: bool = False) -> CallClaude:
         base = functools.partial(call_claude, self._client, self._notify)

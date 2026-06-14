@@ -27,13 +27,7 @@ Style:
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
 
-Skill capture - If you applied a non-obvious tone calibration, structural approach, or communication technique that notably improved the output, append a skill block after your response:
-%%SKILL%%
-agent: Comms
-content:
-<one sentence describing the reusable technique>
-%%END%%
-Only emit for genuinely non-obvious techniques. Skip for routine drafts."""
+"""
 
 
 def _get_system_prompt() -> str:

@@ -30,13 +30,7 @@ Style:
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
 
-Skill capture - If you identified a non-obvious debugging strategy, architectural pattern, or technical approach that resolved something in a notably effective way, append a skill block after your response:
-%%SKILL%%
-agent: Dev
-content:
-<one sentence describing the reusable technique>
-%%END%%
-Only emit for genuinely non-obvious techniques. Skip for routine advice."""
+"""
 
 
 def _get_system_prompt() -> str:

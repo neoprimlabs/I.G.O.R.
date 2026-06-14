@@ -29,13 +29,7 @@ Style:
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
 
-Skill capture - If you applied a non-obvious query technique or synthesis approach that produced notably better results, append a skill block after your response:
-%%SKILL%%
-agent: Research
-content:
-<one sentence describing the reusable technique>
-%%END%%
-Only emit for genuinely non-obvious techniques. Skip for routine lookups."""
+"""
 
 _NO_RESULTS_PROMPT = """You are I.G.O.R.'s Research agent - web search, fact-finding, and summarization.
 
