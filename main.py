@@ -17,6 +17,7 @@ _MEMORY_TEMPLATES: dict[str, str] = {
     "skills_research.md": "# Research Skills\n",
     "skills_dev.md": "# Dev Skills\n",
     "skills_comms.md": "# Comms Skills\n",
+    "skills_react.md": "# React Skills\n",
 }
 
 

@@ -15,46 +15,15 @@ logger = logging.getLogger(__name__)
 
 _CLASSIFICATION_PROMPT = """You are a routing classifier for I.G.O.R., a personal AI assistant.
 
-Given a user message, return exactly one word - the name of the agent that should handle it:
+Given a user message, return exactly one word:
 
-Dev        - programming, debugging, architecture, code review, technical questions, dev tools
-Research   - web search, fact-finding, looking things up, current events, article summaries
-ProdMem - ALWAYS use this for: add a task, remember, store, note this, add to my list, what are my tasks, what am I working on, project status, add a project, update my notes, what's pending, scheduling, reminders, digest config, morning digest settings, digest_config.md, add to digest, remove from digest
-Comms      - drafting messages, emails, posts, editing writing, proofreading
-Monitor    - system health, monitoring status, scheduled reports, trigger digest, run digest, questions about what IGOR is monitoring or watching
-Direct     - general conversation, questions about I.G.O.R., anything that doesn't fit above
-
-IMPORTANT: Any message containing "add a task", "remember", "add a project", "note this", "digest config", or "morning digest settings" MUST route to ProdMem. Never route these to Direct or Monitor.
-IMPORTANT: Any message containing "trigger digest", "run digest", or "send digest" MUST route to Monitor.
+Monitor - system health, monitoring status, scheduled reports, trigger digest, run digest, send digest, questions about what IGOR is monitoring or watching
+React   - everything else: research, tasks, memory, writing, coding, conversation, questions
 
 One word only. No punctuation. No explanation."""
 
-_DEFAULT_DIRECT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition) - a personal AI assistant.
 
-How you work:
-- You are a routing system. Each message is handled by exactly one agent. You cannot fire multiple agents simultaneously or perform parallel tasks.
-- Your specialist agents are: Dev (technical), Research (web search), ProdMem (tasks and memory), Comms (writing), Monitor (system status and scheduled jobs).
-- You handle one request per message. Never describe or simulate what other agents would do.
-- You have web search capability via the Research agent - do not claim you cannot browse the internet.
-- You have a background scheduler (APScheduler) that runs persistent jobs: morning digest, model update checks, BridgeMind video monitoring, and others. These run automatically without user input.
-- You cannot send emails or take actions outside of Discord and your scheduled jobs.
-
-Personality: Formal but warm. Confident, composed, precise. Completely focused on serving the user.
-
-Principles:
-- Truth over comfort. Push back. Flag issues. Deliver honest assessments without softening them.
-- Agreement is earned, not given by default.
-- When you don't know something, say so immediately. Never guess, never bluff, never invent capabilities.
-- Concise by default. Thorough when asked.
-- Address the user as "Creator" occasionally - once per response at most, only when it feels natural. Never force it.
-
-Style:
-- No emojis
-- No em dashes - use plain hyphens
-- No exclamation points
-- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
-
-_VALID_DESTINATIONS = frozenset({"Dev", "Research", "ProdMem", "Comms", "Monitor", "Direct"})
+_VALID_DESTINATIONS = frozenset({"Monitor", "React"})
 
 _GATE_PROMPT = """You are a task completion evaluator.
 
@@ -95,9 +64,7 @@ _SKILL_PATTERN = re.compile(
 
 
 _SKILL_FILES: dict[str, str] = {
-    "Research": "skills_research.md",
-    "Dev": "skills_dev.md",
-    "Comms": "skills_comms.md",
+    "React": "skills_react.md",
 }
 
 
@@ -128,14 +95,6 @@ def _extract_skills(response: str) -> tuple[str, int]:
         return ""
     return _SKILL_PATTERN.sub(_handle, response).strip(), count
 
-
-def _get_direct_system_prompt() -> str:
-    path = config.MEMORY_DIR / "prompt_direct.md"
-    if path.exists():
-        content = path.read_text(encoding="utf-8").strip()
-        if content:
-            return content
-    return _DEFAULT_DIRECT_SYSTEM_PROMPT
 
 # Type alias: a bound call_claude with client and notify already applied.
 # Signature: async (system: str, messages: list[dict], max_tokens: int = 1024) -> str
@@ -242,10 +201,10 @@ class Orchestrator:
                 max_tokens=10,
             )
             destination = raw.strip()
-            return destination if destination in _VALID_DESTINATIONS else "Direct"
+            return destination if destination in _VALID_DESTINATIONS else "React"
         except Exception as e:
             logger.error("Classification failed - %s: %s", type(e).__name__, e)
-            return "Direct"
+            return "React"
 
     async def _loop(self, destination: str, task: str, file_mode: bool = False) -> tuple[str, int]:
         call: CallClaude = functools.partial(call_claude, self._client, self._notify)  # gate only, always small
@@ -298,30 +257,18 @@ class Orchestrator:
         return _file_caller
 
     async def _route(self, destination: str, content: str, context: list[dict] | None = None, file_mode: bool = False) -> str:
-        from agents import comms, dev, monitor, prod_memory, research
+        from agents import monitor, react
 
         if context is None:
             context = self._window()
         if file_mode:
             content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
         call = self._make_caller(file_mode=file_mode)
+        max_tokens = 4096 if file_mode else 1024
 
-        handlers: dict[str, Callable] = {
-            "Dev": dev.handle,
-            "Research": research.handle,
-            "ProdMem": prod_memory.handle,
-            "Comms": comms.handle,
-            "Monitor": monitor.handle,
-        }
-
-        handler = handlers.get(destination)
-        if handler is None:
-            return await self._handle_direct(content, context, call)
-        return await handler(content, context, call)
-
-    async def _handle_direct(self, content: str, context: list[dict], call: CallClaude) -> str:
-        messages = context + [{"role": "user", "content": content}]
-        return await call(_get_direct_system_prompt(), messages)
+        if destination == "Monitor":
+            return await monitor.handle(content, context, call)
+        return await react.handle(content, context, call, max_tokens=max_tokens)
 
     def _window(self) -> list[dict]:
         return self._context[-config.CONTEXT_WINDOW:]

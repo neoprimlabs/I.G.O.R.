@@ -10,16 +10,16 @@ _ALLOWED_FILES = frozenset({
     "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
-    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
-    "skills_research.md", "skills_dev.md", "skills_comms.md",
+    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md", "prompt_react.md",
+    "skills_research.md", "skills_dev.md", "skills_comms.md", "skills_react.md",
 })
 
 _OVERWRITABLE_FILES = frozenset({
     "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "system_config.md", "watchlist.md",
     "prompt_dev.md", "prompt_research.md", "prompt_comms.md",
-    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md",
-    "skills_research.md", "skills_dev.md", "skills_comms.md",
+    "prompt_prodmem.md", "prompt_monitor.md", "prompt_direct.md", "prompt_react.md",
+    "skills_research.md", "skills_dev.md", "skills_comms.md", "skills_react.md",
 })
 
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Prod+Memory agent - task tracking, organization, scheduling, and persistent memory.
