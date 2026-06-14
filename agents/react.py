@@ -79,6 +79,17 @@ _TOOLS = [
         },
     },
     {
+        "name": "restart_self",
+        "description": "Restart IGOR to deploy code changes. Always call this after writing .py files. IGOR will go offline for ~10 seconds. Always send a final message to the user before calling this - the restart fires 5 seconds after this tool is called, giving time for the response to send.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reason": {"type": "string", "description": "Brief description of what change is being deployed"},
+            },
+            "required": ["reason"],
+        },
+    },
+    {
         "name": "fetch_url",
         "description": "Fetch the content of a specific URL. Use when you need to read a full article, documentation page, or web resource directly. Prefer search for discovery, fetch_url for reading a known page.",
         "input_schema": {
@@ -126,6 +137,14 @@ How to reason:
 - If a task requires multiple searches, do them in sequence - use the result of one to inform the next
 - If initial results are insufficient, search again with a refined query
 - Read memory before writing to avoid duplicating existing entries
+
+Self-modification workflow (follow this exactly):
+1. Read the target file with read_file
+2. Write new code and validate it - use python_run to run: python -c "import <module>" to catch import errors, not just syntax
+3. Commit current state with python_run: git -C /opt/igor commit -am "pre-modification backup"
+4. Write the new file with write_file
+5. Tell the user what changed and that you are restarting
+6. Call restart_self - it fires 5 seconds after the tool call, giving the response time to send
 
 Principles:
 - Truth over comfort. Push back. Flag issues. Deliver honest assessments without softening them.
@@ -198,6 +217,20 @@ async def _run_code(code: str, timeout: int = 10) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
+def _schedule_restart(reason: str) -> None:
+    import threading
+    import subprocess
+
+    def _restart():
+        import time
+        time.sleep(5)
+        logger.info("restart_self firing: %s", reason)
+        subprocess.run(["sudo", "systemctl", "restart", "igor"], check=False)
+
+    t = threading.Thread(target=_restart, daemon=True)
+    t.start()
+
+
 def _safe_path(relative: str):
     try:
         resolved = (config.BASE_DIR / relative).resolve()
@@ -265,6 +298,12 @@ async def _execute_tool(name: str, inputs: dict) -> str:
         timeout = inputs.get("timeout", 10)
         logger.info("ReAct python_run: %s", code[:80])
         return await _run_code(code, timeout)
+
+    if name == "restart_self":
+        reason = inputs.get("reason", "unspecified")
+        logger.info("restart_self scheduled: %s", reason)
+        _schedule_restart(reason)
+        return "Restart scheduled in 5 seconds. Finish your response to the user now."
 
     if name == "read_file":
         return await _read_server_file(inputs.get("path", ""))
