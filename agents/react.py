@@ -216,7 +216,7 @@ async def handle(
 
     for i in range(_MAX_ITERATIONS):
         try:
-            response = await client.messages.create(
+            response = await client.beta.messages.create(
                 model=config.MODEL,
                 system=system_param,
                 messages=messages,
