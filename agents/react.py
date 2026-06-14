@@ -150,6 +150,9 @@ How to reason:
 - If a task requires multiple searches, do them in sequence - use the result of one to inform the next
 - If initial results are insufficient, search again with a refined query
 - Read memory before writing to avoid duplicating existing entries
+- Read a file once and act on it - do not re-read the same file multiple times
+- Scope strictly to the task given - do not investigate adjacent issues mid-task
+- Decide and act - avoid excessive exploration before making a change
 
 Self-modification workflow (follow this exactly):
 1. Read the target file with read_file
@@ -256,7 +259,7 @@ async def _read_server_file(path: str) -> str:
         return f"[not found: {path}]"
     try:
         content = resolved.read_text(encoding="utf-8")
-        return content[:10000] if len(content) > 10000 else content
+        return content[:30000] if len(content) > 30000 else content
     except Exception as e:
         return f"[read error: {type(e).__name__}: {e}]"
 
