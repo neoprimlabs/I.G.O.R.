@@ -80,7 +80,7 @@ _TOOLS = [
     },
     {
         "name": "restart_self",
-        "description": "Restart IGOR to deploy code changes. Always call this after writing .py files. IGOR will go offline for ~10 seconds. Always send a final message to the user before calling this - the restart fires 5 seconds after this tool is called, giving time for the response to send.",
+        "description": "Signal that code changes are ready to deploy. Writes a sentinel file and instructs the user to restart manually from SSH. Always call this after writing .py files, and always tell the user what changed and that they need to run: sudo systemctl restart igor",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -217,18 +217,10 @@ async def _run_code(code: str, timeout: int = 10) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
-def _schedule_restart(reason: str) -> None:
-    import threading
-    import subprocess
-
-    def _restart():
-        import time
-        time.sleep(5)
-        logger.info("restart_self firing: %s", reason)
-        subprocess.run(["sudo", "systemctl", "restart", "igor"], check=False)
-
-    t = threading.Thread(target=_restart, daemon=True)
-    t.start()
+def _write_sentinel(reason: str) -> None:
+    sentinel = config.BASE_DIR / "restart_requested"
+    sentinel.write_text(reason, encoding="utf-8")
+    logger.info("restart sentinel written: %s", reason)
 
 
 def _safe_path(relative: str):
@@ -301,9 +293,8 @@ async def _execute_tool(name: str, inputs: dict) -> str:
 
     if name == "restart_self":
         reason = inputs.get("reason", "unspecified")
-        logger.info("restart_self scheduled: %s", reason)
-        _schedule_restart(reason)
-        return "Restart scheduled in 5 seconds. Finish your response to the user now."
+        _write_sentinel(reason)
+        return "Sentinel written. No watchdog yet - tell the user to restart manually from SSH: sudo systemctl restart igor"
 
     if name == "read_file":
         return await _read_server_file(inputs.get("path", ""))
