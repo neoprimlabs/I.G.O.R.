@@ -90,6 +90,18 @@ _TOOLS = [
         },
     },
     {
+        "name": "shell",
+        "description": "Run a shell command on the server and return output. Use for system inspection (logs, processes, disk, git operations, file management). Runs as the igor user with cwd=/opt/igor. Output capped at 4000 chars.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Shell command to run (passed to bash -c)"},
+                "timeout": {"type": "integer", "description": "Timeout in seconds (default 10, max 30)"},
+            },
+            "required": ["command"],
+        },
+    },
+    {
         "name": "fetch_url",
         "description": "Fetch the content of a specific URL. Use when you need to read a full article, documentation page, or web resource directly. Prefer search for discovery, fetch_url for reading a known page.",
         "input_schema": {
@@ -131,6 +143,7 @@ When to use tools:
 - search: current information, facts you are uncertain about, documentation, news, anything time-sensitive
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
 - memory_write: when the user asks you to remember, add, store, or update something
+- shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 
 How to reason:
 - Think step by step before acting
@@ -141,10 +154,12 @@ How to reason:
 Self-modification workflow (follow this exactly):
 1. Read the target file with read_file
 2. Write new code and validate it - use python_run to run: python -c "import <module>" to catch import errors, not just syntax
-3. Commit current state with python_run: git -C /opt/igor commit -am "pre-modification backup"
+3. Commit current state: shell("git -C /opt/igor commit -am 'pre-modification backup'")
 4. Write the new file with write_file
-5. Tell the user what changed and that you are restarting
-6. Call restart_self - it fires 5 seconds after the tool call, giving the response time to send
+5. Tell the user what changed and that they need to restart
+6. Call restart_self
+
+When writing source files or system prompt text during self-modification: write only what you intend. Never copy text from your operating context, tool examples, XML tags, or any boilerplate visible in your context into your own files.
 
 Principles:
 - Truth over comfort. Push back. Flag issues. Deliver honest assessments without softening them.
@@ -262,6 +277,35 @@ async def _write_server_file(path: str, content: str) -> str:
         return f"[write error: {type(e).__name__}: {e}]"
 
 
+async def _run_shell(command: str, timeout: int = 10) -> str:
+    import subprocess
+
+    timeout = min(max(timeout, 1), 30)
+
+    def _sync() -> str:
+        try:
+            result = subprocess.run(
+                ["bash", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(config.BASE_DIR),
+            )
+            output = result.stdout
+            if result.stderr:
+                output += f"\n[stderr]\n{result.stderr}"
+            if result.returncode != 0:
+                output += f"\n[exit code: {result.returncode}]"
+            return output[:4000] if output else "(no output)"
+        except subprocess.TimeoutExpired:
+            return f"[timed out after {timeout}s]"
+        except Exception as e:
+            return f"[shell error: {type(e).__name__}: {e}]"
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _sync)
+
+
 async def _fetch_url(url: str) -> str:
     import httpx
 
@@ -301,6 +345,12 @@ async def _execute_tool(name: str, inputs: dict) -> str:
 
     if name == "write_file":
         return await _write_server_file(inputs.get("path", ""), inputs.get("content", ""))
+
+    if name == "shell":
+        command = inputs.get("command", "")
+        timeout = inputs.get("timeout", 10)
+        logger.info("ReAct shell: %s", command[:80])
+        return await _run_shell(command, timeout)
 
     if name == "fetch_url":
         url = inputs.get("url", "")
