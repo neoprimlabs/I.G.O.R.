@@ -129,10 +129,13 @@ class Orchestrator:
 
         skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(task, response)
-        label = f"`[{destination}]`"
+        parts = []
+        if destination == "Monitor":
+            parts.append("`[Monitor]`")
         if skill_captured:
-            label += " `[Skill captured]`"
-        return f"{response}\n\n{label}", file_mode
+            parts.append("`[Skill captured]`")
+        suffix = "\n\n" + " ".join(parts) if parts else ""
+        return f"{response}{suffix}", file_mode
 
     def _classify(self, content: str) -> str:
         lower = content.lower()
