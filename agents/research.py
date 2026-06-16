@@ -6,15 +6,14 @@ import config
 logger = logging.getLogger(__name__)
 
 
-async def _run_search(query: str, max_results: int = 5) -> list[dict]:
+async def _run_search(query: str, max_results: int = 5, start_published_date: str | None = None) -> list[dict]:
     def _sync() -> list[dict]:
         from exa_py import Exa
         exa = Exa(api_key=config.EXA_API_KEY)
-        response = exa.search_and_contents(
-            query,
-            num_results=max_results,
-            text={"max_characters": 500},
-        )
+        kwargs: dict = {"num_results": max_results, "text": {"max_characters": 500}}
+        if start_published_date:
+            kwargs["start_published_date"] = start_published_date
+        response = exa.search_and_contents(query, **kwargs)
         return [
             {"title": r.title or "No title", "url": r.url, "body": r.text or ""}
             for r in response.results

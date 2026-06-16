@@ -328,8 +328,10 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
     if _client is None:
         return None
     try:
+        from datetime import datetime, timedelta
         from agents import research
-        results = await research._run_search("artificial intelligence news", max_results=5)
+        cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        results = await research._run_search("artificial intelligence news", max_results=5, start_published_date=cutoff)
         if not results:
             return None
 
@@ -378,8 +380,10 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
     if _client is None:
         return None
     try:
+        from datetime import datetime, timedelta
         from agents import research
-        results = await research._run_search("Unreal Engine news update", max_results=3)
+        cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        results = await research._run_search("Unreal Engine news update", max_results=3, start_published_date=cutoff)
         if not results:
             return None
 
