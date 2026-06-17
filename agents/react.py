@@ -120,7 +120,7 @@ _TOOLS = [
             "properties": {
                 "file": {
                     "type": "string",
-                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md"],
+                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md"],
                     "description": "The file to write",
                 },
                 "content": {"type": "string", "description": "Content to write"},

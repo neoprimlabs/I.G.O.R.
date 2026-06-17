@@ -17,6 +17,20 @@ _MONITOR_TRIGGERS = frozenset({
     "system health",
 })
 
+_RESEARCH_LOOP_TRIGGERS = frozenset({
+    "deep research",
+    "research loop",
+    "autoresearch",
+    "start research loop",
+})
+
+_STOP_RESEARCH_TRIGGERS = frozenset({
+    "stop research",
+    "stop the research",
+    "end research",
+    "halt research",
+})
+
 _CRITIC_PROMPT = """You are a skill evaluator for an AI assistant system.
 
 Given a task and a response, decide if the approach used is worth capturing as a reusable skill.
@@ -37,6 +51,14 @@ CAPTURE: [one concrete sentence - what to do, not just what happened]
 SKIP
 
 One line only. No explanation."""
+
+def _extract_research_question(content: str) -> str:
+    lower = content.lower()
+    for trigger in sorted(_RESEARCH_LOOP_TRIGGERS, key=len, reverse=True):
+        if lower.startswith(trigger):
+            return content[len(trigger):].lstrip(": ").strip()
+    return content.strip()
+
 
 _SKILL_FILES: dict[str, str] = {
     "React": "skills_react.md",
@@ -120,12 +142,17 @@ class Orchestrator:
         task = content[5:].strip() if file_mode else content
 
         destination = self._classify(task)
+        if destination == "StopResearch":
+            file_mode = True
 
         try:
             response = await self._route(destination, task, file_mode=file_mode)
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
+
+        if destination in ("ResearchLoop", "StopResearch"):
+            return response, file_mode
 
         skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(task, response)
@@ -141,6 +168,10 @@ class Orchestrator:
         lower = content.lower()
         if any(trigger in lower for trigger in _MONITOR_TRIGGERS):
             return "Monitor"
+        if any(trigger in lower for trigger in _STOP_RESEARCH_TRIGGERS):
+            return "StopResearch"
+        if any(trigger in lower for trigger in _RESEARCH_LOOP_TRIGGERS):
+            return "ResearchLoop"
         return "React"
 
     async def _critic_pass(self, destination: str, task: str, response: str) -> bool:
@@ -170,7 +201,14 @@ class Orchestrator:
         return _file_caller
 
     async def _route(self, destination: str, content: str, file_mode: bool = False) -> str:
-        from agents import monitor, react
+        from agents import monitor, react, research_loop
+
+        if destination == "ResearchLoop":
+            question = _extract_research_question(content)
+            return await research_loop.start(question)
+
+        if destination == "StopResearch":
+            return await research_loop.stop()
 
         if file_mode:
             content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
