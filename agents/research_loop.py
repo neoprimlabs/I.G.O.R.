@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 _loop_task: Optional[asyncio.Task] = None
 _stop_event: Optional[asyncio.Event] = None
 
+_MAX_LOOP_ITERATIONS = 100
+
 _DEFAULT_MODE = """You are running in deep research mode - the autoresearch pattern.
 
 Your job is to investigate the question exhaustively. NEVER STOP on your own.
@@ -34,7 +36,7 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
-async def start(question: str) -> str:
+async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None) -> str:
     global _loop_task, _stop_event
 
     if _loop_task and not _loop_task.done():
@@ -47,7 +49,7 @@ async def start(question: str) -> str:
     )
 
     _stop_event = asyncio.Event()
-    _loop_task = asyncio.create_task(_run(question, _stop_event))
+    _loop_task = asyncio.create_task(_run(question, _stop_event, notify))
     logger.info("Research loop started: %s", question[:80])
 
     return f"Research loop started on: {question}\n\nSend 'stop research' when you want the results."
@@ -77,7 +79,7 @@ def is_running() -> bool:
     return _loop_task is not None and not _loop_task.done()
 
 
-async def _run(question: str, stop_event: asyncio.Event) -> None:
+async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None) -> None:
     from agents import react
 
     async def _dummy_caller(system: str, messages: list, max_tokens: int = 1024) -> str:
@@ -86,10 +88,10 @@ async def _run(question: str, stop_event: asyncio.Event) -> None:
     mode_path = config.MEMORY_DIR / "research_mode.md"
     mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
 
-    iteration = 0
+    for iteration in range(1, _MAX_LOOP_ITERATIONS + 1):
+        if stop_event.is_set():
+            break
 
-    while not stop_event.is_set():
-        iteration += 1
         logger.info("Research loop iteration %d", iteration)
 
         research_path = config.MEMORY_DIR / "research.md"
@@ -112,6 +114,12 @@ Iteration {iteration}. Continue the research."""
             await react.handle(prompt, [], _dummy_caller, max_tokens=2048)
         except Exception as e:
             logger.error("Research loop iteration %d failed - %s: %s", iteration, type(e).__name__, e)
+
+        if iteration == _MAX_LOOP_ITERATIONS:
+            logger.info("Research loop hit max iterations (%d), auto-stopping", _MAX_LOOP_ITERATIONS)
+            if notify:
+                await notify(f"Research loop complete after {_MAX_LOOP_ITERATIONS} iterations. Send 'stop research' to retrieve the full report.")
+            break
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=20)

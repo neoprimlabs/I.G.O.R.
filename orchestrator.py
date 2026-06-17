@@ -205,7 +205,7 @@ class Orchestrator:
 
         if destination == "ResearchLoop":
             question = _extract_research_question(content)
-            return await research_loop.start(question)
+            return await research_loop.start(question, self._notify)
 
         if destination == "StopResearch":
             return await research_loop.stop()
