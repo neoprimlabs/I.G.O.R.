@@ -111,7 +111,7 @@ Current findings:
 Iteration {iteration}. Continue the research."""
 
         try:
-            await react.handle(prompt, [], _dummy_caller, max_tokens=2048)
+            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False)
         except Exception as e:
             logger.error("Research loop iteration %d failed - %s: %s", iteration, type(e).__name__, e)
 

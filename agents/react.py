@@ -389,6 +389,7 @@ async def handle(
     context: list[dict],
     call_claude: Callable[..., Awaitable[str]],
     max_tokens: int = 1024,
+    thinking: bool = True,
 ) -> str:
     client = _get_client()
 
@@ -400,20 +401,27 @@ async def handle(
     system_param = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
     messages = context + [{"role": "user", "content": message}]
 
-    # thinking budget must be less than max_tokens - leave room for response
-    effective_max = max(max_tokens, _THINKING_BUDGET + 2000)
-
     for i in range(_MAX_ITERATIONS):
         try:
-            response = await client.beta.messages.create(
-                model=config.MODEL,
-                system=system_param,
-                messages=messages,
-                tools=_TOOLS,
-                max_tokens=effective_max,
-                thinking={"type": "enabled", "budget_tokens": _THINKING_BUDGET},
-                betas=["interleaved-thinking-2025-05-14"],
-            )
+            if thinking:
+                effective_max = max(max_tokens, _THINKING_BUDGET + 2000)
+                response = await client.beta.messages.create(
+                    model=config.MODEL,
+                    system=system_param,
+                    messages=messages,
+                    tools=_TOOLS,
+                    max_tokens=effective_max,
+                    thinking={"type": "enabled", "budget_tokens": _THINKING_BUDGET},
+                    betas=["interleaved-thinking-2025-05-14"],
+                )
+            else:
+                response = await client.messages.create(
+                    model=config.MODEL,
+                    system=system_param,
+                    messages=messages,
+                    tools=_TOOLS,
+                    max_tokens=max_tokens,
+                )
         except Exception as e:
             logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
             raise
