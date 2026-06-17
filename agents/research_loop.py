@@ -36,6 +36,12 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _extract_recent_threads(content: str, n: int = 5) -> str:
+    lines = [l.strip() for l in content.splitlines() if l.strip().startswith("Next:")]
+    recent = lines[-n:] if lines else []
+    return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else "(no thread summaries yet)"
+
+
 async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None) -> str:
     global _loop_task, _stop_event
 
@@ -114,6 +120,15 @@ Iteration {iteration}. Continue the research."""
             await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False)
         except Exception as e:
             logger.error("Research loop iteration %d failed - %s: %s", iteration, type(e).__name__, e)
+
+        if iteration % 25 == 0 and notify:
+            current = (config.MEMORY_DIR / "research.md").read_text(encoding="utf-8") if (config.MEMORY_DIR / "research.md").exists() else ""
+            threads = _extract_recent_threads(current)
+            await notify(
+                f"Research checkpoint - {iteration} iterations complete.\n\n"
+                f"Recent threads:\n{threads}\n\n"
+                f"Still running. Send 'stop research' to get the full report."
+            )
 
         if iteration == _MAX_LOOP_ITERATIONS:
             logger.info("Research loop hit max iterations (%d), auto-stopping", _MAX_LOOP_ITERATIONS)
