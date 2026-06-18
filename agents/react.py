@@ -73,8 +73,21 @@ _TOOLS = [
         },
     },
     {
+        "name": "patch_file",
+        "description": "Make a targeted edit to a file by replacing an exact string. Safer than write_file for small changes - only modifies what you specify. old_string must appear exactly once in the file. Use this instead of write_file whenever possible.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File path relative to IGOR root"},
+                "old_string": {"type": "string", "description": "The exact string to replace - must appear exactly once in the file"},
+                "new_string": {"type": "string", "description": "The string to replace it with"},
+            },
+            "required": ["path", "old_string", "new_string"],
+        },
+    },
+    {
         "name": "write_file",
-        "description": "Write a file to IGOR's codebase on the server. Use to modify source code for self-improvement. Only .py and .md files allowed. Changes take effect after restart.",
+        "description": "Write a file to IGOR's codebase on the server. Use only for new files or complete rewrites - prefer patch_file for targeted edits. Only .py and .md files allowed. Changes take effect after restart.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -281,6 +294,30 @@ async def _read_server_file(path: str) -> str:
         return f"[read error: {type(e).__name__}: {e}]"
 
 
+async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
+    from pathlib import Path
+    resolved = _safe_path(path)
+    if resolved is None:
+        return "[access denied: path outside IGOR root]"
+    if Path(path).suffix not in {".py", ".md"}:
+        return "[access denied: only .py and .md files allowed]"
+    if not resolved.exists():
+        return f"[not found: {path}]"
+    try:
+        content = resolved.read_text(encoding="utf-8")
+        count = content.count(old_string)
+        if count == 0:
+            return "[patch failed: old_string not found in file]"
+        if count > 1:
+            return f"[patch failed: old_string appears {count} times - add more context to make it unique]"
+        new_content = content.replace(old_string, new_string, 1)
+        resolved.write_text(new_content, encoding="utf-8")
+        logger.info("ReAct patch_file: %s", path)
+        return f"Patched: {path}. Restart required for changes to take effect."
+    except Exception as e:
+        return f"[patch error: {type(e).__name__}: {e}]"
+
+
 async def _write_server_file(path: str, content: str) -> str:
     from pathlib import Path
     resolved = _safe_path(path)
@@ -362,6 +399,9 @@ async def _execute_tool(name: str, inputs: dict) -> str:
 
     if name == "read_file":
         return await _read_server_file(inputs.get("path", ""))
+
+    if name == "patch_file":
+        return await _patch_server_file(inputs.get("path", ""), inputs.get("old_string", ""), inputs.get("new_string", ""))
 
     if name == "write_file":
         return await _write_server_file(inputs.get("path", ""), inputs.get("content", ""))
