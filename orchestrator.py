@@ -126,7 +126,8 @@ class Orchestrator:
     def __init__(self, notify: Callable[[str], Awaitable[None]]) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._notify = notify
-        self._context: list[dict] = []
+        from context_store import load
+        self._context: list[dict] = load()
 
     async def process(self, user_id: int, content: str) -> tuple[str, bool] | None:
         """Entry point for every incoming message.
@@ -223,10 +224,15 @@ class Orchestrator:
         return self._context[-config.CONTEXT_WINDOW:]
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
+        from context_store import append
         self._context.append({"role": "user", "content": user_msg})
         self._context.append({"role": "assistant", "content": assistant_msg})
         if len(self._context) > config.CONTEXT_WINDOW:
             self._context = self._context[-config.CONTEXT_WINDOW:]
+        append("user", user_msg)
+        append("assistant", assistant_msg)
 
     def reset_context(self) -> None:
         self._context.clear()
+        from context_store import clear
+        clear()
