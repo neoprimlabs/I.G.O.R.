@@ -341,7 +341,7 @@ async def _execute_tool(name: str, inputs: dict) -> str:
     if name == "restart_self":
         reason = inputs.get("reason", "unspecified")
         _write_sentinel(reason)
-        return "Sentinel written. No watchdog yet - tell the user to restart manually from SSH: sudo systemctl restart igor"
+        return "Sentinel written. Watchdog will restart igor automatically within 5 seconds."
 
     if name == "read_file":
         return await _read_server_file(inputs.get("path", ""))

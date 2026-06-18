@@ -1,0 +1,15 @@
+[Unit]
+Description=I.G.O.R. Watchdog
+After=network.target
+Wants=igor.service
+
+[Service]
+User=igor
+ExecStart=/opt/igor/venv/bin/python /opt/igor/watchdog.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
