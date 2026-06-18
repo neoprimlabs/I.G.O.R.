@@ -9,9 +9,15 @@ import config
 logger = logging.getLogger(__name__)
 
 _client: Optional[anthropic.AsyncAnthropic] = None
+_notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 
 _MAX_ITERATIONS = 20
 _THINKING_BUDGET = 8000
+
+
+def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
+    global _notify_fn
+    _notify_fn = fn
 
 _TOOLS = [
     {
@@ -110,6 +116,17 @@ _TOOLS = [
                 "url": {"type": "string", "description": "The URL to fetch"},
             },
             "required": ["url"],
+        },
+    },
+    {
+        "name": "send_message",
+        "description": "Send a proactive Discord message to the user outside of the current response. Use to surface important findings, alerts, or updates the user should know about immediately.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "The message to send"},
+            },
+            "required": ["content"],
         },
     },
     {
@@ -372,6 +389,13 @@ async def _execute_tool(name: str, inputs: dict) -> str:
         if path.exists():
             return path.read_text(encoding="utf-8").strip() or "(empty)"
         return f"File {filename} not found."
+
+    if name == "send_message":
+        content = inputs.get("content", "")
+        if _notify_fn:
+            await _notify_fn(content)
+            return "Message sent."
+        return "No notify function available."
 
     if name == "memory_write":
         from agents import prod_memory

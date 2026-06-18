@@ -218,6 +218,7 @@ class Orchestrator:
 
         if destination == "Monitor":
             return await monitor.handle(content, self._window(), call)
+        react.set_notify(self._notify)
         return await react.handle(content, self._window(), call, max_tokens=max_tokens)
 
     def _window(self) -> list[dict]:
