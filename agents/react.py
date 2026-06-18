@@ -390,6 +390,7 @@ async def handle(
     call_claude: Callable[..., Awaitable[str]],
     max_tokens: int = 1024,
     thinking: bool = True,
+    max_iterations: int = _MAX_ITERATIONS,
 ) -> str:
     client = _get_client()
 
@@ -401,7 +402,7 @@ async def handle(
     system_param = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
     messages = context + [{"role": "user", "content": message}]
 
-    for i in range(_MAX_ITERATIONS):
+    for i in range(max_iterations):
         try:
             if thinking:
                 effective_max = max(max_tokens, _THINKING_BUDGET + 2000)

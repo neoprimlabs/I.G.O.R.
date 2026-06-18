@@ -11,24 +11,24 @@ _stop_event: Optional[asyncio.Event] = None
 
 _MAX_LOOP_ITERATIONS = 100
 
-_DEFAULT_MODE = """You are running in deep research mode - the autoresearch pattern.
+_DEFAULT_MODE = """You are running one iteration of a deep research loop.
 
-Your job is to investigate the question exhaustively. NEVER STOP on your own.
+Your tool budget this iteration is STRICT: 3 searches + 2 fetches + 1 write = 6 tool calls maximum.
 
-Each iteration:
-1. Review the current findings provided above - understand what has already been covered
-2. Identify the most promising unexplored angle or thread
-3. Use search, fetch_url, and python_run to pursue it aggressively
-4. Write your new findings to research.md using memory_write in append mode
-   - Be specific: cite sources, quote key passages, name exact projects/papers/people
-   - Structure each entry: what you found, why it matters, what it points toward
-5. End your response with one line: "Next: [what thread to pursue next iteration]"
+Follow this exact sequence - do not deviate:
+1. Run 2-3 searches on ONE specific unexplored angle (check current findings to avoid repeating)
+2. Fetch 1-2 of the most relevant URLs from those results
+3. Call memory_write to append your findings to research.md - THIS IS REQUIRED, do it before you run out of calls
+4. End with "Next: [thread to pursue next iteration]"
 
-Rules:
-- Never search for something already covered in the findings
-- Depth over breadth - one thread pursued thoroughly beats five skimmed
-- If a search returns nothing useful, immediately try a different angle
-- NEVER declare the research complete - there is always more to find"""
+Writing findings is not optional. If you use all your tool calls on searches and fetches without writing, the iteration produces nothing.
+
+When writing findings:
+- Be specific: cite sources, quote exact numbers, name companies and papers
+- Explain why it matters and what it points toward
+- Structure each finding clearly so the next iteration can build on it
+
+Do not repeat searches already covered in the current findings above."""
 
 
 def _timestamp() -> str:
@@ -102,6 +102,8 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
 
         research_path = config.MEMORY_DIR / "research.md"
         current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
+        if len(current) > 15000:
+            current = "[Earlier findings truncated]\n\n" + current[-15000:]
 
         prompt = f"""{mode}
 
@@ -114,10 +116,10 @@ Current findings:
 
 ---
 
-Iteration {iteration}. Continue the research."""
+Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
-            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False)
+            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8)
         except Exception as e:
             logger.error("Research loop iteration %d failed - %s: %s", iteration, type(e).__name__, e)
 
