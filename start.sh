@@ -10,11 +10,11 @@ if [ -f "$CRASH_MARKER" ]; then
     rm -f "$CRASH_MARKER"
 fi
 
-# Syntax check
-if ! python3 -m compileall -q . 2>/dev/null; then
+# Syntax check - exclude venv
+if ! python3 -m compileall -q -x venv . 2>/dev/null; then
     echo "Compile check failed - reverting to last good commit"
     git checkout -- .
-    if ! python3 -m compileall -q . 2>/dev/null; then
+    if ! python3 -m compileall -q -x venv . 2>/dev/null; then
         echo "Revert also failed - aborting startup"
         exit 1
     fi
