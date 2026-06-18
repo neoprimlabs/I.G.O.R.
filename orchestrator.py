@@ -171,7 +171,7 @@ class Orchestrator:
             return "Monitor"
         if any(trigger in lower for trigger in _STOP_RESEARCH_TRIGGERS):
             return "StopResearch"
-        if any(trigger in lower for trigger in _RESEARCH_LOOP_TRIGGERS):
+        if any(lower.startswith(trigger) for trigger in _RESEARCH_LOOP_TRIGGERS):
             return "ResearchLoop"
         return "React"
 
