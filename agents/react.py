@@ -50,6 +50,17 @@ _TOOLS = [
         },
     },
     {
+        "name": "search_memory",
+        "description": "Search across all memory files for a keyword or phrase. Returns matching lines with context and file names. Use this before memory_read to find which file contains what you need.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword or phrase to search for (case-insensitive)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "python_run",
         "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (anthropic, exa_py, requests, etc.).",
         "input_schema": {
@@ -294,6 +305,25 @@ async def _read_server_file(path: str) -> str:
         return f"[read error: {type(e).__name__}: {e}]"
 
 
+async def _search_memory_files(query: str) -> str:
+    results = []
+    query_lower = query.lower()
+    for path in sorted(config.MEMORY_DIR.glob("*.md")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for i, line in enumerate(lines):
+                if query_lower in line.lower():
+                    start = max(0, i - 1)
+                    end = min(len(lines), i + 3)
+                    context = "\n".join(lines[start:end])
+                    results.append(f"[{path.name}:{i + 1}]\n{context}")
+        except Exception:
+            continue
+    if not results:
+        return f"No matches for '{query}' in memory files."
+    return "\n\n".join(results[:20])
+
+
 async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
     from pathlib import Path
     resolved = _safe_path(path)
@@ -396,6 +426,9 @@ async def _execute_tool(name: str, inputs: dict) -> str:
         reason = inputs.get("reason", "unspecified")
         _write_sentinel(reason)
         return "Sentinel written. Watchdog will restart igor automatically within 5 seconds."
+
+    if name == "search_memory":
+        return await _search_memory_files(inputs.get("query", ""))
 
     if name == "read_file":
         return await _read_server_file(inputs.get("path", ""))
