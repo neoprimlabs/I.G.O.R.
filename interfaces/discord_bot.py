@@ -42,7 +42,7 @@ class IgorBot(discord.Client):
     async def on_ready(self) -> None:
         logger.info("I.G.O.R. online: %s (ID: %d)", self.user, self.user.id)
         # Fresh orchestrator on every connection - resets session context per spec
-        self._orchestrator = Orchestrator(notify=self.send_to_user)
+        self._orchestrator = Orchestrator(notify=self.send_to_user, notify_file=self.send_file_to_user)
         monitor.setup(send_fn=self.send_to_user)
 
     async def on_message(self, message: discord.Message) -> None:
@@ -91,26 +91,36 @@ class IgorBot(discord.Client):
         if chunk:
             await channel.send(chunk, suppress_embeds=True)
 
-    async def send_to_user(self, content: str) -> None:
-        """Send a message to the authorized user's DM channel.
-
-        Used by orchestrator rate-limit notifications and monitor scheduled reports.
-        Falls back to fetching a fresh DM channel if the cached one is stale.
-        """
+    async def _get_dm_channel(self) -> discord.DMChannel | None:
         if self._dm_channel is not None:
-            try:
-                await self._send_chunked(self._dm_channel, content)
-                return
-            except discord.HTTPException:
-                self._dm_channel = None
-
+            return self._dm_channel
         try:
             user = await self.fetch_user(config.AUTHORIZED_USER_ID)
-            dm = await user.create_dm()
-            await self._send_chunked(dm, content)
-            self._dm_channel = dm
+            self._dm_channel = await user.create_dm()
+            return self._dm_channel
         except Exception as e:
-            logger.error("Failed to send message to user - %s: %s", type(e).__name__, e)
+            logger.error("Failed to get DM channel - %s: %s", type(e).__name__, e)
+            return None
+
+    async def send_to_user(self, content: str) -> None:
+        channel = await self._get_dm_channel()
+        if channel is None:
+            return
+        try:
+            await self._send_chunked(channel, content)
+        except discord.HTTPException:
+            self._dm_channel = None
+            logger.error("Failed to send message to user")
+
+    async def send_file_to_user(self, content: str) -> None:
+        channel = await self._get_dm_channel()
+        if channel is None:
+            return
+        try:
+            filename = _filename_from_response(content)
+            await channel.send(file=discord.File(io.BytesIO(content.encode()), filename=filename))
+        except Exception as e:
+            logger.error("Failed to send file to user - %s: %s", type(e).__name__, e)
 
 
 async def run_bot() -> None:

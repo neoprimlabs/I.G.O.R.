@@ -129,9 +129,10 @@ async def call_claude(
 
 
 class Orchestrator:
-    def __init__(self, notify: Callable[[str], Awaitable[None]]) -> None:
+    def __init__(self, notify: Callable[[str], Awaitable[None]], notify_file: Callable[[str], Awaitable[None]] | None = None) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._notify = notify
+        self._notify_file = notify_file or notify
         from context_store import load
         self._context: list[dict] = load()
 
@@ -212,7 +213,7 @@ class Orchestrator:
 
         if destination == "ResearchLoop":
             question, iterations = _extract_research_question(content)
-            return await research_loop.start(question, self._notify, max_iterations=iterations)
+            return await research_loop.start(question, self._notify, notify_file=self._notify_file, max_iterations=iterations)
 
         if destination == "StopResearch":
             return await research_loop.stop()

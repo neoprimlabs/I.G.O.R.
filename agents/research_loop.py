@@ -44,7 +44,7 @@ def _extract_recent_threads(content: str, n: int = 5) -> str:
     return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else "(no thread summaries yet)"
 
 
-async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> str:
+async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> str:
     global _loop_task, _stop_event
 
     if _loop_task and not _loop_task.done():
@@ -57,7 +57,7 @@ async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]
     )
 
     _stop_event = asyncio.Event()
-    _loop_task = asyncio.create_task(_run(question, _stop_event, notify, max_iterations))
+    _loop_task = asyncio.create_task(_run(question, _stop_event, notify, notify_file, max_iterations))
     logger.info("Research loop started: %s (%d iterations)", question[:80], max_iterations)
 
     if max_iterations == _MAX_LOOP_ITERATIONS:
@@ -89,7 +89,7 @@ def is_running() -> bool:
     return _loop_task is not None and not _loop_task.done()
 
 
-async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> None:
+async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> None:
     from agents import react
 
     async def _dummy_caller(system: str, messages: list, max_tokens: int = 1024) -> str:
@@ -101,8 +101,13 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
         logger.info("Research loop stopping: %s", reason)
         stop_event.set()
         if notify:
-            contents = research_path.read_text(encoding="utf-8") if research_path.exists() else "(no findings recorded)"
-            await notify(f"Research stopped: {reason}\n\n---\n\n{contents}")
+            await notify(f"Research stopped: {reason}")
+        contents = research_path.read_text(encoding="utf-8") if research_path.exists() else None
+        if contents:
+            if notify_file:
+                await notify_file(contents)
+            elif notify:
+                await notify(contents)
 
     mode_path = config.MEMORY_DIR / "research_mode.md"
     mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
