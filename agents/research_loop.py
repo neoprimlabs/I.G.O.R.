@@ -147,6 +147,10 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
             await _stop_with_report(f"iteration {iteration} produced no findings - model did not write")
             break
 
+        if iteration == max_iterations:
+            await _stop_with_report(f"completed {max_iterations} iteration(s)")
+            break
+
         if notify:
             await notify(f"Iteration {iteration} complete. Send 'stop research' to get results, or wait for the next iteration to run.")
 
@@ -158,10 +162,6 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
                 f"Recent threads:\n{threads}\n\n"
                 f"Still running. Send 'stop research' to get the full report."
             )
-
-        if iteration == max_iterations:
-            await _stop_with_report(f"completed {max_iterations} iteration(s)")
-            break
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=20)
