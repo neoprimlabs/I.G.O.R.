@@ -1,4 +1,6 @@
-# I.G.O.R. - Claude Code Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 Self-hosted personal AI assistant. Discord bot running on Oracle Cloud Ubuntu 22.04 (ARM A1).
@@ -6,11 +8,35 @@ Stack: Python, discord.py, Anthropic API, APScheduler, exa-py, python-dotenv.
 
 ## Architecture
 - `orchestrator.py` - routing classifier + `call_claude()` + `Orchestrator` class
-- `agents/` - 6 specialist agents: dev, research, comms, prod_memory, monitor + direct (in orchestrator)
+- `agents/react.py` - primary agent: ReAct loop with tool use, extended thinking, skill capture
+- `agents/research_loop.py` - deep research loop (iterative react.handle() calls, writes to research.md)
+- `agents/monitor.py` - scheduled digest + watchlist monitoring via APScheduler
+- `agents/prod_memory.py` - memory file writes via `%%WRITE%%` blocks
+- `agents/research.py` - single-shot research agent
 - `interfaces/discord_bot.py` - Discord interface, DMs only
+- `context_store.py` - SQLite persistence for conversation context across restarts
+- `watchdog.py` - Layer 2 restart watchdog, polls for sentinel file every 5s
+- `start.sh` - startup wrapper: crash recovery + syntax check before launching main.py
 - `main.py` - startup, memory file templates, system config loading
 - `config.py` - env vars, loaded from `.env`
 - `memory/` - Markdown config and memory files, Syncthing-managed
+
+## Safety Stack (3 layers)
+- **Layer 1 (start.sh)**: Runs `python3 -m compileall -q -x venv .` before launch. On failure, reverts with `git checkout -- .` and retries. If IGOR exits non-zero, writes `.crash_detected` marker.
+- **Layer 2 (watchdog.py / igor-watchdog.service)**: Independent systemd service. IGOR writes `/opt/igor/restart_requested` with a reason string; watchdog picks it up within 5s and runs `sudo systemctl restart igor`. 300s cooldown between restarts.
+- **Layer 3 (start.sh crash recovery)**: On next startup, if `.crash_detected` exists, runs `git checkout -- .` to restore last known good code before launching.
+
+## React Tools
+Tools available in `react.py`'s `_TOOLS` list:
+- `search`, `fetch` - Exa web search and URL fetch
+- `shell` - Execute shell commands on the server
+- `read_file`, `write_file` - File I/O on server (`.py` and `.md` only, path-restricted to IGOR root)
+- `patch_file` - Targeted string replacement in a file (safer than write_file for small changes; fails if old_string not found or not unique)
+- `python_run` - Execute Python in-process
+- `memory_read`, `memory_write` - Read/write memory files
+- `search_memory` - Keyword search across all memory `.md` files
+- `send_message` - Send a proactive Discord DM to the user
+- `restart_self` - Write sentinel file for watchdog to pick up
 
 ## Deployment Workflow
 Local code lives at `c:\Dev\IGOR`. Server is the only test environment - there is no local run.
