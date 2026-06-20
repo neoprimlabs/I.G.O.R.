@@ -31,7 +31,7 @@ When writing findings:
 - Explain why it matters and what it points toward
 - Structure each finding clearly so the next iteration can build on it
 
-Do not repeat searches already covered in the current findings above."""
+Do not repeat any thread listed under "Recently pursued threads" above."""
 
 
 def _timestamp() -> str:
@@ -42,7 +42,24 @@ def _timestamp() -> str:
 def _extract_recent_threads(content: str, n: int = 5) -> str:
     lines = [l.strip() for l in content.splitlines() if l.strip().startswith("Next:")]
     recent = lines[-n:] if lines else []
-    return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else "(no thread summaries yet)"
+    return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else ""
+
+
+def _smart_truncate(content: str, max_chars: int = 15000) -> str:
+    if len(content) <= max_chars:
+        return content
+    lines = content.splitlines()
+    header = "\n".join(lines[:5])
+    next_lines = [l.strip() for l in lines if l.strip().startswith("Next:")]
+    thread_block = "\n".join(f"  {l}" for l in next_lines) if next_lines else "(none)"
+    budget = max_chars - len(header) - len(thread_block) - 150
+    recent = content[-budget:] if budget > 0 else ""
+    return (
+        f"{header}\n\n"
+        f"[Earlier findings truncated - all pursued threads below]\n"
+        f"Pursued threads:\n{thread_block}\n\n"
+        f"[Most recent findings:]\n{recent}"
+    )
 
 
 async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> str:
@@ -128,8 +145,10 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
         logger.info("Research loop iteration %d", iteration)
 
         current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
-        if len(current) > 15000:
-            current = "[Earlier findings truncated]\n\n" + current[-15000:]
+        current = _smart_truncate(current)
+
+        threads = _extract_recent_threads(current)
+        thread_section = f"\nRecently pursued threads (do not repeat these):\n{threads}\n" if threads else ""
 
         size_before = research_path.stat().st_size if research_path.exists() else 0
 
@@ -138,7 +157,7 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
 ---
 
 Question: {question}
-
+{thread_section}
 Current findings:
 {current}
 
@@ -166,9 +185,6 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
         if iteration == max_iterations:
             await _stop_with_report(f"completed {max_iterations} iteration(s)")
             break
-
-        if notify:
-            await notify(f"Iteration {iteration} complete. Send 'stop research' to get results, or wait for the next iteration to run.")
 
         if iteration % 25 == 0 and notify:
             current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
