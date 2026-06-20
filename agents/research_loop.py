@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 _loop_task: Optional[asyncio.Task] = None
 _stop_event: Optional[asyncio.Event] = None
+_report_sent: bool = False
 
 _MAX_LOOP_ITERATIONS = 100
 
@@ -45,7 +46,7 @@ def _extract_recent_threads(content: str, n: int = 5) -> str:
 
 
 async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> str:
-    global _loop_task, _stop_event
+    global _loop_task, _stop_event, _report_sent
 
     if _loop_task and not _loop_task.done():
         return "Research loop already running. Send 'stop research' to stop it and get results."
@@ -57,6 +58,7 @@ async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]
     )
 
     _stop_event = asyncio.Event()
+    _report_sent = False
     _loop_task = asyncio.create_task(_run(question, _stop_event, notify, notify_file, max_iterations))
     logger.info("Research loop started: %s (%d iterations)", question[:80], max_iterations)
 
@@ -79,6 +81,9 @@ async def stop() -> str:
 
     logger.info("Research loop stopped")
 
+    if _report_sent:
+        return "Research loop already completed - results were sent automatically."
+
     research_path = config.MEMORY_DIR / "research.md"
     if research_path.exists():
         return research_path.read_text(encoding="utf-8")
@@ -98,6 +103,10 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
     research_path = config.MEMORY_DIR / "research.md"
 
     async def _stop_with_report(reason: str) -> None:
+        global _report_sent
+        if _report_sent:
+            return
+        _report_sent = True
         logger.info("Research loop stopping: %s", reason)
         stop_event.set()
         if notify:

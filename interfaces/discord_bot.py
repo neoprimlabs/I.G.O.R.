@@ -103,24 +103,32 @@ class IgorBot(discord.Client):
             return None
 
     async def send_to_user(self, content: str) -> None:
-        channel = await self._get_dm_channel()
-        if channel is None:
-            return
-        try:
-            await self._send_chunked(channel, content)
-        except discord.HTTPException:
-            self._dm_channel = None
-            logger.error("Failed to send message to user")
+        for attempt in range(2):
+            channel = await self._get_dm_channel()
+            if channel is None:
+                return
+            try:
+                await self._send_chunked(channel, content)
+                return
+            except discord.HTTPException:
+                self._dm_channel = None
+        logger.error("Failed to send message to user after retry")
 
     async def send_file_to_user(self, content: str) -> None:
-        channel = await self._get_dm_channel()
-        if channel is None:
-            return
-        try:
-            filename = _filename_from_response(content)
-            await channel.send(file=discord.File(io.BytesIO(content.encode()), filename=filename))
-        except Exception as e:
-            logger.error("Failed to send file to user - %s: %s", type(e).__name__, e)
+        for attempt in range(2):
+            channel = await self._get_dm_channel()
+            if channel is None:
+                return
+            try:
+                filename = _filename_from_response(content)
+                await channel.send(file=discord.File(io.BytesIO(content.encode()), filename=filename))
+                return
+            except discord.HTTPException:
+                self._dm_channel = None
+            except Exception as e:
+                logger.error("Failed to send file to user - %s: %s", type(e).__name__, e)
+                return
+        logger.error("Failed to send file to user after retry")
 
 
 async def run_bot() -> None:
