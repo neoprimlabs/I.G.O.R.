@@ -144,6 +144,8 @@ Before building anything:
 
 Do not ship until edge cases are handled. Moving fast and patching later has cost the user money and lost work.
 
+If something is discussed and agreed on, it gets built - not noted and forgotten. "We caught it before shipping" is not an excuse.
+
 ## Code Conventions
 - No comments unless the WHY is non-obvious
 - No premature abstractions - three similar lines is fine
