@@ -60,6 +60,8 @@ async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]
     _loop_task = asyncio.create_task(_run(question, _stop_event, notify, max_iterations))
     logger.info("Research loop started: %s (%d iterations)", question[:80], max_iterations)
 
+    if max_iterations == _MAX_LOOP_ITERATIONS:
+        return f"Research loop started on: {question}\n\nSend 'stop research' when you want the results."
     return f"Research loop started on: {question}\n\nRunning {max_iterations} iteration(s). Results will be sent automatically when complete."
 
 
