@@ -135,6 +135,15 @@ system_param = [{"type": "text", "text": system, "cache_control": {"type": "ephe
 ```
 Do not bypass this when adding new Claude calls - follow the same pattern.
 
+## Implementation Discipline
+Before building anything:
+1. Read the relevant existing code - understand what's already there
+2. Write out the plan: what changes, what files, what order
+3. Identify failure modes: what can go wrong at runtime, on the server, with money, with data
+4. Only then write code
+
+Do not ship until edge cases are handled. Moving fast and patching later has cost the user money and lost work.
+
 ## Code Conventions
 - No comments unless the WHY is non-obvious
 - No premature abstractions - three similar lines is fine
