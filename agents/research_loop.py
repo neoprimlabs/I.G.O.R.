@@ -147,6 +147,9 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
             await _stop_with_report(f"iteration {iteration} produced no findings - model did not write")
             break
 
+        if notify:
+            await notify(f"Iteration {iteration} complete. Send 'stop research' to get results, or wait for the next iteration to run.")
+
         if iteration % 25 == 0 and notify:
             current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
             threads = _extract_recent_threads(current)
