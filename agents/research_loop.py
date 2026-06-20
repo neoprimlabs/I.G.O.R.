@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
+import anthropic
+
 import config
 
 logger = logging.getLogger(__name__)
@@ -91,6 +93,15 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
     async def _dummy_caller(system: str, messages: list, max_tokens: int = 1024) -> str:
         return ""
 
+    research_path = config.MEMORY_DIR / "research.md"
+
+    async def _stop_with_report(reason: str) -> None:
+        logger.info("Research loop stopping: %s", reason)
+        stop_event.set()
+        if notify:
+            contents = research_path.read_text(encoding="utf-8") if research_path.exists() else "(no findings recorded)"
+            await notify(f"Research stopped: {reason}\n\n---\n\n{contents}")
+
     mode_path = config.MEMORY_DIR / "research_mode.md"
     mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
 
@@ -100,10 +111,11 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
 
         logger.info("Research loop iteration %d", iteration)
 
-        research_path = config.MEMORY_DIR / "research.md"
         current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
         if len(current) > 15000:
             current = "[Earlier findings truncated]\n\n" + current[-15000:]
+
+        size_before = research_path.stat().st_size if research_path.exists() else 0
 
         prompt = f"""{mode}
 
@@ -120,11 +132,23 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
             await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8)
+        except anthropic.BadRequestError as e:
+            if "credit balance is too low" in str(e).lower():
+                await _stop_with_report("credit balance too low - add credits to resume")
+            else:
+                await _stop_with_report(f"API error on iteration {iteration}: {e}")
+            break
         except Exception as e:
-            logger.error("Research loop iteration %d failed - %s: %s", iteration, type(e).__name__, e)
+            await _stop_with_report(f"{type(e).__name__} on iteration {iteration}: {e}")
+            break
+
+        size_after = research_path.stat().st_size if research_path.exists() else 0
+        if size_after <= size_before:
+            await _stop_with_report(f"iteration {iteration} produced no findings - model did not write")
+            break
 
         if iteration % 25 == 0 and notify:
-            current = (config.MEMORY_DIR / "research.md").read_text(encoding="utf-8") if (config.MEMORY_DIR / "research.md").exists() else ""
+            current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
             threads = _extract_recent_threads(current)
             await notify(
                 f"Research checkpoint - {iteration} iterations complete.\n\n"
@@ -133,9 +157,7 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
             )
 
         if iteration == _MAX_LOOP_ITERATIONS:
-            logger.info("Research loop hit max iterations (%d), auto-stopping", _MAX_LOOP_ITERATIONS)
-            if notify:
-                await notify(f"Research loop complete after {_MAX_LOOP_ITERATIONS} iterations. Send 'stop research' to retrieve the full report.")
+            await _stop_with_report(f"reached max iterations ({_MAX_LOOP_ITERATIONS})")
             break
 
         try:
