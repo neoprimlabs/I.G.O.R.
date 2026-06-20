@@ -52,12 +52,18 @@ SKIP
 
 One line only. No explanation."""
 
-def _extract_research_question(content: str) -> str:
+def _extract_research_question(content: str) -> tuple[str, int]:
+    import re
     lower = content.lower()
     for trigger in sorted(_RESEARCH_LOOP_TRIGGERS, key=len, reverse=True):
         if lower.startswith(trigger):
-            return content[len(trigger):].lstrip(": ").strip()
-    return content.strip()
+            remainder = content[len(trigger):].lstrip(": ").strip()
+            match = re.match(r'^\[(\d+)\]\s*', remainder)
+            if match:
+                n = max(1, min(int(match.group(1)), 100))
+                return remainder[match.end():].strip(), n
+            return remainder, 100
+    return content.strip(), 100
 
 
 _SKILL_FILES: dict[str, str] = {
@@ -205,8 +211,8 @@ class Orchestrator:
         from agents import monitor, react, research_loop
 
         if destination == "ResearchLoop":
-            question = _extract_research_question(content)
-            return await research_loop.start(question, self._notify)
+            question, iterations = _extract_research_question(content)
+            return await research_loop.start(question, self._notify, max_iterations=iterations)
 
         if destination == "StopResearch":
             return await research_loop.stop()

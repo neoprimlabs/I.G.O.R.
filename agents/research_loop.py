@@ -44,7 +44,7 @@ def _extract_recent_threads(content: str, n: int = 5) -> str:
     return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else "(no thread summaries yet)"
 
 
-async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None) -> str:
+async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> str:
     global _loop_task, _stop_event
 
     if _loop_task and not _loop_task.done():
@@ -57,10 +57,10 @@ async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]
     )
 
     _stop_event = asyncio.Event()
-    _loop_task = asyncio.create_task(_run(question, _stop_event, notify))
-    logger.info("Research loop started: %s", question[:80])
+    _loop_task = asyncio.create_task(_run(question, _stop_event, notify, max_iterations))
+    logger.info("Research loop started: %s (%d iterations)", question[:80], max_iterations)
 
-    return f"Research loop started on: {question}\n\nSend 'stop research' when you want the results."
+    return f"Research loop started on: {question}\n\nRunning {max_iterations} iteration(s). Results will be sent automatically when complete."
 
 
 async def stop() -> str:
@@ -87,7 +87,7 @@ def is_running() -> bool:
     return _loop_task is not None and not _loop_task.done()
 
 
-async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None) -> None:
+async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> None:
     from agents import react
 
     async def _dummy_caller(system: str, messages: list, max_tokens: int = 1024) -> str:
@@ -105,7 +105,7 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
     mode_path = config.MEMORY_DIR / "research_mode.md"
     mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
 
-    for iteration in range(1, _MAX_LOOP_ITERATIONS + 1):
+    for iteration in range(1, max_iterations + 1):
         if stop_event.is_set():
             break
 
@@ -159,8 +159,8 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
                 f"Still running. Send 'stop research' to get the full report."
             )
 
-        if iteration == _MAX_LOOP_ITERATIONS:
-            await _stop_with_report(f"reached max iterations ({_MAX_LOOP_ITERATIONS})")
+        if iteration == max_iterations:
+            await _stop_with_report(f"completed {max_iterations} iteration(s)")
             break
 
         try:
