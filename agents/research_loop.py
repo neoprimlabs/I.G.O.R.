@@ -143,6 +143,7 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
     mode_path = config.MEMORY_DIR / "research_mode.md"
     mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
 
+    consecutive_empty = 0
     for iteration in range(1, max_iterations + 1):
         if stop_event.is_set():
             break
@@ -184,8 +185,13 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         size_after = research_path.stat().st_size if research_path.exists() else 0
         if size_after <= size_before:
-            await _stop_with_report(f"iteration {iteration} produced no findings - model did not write")
-            break
+            consecutive_empty += 1
+            if consecutive_empty >= 2:
+                await _stop_with_report(f"2 consecutive iterations produced no findings - stopping")
+                break
+            logger.warning("Research loop iteration %d produced no findings - allowing one retry", iteration)
+        else:
+            consecutive_empty = 0
 
         if iteration == max_iterations:
             await _stop_with_report(f"completed {max_iterations} iteration(s)")
