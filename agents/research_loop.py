@@ -31,6 +31,11 @@ When writing findings:
 - Explain why it matters and what it points toward
 - Structure each finding clearly so the next iteration can build on it
 
+Prohibited actions - do not call these under any circumstances:
+- send_message (the loop handles user notification when complete)
+- memory_write to any file other than research.md
+- restart_self
+
 Do not repeat any thread listed under "Recently pursued threads" above."""
 
 

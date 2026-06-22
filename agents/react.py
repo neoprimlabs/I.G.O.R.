@@ -424,6 +424,16 @@ async def _execute_tool(name: str, inputs: dict) -> str:
 
     if name == "restart_self":
         reason = inputs.get("reason", "unspecified")
+        if _notify_fn:
+            try:
+                git_log = await _run_shell(
+                    "git -C /opt/igor log -1 --pretty=format:'%h %s' --stat", timeout=5
+                )
+            except Exception:
+                git_log = "(could not retrieve git log)"
+            await _notify_fn(
+                f"IGOR is restarting itself.\n\nReason: {reason}\n\nLast commit:\n{git_log}"
+            )
         _write_sentinel(reason)
         return "Sentinel written. Watchdog will restart igor automatically within 5 seconds."
 
