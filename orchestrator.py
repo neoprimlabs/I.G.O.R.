@@ -221,7 +221,7 @@ class Orchestrator:
         if file_mode:
             content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
         call = self._make_caller(file_mode=file_mode)
-        max_tokens = 4096 if file_mode else 1024
+        max_tokens = 8192 if file_mode else 1024
 
         if destination == "Monitor":
             return await monitor.handle(content, self._window(), call)
