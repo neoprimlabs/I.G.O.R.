@@ -501,7 +501,10 @@ async def handle(
 ) -> str:
     client = _get_client()
 
-    system_text = _get_system_prompt()
+    from datetime import datetime, timezone
+    current_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
     skills = _read_skills()
     if skills:
         system_text += f"\n\nLearned skills:\n{skills}"
