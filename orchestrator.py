@@ -3,7 +3,7 @@ import functools
 import logging
 from typing import Awaitable, Callable
 
-import anthropic
+import openai
 
 import config
 
@@ -90,47 +90,43 @@ CallClaude = Callable[..., Awaitable[str]]
 
 
 async def call_claude(
-    client: anthropic.AsyncAnthropic,
+    client: openai.AsyncOpenAI,
     notify: Callable[[str], Awaitable[None]],
     system: str,
     messages: list[dict],
     max_tokens: int = 1024,
 ) -> str:
-    """Call Claude API with rate-limit retry, backoff, and error logging.
-
-    Rate limit behavior: notifies user via `notify`, waits, then retries up to
-    3 times before returning a user-facing error string (never raises on rate limit).
-    All other API errors are logged and re-raised for the orchestrator to handle.
-    """
-    system_param = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+    all_messages = [{"role": "system", "content": system}] + messages
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = await client.messages.create(
+            response = await client.chat.completions.create(
                 model=config.MODEL,
-                system=system_param,
-                messages=messages,
+                messages=all_messages,
                 max_tokens=max_tokens,
             )
-            return response.content[0].text
-        except anthropic.RateLimitError:
+            return response.choices[0].message.content or ""
+        except openai.RateLimitError:
             if attempt < max_retries - 1:
-                wait = 30 * (2 ** attempt)  # 30s, 60s
+                wait = 30 * (2 ** attempt)
                 logger.error("Rate limit hit (attempt %d/%d), retrying in %ds", attempt + 1, max_retries, wait)
                 await notify(f"Rate limit reached. Retrying in {wait} seconds...")
                 await asyncio.sleep(wait)
             else:
                 logger.error("Rate limit exhausted after %d attempts", max_retries)
                 return "Rate limit exhausted. Please try again in a few minutes."
-        except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
-            logger.error("Claude API error %s: %s", type(e).__name__, e)
+        except (openai.APIStatusError, openai.APIConnectionError) as e:
+            logger.error("Groq API error %s: %s", type(e).__name__, e)
             raise
-    return "Unexpected error reaching Claude API."
+    return "Unexpected error reaching Groq API."
 
 
 class Orchestrator:
     def __init__(self, notify: Callable[[str], Awaitable[None]], notify_file: Callable[[str], Awaitable[None]] | None = None) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+        self._client = openai.AsyncOpenAI(
+            api_key=config.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+        )
         self._notify = notify
         self._notify_file = notify_file or notify
         from context_store import load

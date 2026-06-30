@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
-import anthropic
+import openai
 
 import config
 
@@ -173,11 +173,8 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
             await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8)
-        except anthropic.BadRequestError as e:
-            if "credit balance is too low" in str(e).lower():
-                await _stop_with_report("credit balance too low - add credits to resume")
-            else:
-                await _stop_with_report(f"API error on iteration {iteration}: {e}")
+        except openai.RateLimitError as e:
+            await _stop_with_report(f"rate limit on iteration {iteration} - try again later")
             break
         except Exception as e:
             await _stop_with_report(f"{type(e).__name__} on iteration {iteration}: {e}")

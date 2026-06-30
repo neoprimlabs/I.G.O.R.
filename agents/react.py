@@ -2,13 +2,13 @@ import asyncio
 import logging
 from typing import Awaitable, Callable, Optional
 
-import anthropic
+import openai
 
 import config
 
 logger = logging.getLogger(__name__)
 
-_client: Optional[anthropic.AsyncAnthropic] = None
+_client: Optional[openai.AsyncOpenAI] = None
 _notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 
 _MAX_ITERATIONS = 20
@@ -219,11 +219,28 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
-def _get_client() -> anthropic.AsyncAnthropic:
+def _get_client() -> openai.AsyncOpenAI:
     global _client
     if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+        _client = openai.AsyncOpenAI(
+            api_key=config.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+        )
     return _client
+
+
+def _openai_tools() -> list:
+    result = []
+    for t in _TOOLS:
+        result.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        })
+    return result
 
 
 def _get_system_prompt() -> str:
@@ -509,56 +526,52 @@ async def handle(
     if skills:
         system_text += f"\n\nLearned skills:\n{skills}"
 
-    system_param = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
-    messages = context + [{"role": "user", "content": message}]
+    import json
+    messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]
+    tools = _openai_tools()
 
     for i in range(max_iterations):
         try:
-            if thinking:
-                effective_max = max(max_tokens, _THINKING_BUDGET + 2000)
-                response = await client.beta.messages.create(
-                    model=config.MODEL,
-                    system=system_param,
-                    messages=messages,
-                    tools=_TOOLS,
-                    max_tokens=effective_max,
-                    thinking={"type": "enabled", "budget_tokens": _THINKING_BUDGET},
-                    betas=["interleaved-thinking-2025-05-14"],
-                )
-            else:
-                response = await client.messages.create(
-                    model=config.MODEL,
-                    system=system_param,
-                    messages=messages,
-                    tools=_TOOLS,
-                    max_tokens=max_tokens,
-                )
+            response = await client.chat.completions.create(
+                model=config.MODEL,
+                messages=messages,
+                tools=tools,
+                max_tokens=max_tokens,
+            )
         except Exception as e:
             logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
             raise
 
-        if response.stop_reason == "end_turn":
-            for block in response.content:
-                if hasattr(block, "text"):
-                    return block.text
-            return ""
+        choice = response.choices[0]
 
-        if response.stop_reason == "tool_use":
-            tool_blocks = [b for b in response.content if b.type == "tool_use"]
-            for b in tool_blocks:
-                logger.info("ReAct tool: %s %s", b.name, str(b.input)[:100])
-            results = await asyncio.gather(*[_execute_tool(b.name, b.input) for b in tool_blocks])
-            tool_results = [
-                {"type": "tool_result", "tool_use_id": b.id, "content": r}
-                for b, r in zip(tool_blocks, results)
-            ]
+        if choice.finish_reason == "stop":
+            return choice.message.content or ""
+
+        if choice.finish_reason == "tool_calls":
+            tool_calls = choice.message.tool_calls
+            for tc in tool_calls:
+                logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
+            results = await asyncio.gather(*[
+                _execute_tool(tc.function.name, json.loads(tc.function.arguments))
+                for tc in tool_calls
+            ])
             messages = messages + [
-                {"role": "assistant", "content": response.content},
-                {"role": "user", "content": tool_results},
+                {
+                    "role": "assistant",
+                    "content": choice.message.content,
+                    "tool_calls": [
+                        {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in tool_calls
+                    ],
+                },
+                *[
+                    {"role": "tool", "tool_call_id": tc.id, "content": r}
+                    for tc, r in zip(tool_calls, results)
+                ],
             ]
             continue
 
-        logger.warning("ReAct unexpected stop_reason: %s", response.stop_reason)
+        logger.warning("ReAct unexpected finish_reason: %s", choice.finish_reason)
         break
 
     logger.warning("ReAct hit max iterations (%d)", _MAX_ITERATIONS)

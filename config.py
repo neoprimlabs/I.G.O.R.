@@ -7,10 +7,11 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).parent
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "llama-3.3-70b-versatile"
 
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 EXA_API_KEY: str = os.getenv("EXA_API_KEY", "")
 
 _uid = os.getenv("AUTHORIZED_DISCORD_USER_ID", "")
