@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Awaitable, Callable, Optional
 
-import anthropic
+import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import config
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 _scheduler: Optional[AsyncIOScheduler] = None
 _send_fn: Optional[Callable[[str], Awaitable[None]]] = None
-_client: Optional[anthropic.AsyncAnthropic] = None
+_client: Optional[openai.AsyncOpenAI] = None
 _setup_done: bool = False
 
 _last_notified_model: Optional[str] = None
@@ -141,14 +141,15 @@ async def _check_bridgemind_videos() -> None:
 
         try:
             transcript = await loop.run_in_executor(None, _get_transcript)
-            system_param = [{"type": "text", "text": _VIDEO_SUMMARY_PROMPT, "cache_control": {"type": "ephemeral"}}]
-            response = await _client.messages.create(
+            response = await _client.chat.completions.create(
                 model=config.MODEL,
-                system=system_param,
-                messages=[{"role": "user", "content": f"Video: {title}\n\nTranscript:\n{transcript}"}],
+                messages=[
+                    {"role": "system", "content": _VIDEO_SUMMARY_PROMPT},
+                    {"role": "user", "content": f"Video: {title}\n\nTranscript:\n{transcript}"},
+                ],
                 max_tokens=300,
             )
-            summary = response.content[0].text
+            summary = response.choices[0].message.content or ""
             await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}\n\n{summary}")
         except Exception as e:
             logger.error("BridgeMind transcript failed for %s - %s: %s", video_id, type(e).__name__, e)
@@ -165,7 +166,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _setup_done = True
 
     _send_fn = send_fn
-    _client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+    _client = openai.AsyncOpenAI(
+        api_key=config.GROQ_API_KEY,
+        base_url="https://api.groq.com/openai/v1",
+    )
     _scheduler = AsyncIOScheduler()
 
     digest_hour, digest_minute = _get_digest_schedule()
@@ -190,7 +194,7 @@ async def _check_model_update() -> None:
 
     current_version = _parse_sonnet_version(config.MODEL)
     if current_version is None:
-        logger.error("Model update check skipped - config.MODEL '%s' doesn't match expected sonnet pattern", config.MODEL)
+        logger.info("Model update check skipped - config.MODEL '%s' doesn't match expected sonnet pattern", config.MODEL)
         return
 
     try:
@@ -349,14 +353,15 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             return None
 
         formatted = research._format_results(unique_results)
-        system_param = [{"type": "text", "text": _AI_NEWS_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
-        response = await _client.messages.create(
+        response = await _client.chat.completions.create(
             model=config.MODEL,
-            system=system_param,
-            messages=[{"role": "user", "content": f"Search results:\n\n{formatted}"}],
+            messages=[
+                {"role": "system", "content": _AI_NEWS_SYNTHESIS_PROMPT},
+                {"role": "user", "content": f"Search results:\n\n{formatted}"},
+            ],
             max_tokens=512,
         )
-        return response.content[0].text
+        return response.choices[0].message.content or ""
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
         return None
@@ -388,14 +393,15 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
             return None
 
         formatted = research._format_results(results)
-        system_param = [{"type": "text", "text": _UNREAL_NEWS_SYNTHESIS_PROMPT, "cache_control": {"type": "ephemeral"}}]
-        response = await _client.messages.create(
+        response = await _client.chat.completions.create(
             model=config.MODEL,
-            system=system_param,
-            messages=[{"role": "user", "content": f"Search results:\n\n{formatted}"}],
+            messages=[
+                {"role": "system", "content": _UNREAL_NEWS_SYNTHESIS_PROMPT},
+                {"role": "user", "content": f"Search results:\n\n{formatted}"},
+            ],
             max_tokens=256,
         )
-        return response.content[0].text
+        return response.choices[0].message.content or ""
     except Exception as e:
         logger.error("Unreal news fetch failed - %s: %s", type(e).__name__, e)
         return None
