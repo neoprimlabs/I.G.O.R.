@@ -215,14 +215,28 @@ class Orchestrator:
             return await research_loop.stop()
 
         if file_mode:
-            content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints. No length limits.]"
+            content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints.]"
         call = self._make_caller(file_mode=file_mode)
-        max_tokens = 8192 if file_mode else 1024
+        max_tokens = 4096 if file_mode else 1024
 
         if destination == "Monitor":
             return await monitor.handle(content, self._window(), call)
         react.set_notify(self._notify)
-        return await react.handle(content, self._window(), call, max_tokens=max_tokens)
+        response = await react.handle(content, self._window(), call, max_tokens=max_tokens)
+
+        if file_mode:
+            from agents import evaluator
+            passed, feedback = await evaluator.evaluate(content, response, call)
+            if not passed:
+                retry_content = (
+                    f"{content}\n\n[Your previous attempt was rejected by an independent evaluator: "
+                    f"{feedback}. Produce a corrected, complete response.]"
+                )
+                response = await react.handle(retry_content, self._window(), call, max_tokens=max_tokens)
+                passed, feedback = await evaluator.evaluate(content, response, call)
+                if not passed:
+                    response = f"[Evaluator warning: {feedback}]\n\n{response}"
+        return response
 
     def _window(self) -> list[dict]:
         return self._context[-config.CONTEXT_WINDOW:]

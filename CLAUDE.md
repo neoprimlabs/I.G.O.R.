@@ -87,7 +87,7 @@ def _get_system_prompt() -> str:
 
 - File override takes effect immediately (no restart)
 - Reset to default: delete the file or overwrite with empty content
-- Prompt files: prompt_dev.md, prompt_research.md, prompt_comms.md, prompt_prodmem.md, prompt_monitor.md, prompt_direct.md
+- Prompt files: prompt_dev.md, prompt_research.md, prompt_comms.md, prompt_prodmem.md, prompt_monitor.md, prompt_direct.md, prompt_evaluator.md
 
 ## Style Rules (All Agents)
 Every `_DEFAULT_SYSTEM_PROMPT` must include:
