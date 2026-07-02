@@ -147,7 +147,7 @@ async def _check_bridgemind_videos() -> None:
                     {"role": "system", "content": _VIDEO_SUMMARY_PROMPT},
                     {"role": "user", "content": f"Video: {title}\n\nTranscript:\n{transcript}"},
                 ],
-                max_tokens=300,
+                max_tokens=1024,
             )
             summary = response.choices[0].message.content or ""
             await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}\n\n{summary}")
@@ -359,7 +359,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
                 {"role": "system", "content": _AI_NEWS_SYNTHESIS_PROMPT},
                 {"role": "user", "content": f"Search results:\n\n{formatted}"},
             ],
-            max_tokens=512,
+            max_tokens=1536,
         )
         return response.choices[0].message.content or ""
     except Exception as e:
@@ -399,7 +399,7 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
                 {"role": "system", "content": _UNREAL_NEWS_SYNTHESIS_PROMPT},
                 {"role": "user", "content": f"Search results:\n\n{formatted}"},
             ],
-            max_tokens=256,
+            max_tokens=1024,
         )
         return response.choices[0].message.content or ""
     except Exception as e:
