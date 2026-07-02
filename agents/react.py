@@ -228,6 +228,7 @@ def _get_client() -> openai.AsyncOpenAI:
         _client = openai.AsyncOpenAI(
             api_key=config.GROQ_API_KEY,
             base_url="https://api.groq.com/openai/v1",
+            max_retries=5,
         )
     return _client
 

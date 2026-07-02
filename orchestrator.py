@@ -126,6 +126,7 @@ class Orchestrator:
         self._client = openai.AsyncOpenAI(
             api_key=config.GROQ_API_KEY,
             base_url="https://api.groq.com/openai/v1",
+            max_retries=5,
         )
         self._notify = notify
         self._notify_file = notify_file or notify
@@ -151,6 +152,9 @@ class Orchestrator:
 
         try:
             response = await self._route(destination, task, file_mode=file_mode)
+        except openai.RateLimitError:
+            logger.error("Route to %s rate limited after all retries", destination)
+            return "Groq free tier rate limit hit. Wait a minute and try again - shorter requests recover faster.", False
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
@@ -219,7 +223,7 @@ class Orchestrator:
         if file_mode:
             content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. Return the complete document as your response text - do not write it to a server file, do not call write_file, do not mention restarts.]"
         call = self._make_caller(file_mode=file_mode)
-        max_tokens = 4096 if file_mode else 1024
+        max_tokens = 3072 if file_mode else 1024
 
         if destination == "Monitor":
             return await monitor.handle(content, self._window(), call)
