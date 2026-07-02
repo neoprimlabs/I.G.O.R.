@@ -10,9 +10,7 @@ import config
 logger = logging.getLogger(__name__)
 
 _MONITOR_TRIGGERS = frozenset({
-    "trigger digest", "run digest", "send digest",
-    "fire digest", "fire morning digest", "fire the digest",
-    "morning digest",
+    "digest",
     "monitor status", "monitoring status",
     "what are you monitoring", "what is being monitored",
     "watchlist", "scheduler", "scheduled jobs", "next run",

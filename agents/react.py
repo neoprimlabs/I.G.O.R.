@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 _client: Optional[openai.AsyncOpenAI] = None
 _notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 
-_MAX_ITERATIONS = 20
+_MAX_ITERATIONS = 8
 _THINKING_BUDGET = 8000
 _TOOL_RESULT_CAP = 4000
 
@@ -532,6 +532,7 @@ async def handle(
     tools = _openai_tools()
 
     tool_failures = 0
+    seen_calls: set = set()
     for i in range(max_iterations):
         try:
             response = await client.chat.completions.create(
@@ -561,6 +562,10 @@ async def handle(
             for tc in tool_calls:
                 logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
             async def _run_tool(tc):
+                call_key = (tc.function.name, tc.function.arguments)
+                if call_key in seen_calls:
+                    return "[you already made this exact call - use the earlier result and answer the user now]"
+                seen_calls.add(call_key)
                 try:
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError as e:
