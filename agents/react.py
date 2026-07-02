@@ -13,6 +13,7 @@ _notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 
 _MAX_ITERATIONS = 20
 _THINKING_BUDGET = 8000
+_TOOL_RESULT_CAP = 4000
 
 
 def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
@@ -564,7 +565,10 @@ async def handle(
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError as e:
                     return f"[tool argument parse error: {e} - retry the call with valid JSON]"
-                return await _execute_tool(tc.function.name, args)
+                result = await _execute_tool(tc.function.name, args)
+                if len(result) > _TOOL_RESULT_CAP:
+                    result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
+                return result
 
             results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])
             messages = messages + [

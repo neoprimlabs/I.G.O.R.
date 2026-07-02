@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 _MONITOR_TRIGGERS = frozenset({
     "trigger digest", "run digest", "send digest",
+    "fire digest", "fire morning digest", "fire the digest",
+    "morning digest",
     "monitor status", "monitoring status",
     "what are you monitoring", "what is being monitored",
     "watchlist", "scheduler", "scheduled jobs", "next run",
@@ -229,6 +231,10 @@ class Orchestrator:
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
         from context_store import append
+        if len(user_msg) > 1500:
+            user_msg = user_msg[:1500] + "\n[truncated in context]"
+        if len(assistant_msg) > 1500:
+            assistant_msg = assistant_msg[:1500] + "\n[truncated in context]"
         self._context.append({"role": "user", "content": user_msg})
         self._context.append({"role": "assistant", "content": assistant_msg})
         if len(self._context) > config.CONTEXT_WINDOW:
