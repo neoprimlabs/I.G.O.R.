@@ -530,6 +530,7 @@ async def handle(
     messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]
     tools = _openai_tools()
 
+    tool_failures = 0
     for i in range(max_iterations):
         try:
             response = await client.chat.completions.create(
@@ -538,6 +539,13 @@ async def handle(
                 tools=tools,
                 max_tokens=max_tokens,
             )
+        except openai.BadRequestError as e:
+            if "tool_use_failed" in str(e) and tool_failures < 3:
+                tool_failures += 1
+                logger.warning("ReAct tool_use_failed (retry %d/3): %s", tool_failures, str(e)[:200])
+                continue
+            logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
+            raise
         except Exception as e:
             logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
             raise
@@ -551,10 +559,14 @@ async def handle(
             tool_calls = choice.message.tool_calls
             for tc in tool_calls:
                 logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
-            results = await asyncio.gather(*[
-                _execute_tool(tc.function.name, json.loads(tc.function.arguments))
-                for tc in tool_calls
-            ])
+            async def _run_tool(tc):
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError as e:
+                    return f"[tool argument parse error: {e} - retry the call with valid JSON]"
+                return await _execute_tool(tc.function.name, args)
+
+            results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])
             messages = messages + [
                 {
                     "role": "assistant",
