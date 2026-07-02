@@ -160,6 +160,8 @@ class Orchestrator:
 
         skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(task, response)
+        if file_mode:
+            return response, file_mode
         parts = []
         if destination == "Monitor":
             parts.append("`[Monitor]`")
@@ -184,7 +186,7 @@ class Orchestrator:
         call = functools.partial(call_claude, self._client, self._notify)
         messages = [{"role": "user", "content": f"Task: {task}\n\nResponse:\n{response}"}]
         try:
-            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=120)
+            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=1024)
             verdict = verdict.strip()
             logger.info("Critic verdict for %s: %s", destination, verdict[:80])
             if verdict.upper().startswith("CAPTURE:"):

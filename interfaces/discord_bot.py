@@ -67,7 +67,7 @@ class IgorBot(discord.Client):
             try:
                 if as_file:
                     await message.channel.send(
-                        file=discord.File(io.BytesIO(response.encode()), filename=_filename_from_response(response))
+                        file=discord.File(io.BytesIO(response.encode("utf-8-sig")), filename=_filename_from_response(response))
                     )
                 else:
                     await self._send_chunked(message.channel, response)
@@ -127,7 +127,7 @@ class IgorBot(discord.Client):
                 return
             try:
                 filename = _filename_from_response(content)
-                await channel.send(file=discord.File(io.BytesIO(content.encode()), filename=filename))
+                await channel.send(file=discord.File(io.BytesIO(content.encode("utf-8-sig")), filename=filename))
                 return
             except discord.HTTPException:
                 self._dm_channel = None
