@@ -42,14 +42,17 @@ async def evaluate(task: str, response: str, call_claude: Callable[..., Awaitabl
     evaluator can degrade IGOR's output quality checks but never its availability.
     """
     if len(response) > 6000:
-        response_view = (
-            response[:4000]
-            + "\n\n[middle of response omitted from this view - judge completeness by whether the ending below concludes properly, not by this gap]\n\n"
-            + response[-2000:]
+        body = (
+            f"Task:\n{task[:1500]}\n\n"
+            f"The response is long, so this evaluation harness shows you its beginning and its ending. "
+            f"The omitted middle and these harness instructions are NOT part of the response - "
+            f"do not penalize the response for them.\n\n"
+            f"Response beginning:\n{response[:4000]}\n\n"
+            f"Response ending:\n{response[-2000:]}"
         )
     else:
-        response_view = response
-    messages = [{"role": "user", "content": f"Task:\n{task[:1500]}\n\nResponse:\n{response_view}"}]
+        body = f"Task:\n{task[:1500]}\n\nResponse:\n{response}"
+    messages = [{"role": "user", "content": body}]
     try:
         verdict = (await call_claude(_get_system_prompt(), messages, 1024)).strip()
     except Exception as e:
