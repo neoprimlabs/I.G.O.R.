@@ -43,6 +43,7 @@ _TOOLS = [
                     "enum": [
                         "tasks.md", "projects.md", "user.md", "agents.md",
                         "digest_config.md", "watchlist.md", "skills_react.md",
+                        "research.md",
                     ],
                     "description": "The file to read",
                 }
@@ -546,6 +547,10 @@ async def handle(
             if "tool_use_failed" in str(e) and tool_failures < 3:
                 tool_failures += 1
                 logger.warning("ReAct tool_use_failed (retry %d/3): %s", tool_failures, str(e)[:200])
+                messages = messages + [{
+                    "role": "user",
+                    "content": f"[system note: your last tool call was rejected before execution: {str(e)[:400]}. Adjust the call or answer without that tool.]",
+                }]
                 continue
             logger.error("ReAct iteration %d failed - %s: %s", i + 1, type(e).__name__, e)
             raise
