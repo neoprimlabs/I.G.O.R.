@@ -79,8 +79,14 @@ class IgorBot(discord.Client):
         if len(content) <= limit:
             await channel.send(content, suppress_embeds=True)
             return
-        chunk = ""
+        lines = []
         for line in content.split("\n"):
+            while len(line) > limit:
+                lines.append(line[:limit])
+                line = line[limit:]
+            lines.append(line)
+        chunk = ""
+        for line in lines:
             candidate = chunk + ("\n" if chunk else "") + line
             if len(candidate) > limit:
                 if chunk:

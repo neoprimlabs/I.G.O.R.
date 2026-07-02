@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 from typing import Awaitable, Callable, Optional
 
 import openai
@@ -14,8 +13,6 @@ _scheduler: Optional[AsyncIOScheduler] = None
 _send_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _client: Optional[openai.AsyncOpenAI] = None
 _setup_done: bool = False
-
-_last_notified_model: Optional[str] = None
 
 _BRIDGEMIND_CHANNEL_ID = "UCwaTGE53GLGC3fDClVl_7TA"
 _BRIDGEMIND_RSS = f"https://www.youtube.com/feeds/videos.xml?channel_id={_BRIDGEMIND_CHANNEL_ID}"
@@ -182,45 +179,22 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     logger.info("Monitor scheduler started")
 
 
-def _parse_sonnet_version(model_id: str) -> Optional[tuple[int, int]]:
-    m = re.match(r"^claude-sonnet-(\d+)-(\d+)$", model_id)
-    return (int(m.group(1)), int(m.group(2))) if m else None
-
-
 async def _check_model_update() -> None:
-    global _last_notified_model
     if _send_fn is None or _client is None:
         return
-
-    current_version = _parse_sonnet_version(config.MODEL)
-    if current_version is None:
-        logger.info("Model update check skipped - config.MODEL '%s' doesn't match expected sonnet pattern", config.MODEL)
-        return
-
     try:
         response = await _client.models.list()
-        sonnet_candidates: list[tuple[tuple[int, int], str]] = []
-        for model in response.data:
-            version = _parse_sonnet_version(model.id)
-            if version:
-                sonnet_candidates.append((version, model.id))
-
-        if not sonnet_candidates:
-            return
-
-        latest_version, latest_id = max(sonnet_candidates, key=lambda x: x[0])
-
-        if latest_version > current_version and latest_id != _last_notified_model:
-            _last_notified_model = latest_id
+        available = {m.id for m in response.data}
+        if config.MODEL not in available:
             await _send_fn(
-                f"**Model Update Available**\n"
-                f"Newer Sonnet available: `{latest_id}`\n"
-                f"Current: `{config.MODEL}`\n"
-                f"Update system_config.md via ProdMem and restart to apply."
+                f"**Model Alert**\n"
+                f"Configured model `{config.MODEL}` is no longer available on Groq - "
+                f"it may have been deprecated. Pick a replacement at "
+                f"https://console.groq.com/docs/models, update memory/system_config.md "
+                f"and config.py, then restart."
             )
-
     except Exception as e:
-        logger.error("Model update check failed - %s: %s", type(e).__name__, e)
+        logger.error("Model availability check failed - %s: %s", type(e).__name__, e)
 
 
 _AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.

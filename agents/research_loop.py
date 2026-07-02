@@ -74,6 +74,12 @@ async def start(question: str, notify: Optional[Callable[[str], Awaitable[None]]
         return "Research loop already running. Send 'stop research' to stop it and get results."
 
     research_path = config.MEMORY_DIR / "research.md"
+    if research_path.exists() and research_path.stat().st_size > 100:
+        from datetime import datetime, timezone
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        archive_path = config.MEMORY_DIR / f"research_{stamp}.md"
+        research_path.rename(archive_path)
+        logger.info("Archived previous research to %s", archive_path.name)
     research_path.write_text(
         f"# Research: {question}\n\nStarted: {_timestamp()}\n\n---\n\n",
         encoding="utf-8",
