@@ -11,6 +11,19 @@ from orchestrator import Orchestrator
 logger = logging.getLogger(__name__)
 
 
+_PUNCT_MAP = str.maketrans({
+    "—": "-", "–": "-",
+    "‘": "'", "’": "'",
+    "“": '"', "”": '"',
+    "…": "...",
+    " ": " ", " ": " ", " ": " ",
+})
+
+
+def _sanitize(content: str) -> str:
+    return content.translate(_PUNCT_MAP)
+
+
 def _filename_from_response(content: str) -> str:
     first_line = content.split("\n")[0].strip()
     if first_line.startswith("#"):
@@ -64,6 +77,7 @@ class IgorBot(discord.Client):
 
         if result is not None:
             response, as_file = result
+            response = _sanitize(response)
             try:
                 if as_file:
                     await message.channel.send(
@@ -109,6 +123,7 @@ class IgorBot(discord.Client):
             return None
 
     async def send_to_user(self, content: str) -> None:
+        content = _sanitize(content)
         for attempt in range(2):
             channel = await self._get_dm_channel()
             if channel is None:
@@ -121,6 +136,7 @@ class IgorBot(discord.Client):
         logger.error("Failed to send message to user after retry")
 
     async def send_file_to_user(self, content: str) -> None:
+        content = _sanitize(content)
         for attempt in range(2):
             channel = await self._get_dm_channel()
             if channel is None:

@@ -41,7 +41,15 @@ async def evaluate(task: str, response: str, call_claude: Callable[..., Awaitabl
     Fails open: any error in the evaluator itself counts as a pass, so the
     evaluator can degrade IGOR's output quality checks but never its availability.
     """
-    messages = [{"role": "user", "content": f"Task:\n{task[:1500]}\n\nResponse:\n{response[:6000]}"}]
+    if len(response) > 6000:
+        response_view = (
+            response[:4000]
+            + "\n\n[middle of response omitted from this view - judge completeness by whether the ending below concludes properly, not by this gap]\n\n"
+            + response[-2000:]
+        )
+    else:
+        response_view = response
+    messages = [{"role": "user", "content": f"Task:\n{task[:1500]}\n\nResponse:\n{response_view}"}]
     try:
         verdict = (await call_claude(_get_system_prompt(), messages, 1024)).strip()
     except Exception as e:
