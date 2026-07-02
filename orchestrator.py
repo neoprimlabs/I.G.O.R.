@@ -215,7 +215,7 @@ class Orchestrator:
             return await research_loop.stop()
 
         if file_mode:
-            content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. No bullet format constraints.]"
+            content = content + "\n\n[File output: Write a comprehensive detailed report with full prose, section headers, and thorough coverage. Return the complete document as your response text - do not write it to a server file, do not call write_file, do not mention restarts.]"
         call = self._make_caller(file_mode=file_mode)
         max_tokens = 4096 if file_mode else 1024
 
