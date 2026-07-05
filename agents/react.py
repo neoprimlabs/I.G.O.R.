@@ -535,6 +535,7 @@ async def handle(
     tools = _openai_tools()
 
     tool_failures = 0
+    length_retried = False
     seen_calls: set = set()
     for i in range(max_iterations):
         try:
@@ -563,6 +564,16 @@ async def handle(
 
         if choice.finish_reason == "stop":
             return choice.message.content or ""
+
+        if choice.finish_reason == "length":
+            if choice.message.content:
+                return choice.message.content
+            if not length_retried:
+                length_retried = True
+                max_tokens = min(max_tokens * 2, 4096)
+                logger.warning("ReAct reasoning consumed the whole token budget, retrying with %d", max_tokens)
+                continue
+            return "The model spent its whole token budget reasoning without producing output. Try rephrasing or asking a smaller question."
 
         if choice.finish_reason == "tool_calls":
             tool_calls = choice.message.tool_calls
