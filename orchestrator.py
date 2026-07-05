@@ -38,13 +38,14 @@ Given a task and a response, decide if the approach used is worth capturing as a
 Capture if the response shows:
 - A multi-step search sequence that worked well (e.g. checked memory first, then searched for X before Y)
 - A domain insight or constraint that filtered results usefully (e.g. applied hardware limits to narrow recommendations)
-- A synthesis pattern that organized a complex answer clearly
 - A user-specific adaptation that improved relevance
 
 Skip if:
 - The response is a single lookup or a factual answer from training data
 - The approach was obvious given the question
 - Nothing about the method would help future responses
+- The approach is just an output format or document structure (tables, section headings, bullet layouts, checklists) - formatting is not a skill
+- A similar skill already appears in the existing skills list below
 
 Respond with exactly one line:
 CAPTURE: [one concrete sentence - what to do, not just what happened]
@@ -188,7 +189,9 @@ class Orchestrator:
         if destination not in _SKILL_FILES:
             return False
         call = functools.partial(call_claude, self._client, self._notify)
-        messages = [{"role": "user", "content": f"Task: {task}\n\nResponse:\n{response}"}]
+        skills_path = config.MEMORY_DIR / _SKILL_FILES[destination]
+        existing = skills_path.read_text(encoding="utf-8").strip() if skills_path.exists() else "(none)"
+        messages = [{"role": "user", "content": f"Existing skills:\n{existing}\n\nTask: {task}\n\nResponse:\n{response}"}]
         try:
             verdict = await call(_CRITIC_PROMPT, messages, max_tokens=1024)
             verdict = verdict.strip()
