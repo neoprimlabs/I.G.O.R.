@@ -190,8 +190,8 @@ async def _check_model_update() -> None:
                 f"**Model Alert**\n"
                 f"Configured model `{config.MODEL}` is no longer available on Groq - "
                 f"it may have been deprecated. Pick a replacement at "
-                f"https://console.groq.com/docs/models, update memory/system_config.md "
-                f"and config.py, then restart."
+                f"https://console.groq.com/docs/models, update config.py "
+                f"(config.MODELS), then restart."
             )
     except Exception as e:
         logger.error("Model availability check failed - %s: %s", type(e).__name__, e)

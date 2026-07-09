@@ -110,14 +110,11 @@ canon:
 
 ## Phase R1 - Model plumbing
 
-- [ ] **R1.1 Kill the silent config override.** In main.py: delete the
-  `_load_system_config()` function and its call in `main()`. Delete the
-  `system_config.md` entry from `_MEMORY_TEMPLATES`. On the server:
-  `sudo -u igor rm /opt/igor/memory/system_config.md`. Also in agents/prod_memory.py
-  remove `"system_config.md"` from both frozensets. Reason: this override silently
-  reverted MODEL and CONTEXT_WINDOW twice, costing hours each time. config.py is
-  now the single source of truth. Verify: grep for `system_config` returns nothing
-  in *.py. Commit: `Remove system_config.md startup override; config.py is single source of truth`
+- [x] **R1.1 Kill the silent config override.** (this commit) Deleted
+  `_load_system_config()` and its call, the `system_config.md` template entry, and
+  the filename from both prod_memory frozensets. Also fixed a stale monitor.py
+  alert that told the user to edit system_config.md (now points at config.MODELS).
+  Deleted the file on the server. grep for `system_config` in *.py is now clean.
 
 - [ ] **R1.2 Per-agent model map.** In config.py replace the single `MODEL` with:
 
