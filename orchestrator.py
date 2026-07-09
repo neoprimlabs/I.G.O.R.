@@ -96,13 +96,14 @@ async def call_claude(
     system: str,
     messages: list[dict],
     max_tokens: int = 1024,
+    model: str | None = None,
 ) -> str:
     all_messages = [{"role": "system", "content": system}] + messages
     max_retries = 3
     for attempt in range(max_retries):
         try:
             response = await client.chat.completions.create(
-                model=config.MODEL,
+                model=model or config.MODELS["chat"],
                 messages=all_messages,
                 max_tokens=max_tokens,
             )
@@ -195,7 +196,7 @@ class Orchestrator:
         existing = skills_path.read_text(encoding="utf-8").strip() if skills_path.exists() else "(none)"
         messages = [{"role": "user", "content": f"Existing skills:\n{existing}\n\nTask: {task}\n\nResponse:\n{response}"}]
         try:
-            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=1024)
+            verdict = await call(_CRITIC_PROMPT, messages, max_tokens=1024, model=config.MODELS["summary"])
             verdict = verdict.strip()
             logger.info("Critic verdict for %s: %s", destination, verdict[:80])
             if verdict.upper().startswith("CAPTURE:"):
@@ -237,14 +238,14 @@ class Orchestrator:
 
         if file_mode:
             from agents import evaluator
-            passed, feedback = await evaluator.evaluate(content, response, call)
+            passed, feedback = await evaluator.evaluate(content, response)
             if not passed:
                 retry_content = (
                     f"{content}\n\n[Your previous attempt was rejected by an independent evaluator: "
                     f"{feedback}. Produce a corrected, complete response.]"
                 )
                 response = await react.handle(retry_content, self._window(), call, max_tokens=max_tokens)
-                passed, feedback = await evaluator.evaluate(content, response, call)
+                passed, feedback = await evaluator.evaluate(content, response)
                 if not passed:
                     response = f"[Evaluator warning: {feedback}]\n\n{response}"
         return response

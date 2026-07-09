@@ -524,8 +524,10 @@ async def handle(
     max_tokens: int = 1024,
     thinking: bool = True,
     max_iterations: int = _MAX_ITERATIONS,
+    model: str | None = None,
 ) -> str:
     client = _get_client()
+    use_model = model or config.MODELS["react"]
 
     from datetime import datetime, timezone
     current_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -545,7 +547,7 @@ async def handle(
     for i in range(max_iterations):
         try:
             response = await client.chat.completions.create(
-                model=config.MODEL,
+                model=use_model,
                 messages=messages,
                 tools=tools,
                 max_tokens=max_tokens,
@@ -625,7 +627,7 @@ async def handle(
     }]
     try:
         final = await client.chat.completions.create(
-            model=config.MODEL,
+            model=use_model,
             messages=messages,
             max_tokens=max_tokens,
         )

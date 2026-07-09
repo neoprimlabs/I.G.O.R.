@@ -152,6 +152,11 @@ MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
     config.MODELS is present in the /models list and alerts naming the missing one.
   Verify: py_compile all changed files; deploy; user sends one chat message and
   one `trigger digest`; journalctl shows no errors. Commit: `Per-agent model map: each role gets its own Groq model and TPM bucket`
+  DONE (this commit): config.MODELS map added; call_claude/react.handle take a
+  model param (default chat/react respectively); critic->summary; research->research;
+  monitor synthesis->summary; evaluator made self-contained on its own client +
+  evaluator model; _check_model_update now checks all MODELS values. Removed the
+  now-unused MODEL alias (nothing referenced it). Awaiting Discord smoke test.
 
 ## Phase R2 - Restore the harness
 

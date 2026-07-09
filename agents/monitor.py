@@ -139,7 +139,7 @@ async def _check_bridgemind_videos() -> None:
         try:
             transcript = await loop.run_in_executor(None, _get_transcript)
             response = await _client.chat.completions.create(
-                model=config.MODEL,
+                model=config.MODELS["summary"],
                 messages=[
                     {"role": "system", "content": _VIDEO_SUMMARY_PROMPT},
                     {"role": "user", "content": f"Video: {title}\n\nTranscript:\n{transcript}"},
@@ -185,13 +185,14 @@ async def _check_model_update() -> None:
     try:
         response = await _client.models.list()
         available = {m.id for m in response.data}
-        if config.MODEL not in available:
+        missing = sorted({m for m in config.MODELS.values() if m not in available})
+        if missing:
             await _send_fn(
                 f"**Model Alert**\n"
-                f"Configured model `{config.MODEL}` is no longer available on Groq - "
-                f"it may have been deprecated. Pick a replacement at "
-                f"https://console.groq.com/docs/models, update config.py "
-                f"(config.MODELS), then restart."
+                f"These configured models are no longer available on Groq: "
+                f"{', '.join(f'`{m}`' for m in missing)}. They may have been deprecated. "
+                f"Pick replacements at https://console.groq.com/docs/models, update "
+                f"config.MODELS in config.py, then restart."
             )
     except Exception as e:
         logger.error("Model availability check failed - %s: %s", type(e).__name__, e)
@@ -328,7 +329,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
 
         formatted = research._format_results(unique_results)
         response = await _client.chat.completions.create(
-            model=config.MODEL,
+            model=config.MODELS["summary"],
             messages=[
                 {"role": "system", "content": _AI_NEWS_SYNTHESIS_PROMPT},
                 {"role": "user", "content": f"Search results:\n\n{formatted}"},
@@ -368,7 +369,7 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
 
         formatted = research._format_results(results)
         response = await _client.chat.completions.create(
-            model=config.MODEL,
+            model=config.MODELS["summary"],
             messages=[
                 {"role": "system", "content": _UNREAL_NEWS_SYNTHESIS_PROMPT},
                 {"role": "user", "content": f"Search results:\n\n{formatted}"},

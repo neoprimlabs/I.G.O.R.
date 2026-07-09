@@ -178,7 +178,7 @@ Current findings:
 Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
-            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8)
+            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8, model=config.MODELS["research"])
         except openai.RateLimitError as e:
             await _stop_with_report(f"rate limit on iteration {iteration} - try again later")
             break

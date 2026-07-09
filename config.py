@@ -7,7 +7,16 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).parent
 
-MODEL = "openai/gpt-oss-120b"
+# TPM limits verified 2026-07-09; Groq buckets are per-model, so roles sharing a
+# model share its budget (noted below). Do not assume a role has a private bucket.
+MODELS = {
+    "router": "llama-3.1-8b-instant",        # 6000 TPM bucket, shared with summary
+    "chat": "llama-3.3-70b-versatile",       # 12000 TPM bucket, shared with evaluator
+    "react": "openai/gpt-oss-120b",          # 8000 TPM bucket, sole occupant
+    "research": "openai/gpt-oss-20b",        # 8000 TPM bucket, sole occupant
+    "evaluator": "llama-3.3-70b-versatile",  # shares chat's 12000 bucket
+    "summary": "llama-3.1-8b-instant",       # shares router's 6000 bucket
+}
 
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

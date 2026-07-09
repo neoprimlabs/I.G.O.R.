@@ -1,9 +1,24 @@
 import logging
-from typing import Awaitable, Callable
+from typing import Optional
+
+import openai
 
 import config
 
 logger = logging.getLogger(__name__)
+
+_client: Optional[openai.AsyncOpenAI] = None
+
+
+def _get_client() -> openai.AsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = openai.AsyncOpenAI(
+            api_key=config.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+            max_retries=5,
+        )
+    return _client
 
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Evaluator - an independent quality check on agent output before it is delivered to the user.
 
@@ -35,9 +50,10 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
-async def evaluate(task: str, response: str, call_claude: Callable[..., Awaitable[str]]) -> tuple[bool, str]:
+async def evaluate(task: str, response: str) -> tuple[bool, str]:
     """Judge response against task contract. Returns (passed, feedback).
 
+    Runs on its own client and the evaluator model (config.MODELS["evaluator"]).
     Fails open: any error in the evaluator itself counts as a pass, so the
     evaluator can degrade IGOR's output quality checks but never its availability.
     """
@@ -52,9 +68,17 @@ async def evaluate(task: str, response: str, call_claude: Callable[..., Awaitabl
         )
     else:
         body = f"Task:\n{task[:1500]}\n\nResponse:\n{response}"
-    messages = [{"role": "user", "content": body}]
+    messages = [
+        {"role": "system", "content": _get_system_prompt()},
+        {"role": "user", "content": body},
+    ]
     try:
-        verdict = (await call_claude(_get_system_prompt(), messages, 1024)).strip()
+        completion = await _get_client().chat.completions.create(
+            model=config.MODELS["evaluator"],
+            messages=messages,
+            max_tokens=1024,
+        )
+        verdict = (completion.choices[0].message.content or "").strip()
     except Exception as e:
         logger.error("Evaluator failed open - %s: %s", type(e).__name__, e)
         return True, ""
