@@ -22,4 +22,10 @@ LOG_FILE = BASE_DIR / "igor.log"
 
 # Number of individual messages (user + assistant counted separately) kept in
 # rolling session context and passed with every API call.
-CONTEXT_WINDOW = 10
+CONTEXT_WINDOW = 6
+
+# Critic pass fires a second API call after every React turn to evaluate skill
+# capture. On the Groq free 8k-TPM tier this doubles per-turn token pressure and
+# reliably trips the rate limit once context fills. Off by default; re-enable on
+# a higher tier or when the improvement loop (Phase 2.3) replaces it.
+ENABLE_CRITIC = False

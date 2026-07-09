@@ -163,7 +163,9 @@ class Orchestrator:
         if destination in ("ResearchLoop", "StopResearch"):
             return response, file_mode
 
-        skill_captured = await self._critic_pass(destination, task, response)
+        skill_captured = False
+        if config.ENABLE_CRITIC:
+            skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(task, response)
         if file_mode:
             return response, file_mode
