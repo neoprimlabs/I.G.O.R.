@@ -43,10 +43,19 @@ session, including smaller models. Follow it literally. Do not improvise beyond 
   critic, and evaluator. A month of failures (spin loops, 429 cascades, frozen
   turns, dashboard-toned chat, config requests dead-ending) all trace to that
   funnel plus the dumb router.
-- KEY PLATFORM FACT discovered 2026-07-09: Groq rate limits are PER MODEL per org.
-  Each model on the account is a separate 8k TPM bucket. Spreading agents across
-  models multiplies free throughput and restores the original harness design at
-  zero cost.
+- KEY PLATFORM FACT, VERIFIED empirically 2026-07-09 (drained one model's bucket,
+  confirmed another's was untouched): Groq rate limits are PER MODEL, independent
+  buckets. Spreading agents across models multiplies free throughput and restores
+  the original harness design at zero cost. Measured TPM limits (they VARY by model,
+  the old "8000 everywhere" belief was wrong):
+    llama-3.3-70b-versatile = 12000   (chat + evaluator share this bucket)
+    openai/gpt-oss-120b      = 8000    (task / ReAct)
+    openai/gpt-oss-20b       = 8000    (research)
+    llama-3.1-8b-instant     = 6000    (router + summary share this bucket)
+  Aggregate ~34000 TPM across four independent buckets vs one 8000 today.
+  CAVEAT: same model = same bucket. Two roles assigned the same model SHARE its
+  budget (that is why chat+evaluator and router+summary are deliberate pairings,
+  not five separate buckets).
 
 ## Target architecture (v2)
 
@@ -115,13 +124,15 @@ canon:
 - [ ] **R1.2 Per-agent model map.** In config.py replace the single `MODEL` with:
 
 ```python
+# TPM limits verified 2026-07-09; buckets are per-model, so roles sharing a
+# model share its budget (noted below). Do not assume a role has a private bucket.
 MODELS = {
-    "router": "llama-3.1-8b-instant",
-    "chat": "llama-3.3-70b-versatile",
-    "react": "openai/gpt-oss-120b",
-    "research": "openai/gpt-oss-20b",
-    "evaluator": "llama-3.3-70b-versatile",
-    "summary": "llama-3.1-8b-instant",
+    "router": "llama-3.1-8b-instant",     # 6000 TPM bucket, shared with summary
+    "chat": "llama-3.3-70b-versatile",    # 12000 TPM bucket, shared with evaluator
+    "react": "openai/gpt-oss-120b",       # 8000 TPM bucket, sole occupant
+    "research": "openai/gpt-oss-20b",     # 8000 TPM bucket, sole occupant
+    "evaluator": "llama-3.3-70b-versatile",  # shares chat's 12000 bucket
+    "summary": "llama-3.1-8b-instant",    # shares router's 6000 bucket
 }
 MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
 ```

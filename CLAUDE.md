@@ -15,9 +15,12 @@ Stack: Python, discord.py, **Groq API via the openai SDK** (free tier), APSchedu
 Formerly Anthropic-powered; migrated 2026-06-22 for cost. Any `anthropic` references you find are stale - flag them.
 
 ## Groq Platform Rules (hard-won; violating these cost days)
-- **Rate limits are per MODEL, per org: ~8000 tokens per MINUTE each.** Requests/day
-  is a non-issue. Think in tokens-per-minute. Different models = separate buckets,
-  which is why agents are assigned different models (see GAMEPLAN.md target architecture).
+- **Rate limits are PER MODEL, independent buckets, and the limit VARIES by model**
+  (verified 2026-07-09). Requests/day is a non-issue. Think in tokens-per-minute.
+  Measured: llama-3.3-70b-versatile=12000, gpt-oss-120b=8000, gpt-oss-20b=8000,
+  llama-3.1-8b-instant=6000. Different models = separate buckets (that is why agents
+  are assigned different models). Same model for two roles = SHARED bucket. The old
+  "8000 everywhere" assumption was wrong - do not rely on it.
 - **max_tokens counts against TPM at request time** (prompt + max_tokens = "requested").
   Never configure a call where prompt + max_tokens can exceed 8000. File mode: 3072.
   Chat: 2048. Small synthesis calls: >= 1024, never less (see next rule).
