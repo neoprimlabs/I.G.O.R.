@@ -613,5 +613,20 @@ async def handle(
         logger.warning("ReAct unexpected finish_reason: %s", choice.finish_reason)
         break
 
-    logger.warning("ReAct hit max iterations (%d)", _MAX_ITERATIONS)
-    return "Task incomplete - maximum iterations reached."
+    logger.warning("ReAct hit max iterations (%d) - forcing a final answer", max_iterations)
+    messages = messages + [{
+        "role": "user",
+        "content": "[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open.]",
+    }]
+    try:
+        final = await client.chat.completions.create(
+            model=config.MODEL,
+            messages=messages,
+            max_tokens=max_tokens,
+        )
+        content = final.choices[0].message.content
+        if content:
+            return content
+    except Exception as e:
+        logger.error("ReAct final-answer call failed - %s: %s", type(e).__name__, e)
+    return "I ran out of tool budget before I could finish that. Try asking something more specific."
