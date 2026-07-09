@@ -36,12 +36,12 @@ I.G.O.R. is a self-hosted, always-on personal AI assistant team built in Python.
 | Interface (v1) | Discord bot | Temporary — replace with Flutter UI |
 | Discord library | discord.py | Established, well documented, actively maintained |
 | Interface (v2) | Flutter mobile app | Custom UI, built after harness is stable |
-| Model | claude-sonnet-4-6 | All agents — fast, capable, cost efficient |
+| Model | Groq free tier, per-agent models (see CLAUDE.md) | Was claude-sonnet-4-6; migrated for cost 2026-06-22 |
 | Hosting | Oracle Cloud Free Tier | ARM A1 instance — 4 OCPUs, 24GB RAM |
 | Process manager | systemd | Keeps I.G.O.R. running 24/7, auto-restarts on crash |
 | Memory/Persistence | Markdown files (.md) | Stored on Oracle Cloud |
 | File Sync | Syncthing | Free forever, Oracle Cloud ↔ phone, encrypted transit |
-| Web Search | ddgs library | Free forever, no API key required |
+| Web Search | exa-py (Exa API) | Replaced ddgs |
 | Scheduling | APScheduler | Python scheduler for Monitor agent cron jobs |
 
 ---
@@ -340,3 +340,23 @@ Everything else is built on top of this working foundation.
 ---
 
 *Last updated: 2026-05-26*
+
+---
+
+## Addendum - 2026-07-09 (ratified deviations)
+
+The following deviations from this spec were adopted deliberately and are now
+canon:
+
+- Model layer: Anthropic replaced by Groq free tier (openai SDK, per-agent
+  models). Reason: cost. The spec's swappability principle made this possible.
+- Web search: ddgs replaced by exa-py.
+- Self-modification: IGOR may modify its own code under the 3-layer safety
+  stack (see CLAUDE.md). The Dev agent "does not write code" clause is void.
+- Session context persists across restarts (SQLite context_store.py).
+- An Evaluator agent (not in original spec) independently checks file-mode
+  outputs before delivery.
+- The five specialists are being restored per GAMEPLAN.md after a period of
+  collapse into a single ReAct agent. Dev and Comms remain absorbed into the
+  Task (ReAct) agent for now; Chat, ConfigEdit (Prod+Memory), Monitor, and
+  Research are distinct again.

@@ -83,10 +83,8 @@ once per response and only when natural.
 
 ## Phase R0 - Documentation truth
 
-- [ ] **R0.1 Spec addendum.** Append the section below verbatim to the end of
-  IGOR_SPEC.md (before nothing - it goes last), then update the spec's tech-stack
-  table rows: Model -> "Groq free tier, per-agent models (see CLAUDE.md)", Web
-  Search -> "exa-py (Exa API)". Commit: `spec: addendum ratifying post-May architecture changes`
+- [x] **R0.1 Spec addendum.** (commit pending this edit) Appended the addendum to
+  IGOR_SPEC.md and updated the Model and Web Search tech-stack rows.
 
 ```markdown
 ---
