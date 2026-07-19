@@ -301,6 +301,20 @@ Reply with the single word only.
     nearly fills the 8k bucket PER CALL - each iteration eats a 429 backoff.
     Chat through React is structurally at the ceiling. R2.1+R2.2 is the fix:
     chat moves to the idle 12k llama-70b bucket with no tool schemas.
+- 2026-07-19 ROOT CAUSE of the research 413s (three failed runs): react.handle
+  has NO in-turn message budget guard. Within one handle() call, every tool round
+  appends results (up to 4000 chars each) to the message history; by internal
+  iteration 7-8 the request itself exceeds the model's TPM limit and 413s. Prompt
+  trims (f0dd8cf, 4899ad5) only delayed the crossing by one round each. FIX (add
+  as step R2.0, do it FIRST next session): before each create() in react.handle,
+  estimate request tokens as len(all message content)/3.5 + max_tokens; if the
+  estimate exceeds 7000, replace the OLDEST tool-result contents (keep the newest
+  two) with "[trimmed for budget]" until it fits; if it still exceeds after
+  trimming, break to the forced-final-answer path. This makes long tool sessions
+  degrade gracefully instead of dying. Note: IGOR's last run successfully found
+  the target channel ID (UCWOf9GaQxUQWSmSln8ETvmA) before dying - the model was
+  capable, the harness ran out of headroom.
+
 - NEXT SESSION START HERE: R2.1 (Direct agent), then R2.2 (router), then R2.3
   (ConfigEdit), then R2.4. Follow the steps as written. After R2.2 deploys, ask
   the user to smoke test: "hello" (expect warm prose, fast), "what's our status"
