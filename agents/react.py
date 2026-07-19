@@ -526,6 +526,7 @@ async def handle(
     max_iterations: int = _MAX_ITERATIONS,
     model: str | None = None,
     allowed_tools: list[str] | None = None,
+    system_override: str | None = None,
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -533,10 +534,13 @@ async def handle(
     from datetime import datetime, timezone
     current_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
-    skills = _read_skills()
-    if skills:
-        system_text += f"\n\nLearned skills:\n{skills}"
+    if system_override is not None:
+        system_text = f"Current date and time: {current_dt}\n\n{system_override}"
+    else:
+        system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
+        skills = _read_skills()
+        if skills:
+            system_text += f"\n\nLearned skills:\n{skills}"
 
     import json
     messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]

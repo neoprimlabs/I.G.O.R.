@@ -14,6 +14,13 @@ _report_sent: bool = False
 
 _MAX_LOOP_ITERATIONS = 100
 
+_WORKER_SYSTEM_PROMPT = """You are a research worker executing one iteration of an autonomous research loop. Follow the instructions in the user message exactly. Use tools efficiently and keep any prose brief.
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points"""
+
 _DEFAULT_MODE = """You are running one iteration of a deep research loop.
 
 Your tool budget this iteration is STRICT: 3 searches + 2 fetches + 1 write = 6 tool calls maximum.
@@ -157,7 +164,7 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
         logger.info("Research loop iteration %d", iteration)
 
         current = research_path.read_text(encoding="utf-8") if research_path.exists() else ""
-        current = _smart_truncate(current)
+        current = _smart_truncate(current, max_chars=3000)
 
         threads = _extract_recent_threads(current)
         thread_section = f"\nRecently pursued threads (do not repeat these):\n{threads}\n" if threads else ""
@@ -182,6 +189,7 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
                 prompt, [], _dummy_caller, max_tokens=1280, thinking=False, max_iterations=8,
                 model=config.MODELS["research"],
                 allowed_tools=["search", "fetch_url", "python_run", "memory_read", "memory_write", "search_memory"],
+                system_override=_WORKER_SYSTEM_PROMPT,
             )
         except openai.RateLimitError as e:
             await _stop_with_report(f"rate limit on iteration {iteration} - try again later")
