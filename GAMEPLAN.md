@@ -116,7 +116,11 @@ canon:
   alert that told the user to edit system_config.md (now points at config.MODELS).
   Deleted the file on the server. grep for `system_config` in *.py is now clean.
 
-- [ ] **R1.2 Per-agent model map.** In config.py replace the single `MODEL` with:
+- [x] **R1.2 Per-agent model map.** DONE 2026-07-09 (commit fe7e224). All call
+  sites migrated; `config.MODEL` alias removed entirely (nothing referenced it);
+  evaluator took the self-contained-client fallback path described below; monitor's
+  weekly availability check now verifies every model in config.MODELS. Original
+  step text follows for reference. In config.py replace the single `MODEL` with:
 
 ```python
 # TPM limits verified 2026-07-09; buckets are per-model, so roles sharing a
@@ -278,3 +282,27 @@ Reply with the single word only.
 ## Progress Log
 
 - 2026-07-09: Gameplan written. R0-R3 pending.
+- 2026-07-09: R0.1 (f6d8ae1), R1.1 (b8ac6f1), R1.2 (fe7e224) completed and
+  deployed. TPM buckets verified per-model with measured limits (3b8c7ed).
+- 2026-07-19: Two out-of-plan firefights, both TPM-related:
+  - 2c6cc51: friendly Discord message for 413 request-too-large (was raw
+    APIStatusError).
+  - 4899ad5: research loop iterations were 413ing on arrival (8570 requested vs
+    8000). Fixed: react.handle gained `allowed_tools` param; research runs with 6
+    tools, max_tokens 1280, findings injection capped at 6000 chars. NOTE for
+    R2.1/R2.2: the `allowed_tools` mechanism now exists and Direct/router work
+    can rely on it if useful, but Direct should have NO tools at all.
+  - Context poisoning incident: rolling context carried a "ledger/financials"
+    fixation across restarts (React repeatedly read financials.md/ledger.md
+    unprompted). Cleared by moving context.db aside (backup at
+    memory/context.db.bak-jul19). Weak models re-anchor on stale context.
+  - MEASURED WARNING raising R2 urgency: a full-context React turn (6 stored
+    messages + 13 tool schemas + grown system prompt + 2048 reservation) now
+    nearly fills the 8k bucket PER CALL - each iteration eats a 429 backoff.
+    Chat through React is structurally at the ceiling. R2.1+R2.2 is the fix:
+    chat moves to the idle 12k llama-70b bucket with no tool schemas.
+- NEXT SESSION START HERE: R2.1 (Direct agent), then R2.2 (router), then R2.3
+  (ConfigEdit), then R2.4. Follow the steps as written. After R2.2 deploys, ask
+  the user to smoke test: "hello" (expect warm prose, fast), "what's our status"
+  (expect Monitor, no file spelunking), "drop tasks from the digest" (expect
+  ConfigEdit once R2.3 lands; React fallback before that).
