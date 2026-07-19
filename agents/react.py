@@ -525,6 +525,7 @@ async def handle(
     thinking: bool = True,
     max_iterations: int = _MAX_ITERATIONS,
     model: str | None = None,
+    allowed_tools: list[str] | None = None,
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -540,6 +541,8 @@ async def handle(
     import json
     messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]
     tools = _openai_tools()
+    if allowed_tools is not None:
+        tools = [t for t in tools if t["function"]["name"] in allowed_tools]
 
     tool_failures = 0
     length_retried = False

@@ -50,7 +50,7 @@ def _extract_recent_threads(content: str, n: int = 5) -> str:
     return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else ""
 
 
-def _smart_truncate(content: str, max_chars: int = 15000) -> str:
+def _smart_truncate(content: str, max_chars: int = 6000) -> str:
     if len(content) <= max_chars:
         return content
     lines = content.splitlines()
@@ -178,7 +178,11 @@ Current findings:
 Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
-            await react.handle(prompt, [], _dummy_caller, max_tokens=2048, thinking=False, max_iterations=8, model=config.MODELS["research"])
+            await react.handle(
+                prompt, [], _dummy_caller, max_tokens=1280, thinking=False, max_iterations=8,
+                model=config.MODELS["research"],
+                allowed_tools=["search", "fetch_url", "python_run", "memory_read", "memory_write", "search_memory"],
+            )
         except openai.RateLimitError as e:
             await _stop_with_report(f"rate limit on iteration {iteration} - try again later")
             break
