@@ -157,6 +157,12 @@ class Orchestrator:
         except openai.RateLimitError:
             logger.error("Route to %s rate limited after all retries", destination)
             return "Groq free tier rate limit hit. Wait a minute and try again - shorter requests recover faster.", False
+        except openai.APIStatusError as e:
+            if "rate_limit_exceeded" in str(e) or "Request too large" in str(e):
+                logger.error("Route to %s request too large for TPM budget: %s", destination, str(e)[:200])
+                return "That request plus conversation context exceeds the per-minute token budget. Wait a minute, then try a shorter message - or split the task into smaller steps.", False
+            logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
+            return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
         except Exception as e:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
