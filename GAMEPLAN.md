@@ -19,7 +19,7 @@ session, including smaller models. Follow it literally. Do not improvise beyond 
 1. Never commit without running `python -m py_compile <changed files>` first.
 2. Deploy sequence, always, in this order (Claude Code runs these directly via Bash):
    - `git push` from local
-   - `ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.213.46.96 "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"`
+   - `ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.80.181.77 "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"`
    - Expected output ends with `active`. If not, check `sudo journalctl -u igor -n 30 --no-pager`.
 3. Never edit files on the server except with `sudo -u igor`, and only memory/*.md
    files. Code changes go through git only.

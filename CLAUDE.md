@@ -74,7 +74,7 @@ Local repo: `c:\Dev\IGOR`. Server: `/opt/igor`, service `igor`, user `igor`.
 2. Commit and push (heredoc for multi-line messages).
 3. Deploy and verify in one shot:
 ```
-ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.213.46.96 "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"
+ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.80.181.77 "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"
 ```
 4. Expected: `active`. On anything else: `sudo journalctl -u igor -n 30 --no-pager`.
 5. Ask the user for a Discord smoke test after changes to routing, react.py, or the bot.
