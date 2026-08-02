@@ -349,6 +349,19 @@ none depend on each other. Good filler work.
   options: re-enable capture (blocked on R4.4), remove the injection, or freeze it
   deliberately with a comment saying so. Needs the user.
 
+  PARTIAL ACTION 2026-08-02, structural decision still open: reading the file
+  found a third entry instructing React to answer hardware questions with
+  categorised deployment options and cost-comparison tables. That is a formatting
+  template, not a skill. It predates commit 4b26c61, which taught the critic to
+  reject exactly this pattern, and it has been loading into EVERY prompt since -
+  a standing instruction to produce tables, which is a direct contributor to the
+  long-standing "IGOR answers chat like a dashboard" complaint (old checklist
+  2.9). It also contained U+2011 non-breaking hyphens, one source of the mojibake
+  the sanitizer exists to clean up. Removed on the server; backup at
+  `memory/skills_react.md.bak-20260802`. The two remaining entries are genuine
+  behavioural skills and were kept. This does not foreclose any of the three
+  options above.
+
 - [ ] **C.4 Delete server strays.** `start.sh.bak`, `research_synthesis.md`,
   `persistent_judgement_gap_summary.md`, `persistent_judgement_layer_gap_summary.md`,
   and `financials.md` (the file React fixated on during the July context-poisoning

@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-01**
+Last updated: **2026-08-02**
 
 ---
 
@@ -17,9 +17,10 @@ Last updated: **2026-08-01**
 
 ## Code
 
-- Local `master` and `origin/master`: **88098d5**
-- Server `/opt/igor`: **9bff009**, one commit behind. The next deploy pulls it
-  forward. The server tree was copied off the rescued disk, not cloned.
+- Local, `origin/master`, and server `/opt/igor` are all in sync. Server was
+  deployed and restarted 2026-08-02; both services verified active afterwards.
+- The server tree was copied off the rescued disk rather than cloned, but its
+  `.git` tracks the same remote and pulls normally.
 
 ## Next action
 
