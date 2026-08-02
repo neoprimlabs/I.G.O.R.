@@ -20,6 +20,11 @@ _MAX_LOOP_ITERATIONS = 100
 # both calls came back empty, exactly as documented.
 _MIN_REASONING_BUDGET = 1024
 
+# Distillation writes 3-5 findings with URLs and reasoning, so it needs more room
+# than the planner's one-line query. At 1024 roughly half of live calls came back
+# empty and paid for a retry at 2048 anyway - cheaper to ask for it up front.
+_DISTILL_BUDGET = 2048
+
 # Gathering and synthesis run in separate contexts on purpose. The previous design
 # handed one ReAct loop a batch of searches plus a write instruction, and ReAct
 # appends every tool result to a single growing history, so raw material and the
@@ -90,7 +95,9 @@ async def _call(system: str, user: str, max_tokens: int) -> str:
         if content:
             return content
         if attempt == 0:
-            budget = min(budget * 2, 2048)
+            # Cap must stay above _DISTILL_BUDGET or the retry repeats the first
+            # attempt at the same budget and buys nothing.
+            budget = min(budget * 2, 4096)
             logger.warning("Research call returned empty content, retrying at %d tokens", budget)
     return ""
 
@@ -248,7 +255,7 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
                     f"Question: {question}\n\nSearch query: {query}\n\n"
                     f"Results:\n{research._format_results(results)}"
                 )
-                findings = await _call(_DISTILL_SYSTEM, distill_user, max_tokens=_MIN_REASONING_BUDGET)
+                findings = await _call(_DISTILL_SYSTEM, distill_user, max_tokens=_DISTILL_BUDGET)
 
             # 4. APPEND - code, not a model call. Only writer of research.md.
             if findings:

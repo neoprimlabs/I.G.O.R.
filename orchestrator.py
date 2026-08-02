@@ -29,8 +29,10 @@ CHAT - greetings, small talk, opinions, what you think about something, question
 TASK - requests to do work: search, write, analyze, code, read files, produce documents, calculations
 MONITOR - questions asking about scheduler status, watchlist contents, digest contents, system health
 CONFIG - requests to CHANGE saved settings: add or remove a digest section, change a schedule time, edit the watchlist
-RESEARCH - requests to start deep or long-running research
-Reply with the single word only."""
+RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
+Reply with the single word only.
+
+A message that mentions research, or talks about the research feature, without asking to start one is CHAT."""
 
 _VERDICT_MAP = {
     "CHAT": "Direct",
