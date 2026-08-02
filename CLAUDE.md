@@ -1,18 +1,28 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
 
-## Start Here
-- `IGOR_SPEC.md` is the authoritative vision. Never deviate from it without flagging.
-- `GAMEPLAN.md` is the active work queue. If the user asks "what's next" or you are
-  continuing restoration work, execute the next unchecked step there - literally.
-- The server is the only runtime. There is no local run (discord.py is not even
-  installed locally - test pure logic with standalone python snippets instead).
+This file holds **how to behave**. It deliberately contains no architecture
+facts, because facts drift and this file should not have to change when the code
+does.
 
-## Project Overview
-Self-hosted personal AI assistant. Discord bot running on Oracle Cloud Ubuntu 22.04 (ARM A1).
-Stack: Python, discord.py, **Groq API via the openai SDK** (free tier), APScheduler, exa-py, python-dotenv.
-Formerly Anthropic-powered; migrated 2026-06-22 for cost. Any `anthropic` references you find are stale - flag them.
+## Start Here - read these first, in this order
+
+1. **`ARCHITECTURE.md`** - what the system actually is today. Verified against
+   source. If it disagrees with the code, the code wins and the file is wrong:
+   fix it in the same commit.
+2. **`STATE.md`** - where things stand right now. Host, service status, repo
+   positions, next action, known-broken list. **Rewrite it, never append.**
+3. **`GAMEPLAN.md`** - the active work queue. If the user asks "what's next" or
+   you are continuing restoration work, execute the next unchecked step there,
+   literally.
+4. **`IGOR_SPEC.md`** - the authoritative vision. Parts of it have never been
+   built. Never deviate from it without flagging.
+
+**Update `STATE.md` at the end of any session that changes the running system.**
+A state file that goes stale is worse than no state file.
+
+The runtime is the server. There is no local run.
 
 ## Groq Platform Rules (hard-won; violating these cost days)
 - **Rate limits are PER MODEL, independent buckets, and the limit VARIES by model**
@@ -22,8 +32,8 @@ Formerly Anthropic-powered; migrated 2026-06-22 for cost. Any `anthropic` refere
   are assigned different models). Same model for two roles = SHARED bucket. The old
   "8000 everywhere" assumption was wrong - do not rely on it.
 - **max_tokens counts against TPM at request time** (prompt + max_tokens = "requested").
-  Never configure a call where prompt + max_tokens can exceed 8000. File mode: 3072.
-  Chat: 2048. Small synthesis calls: >= 1024, never less (see next rule).
+  Never configure a call where prompt + max_tokens can exceed the model's limit.
+  File mode: 3072. Chat: 2048. Small synthesis calls: >= 1024, never less.
 - **gpt-oss and qwen models are reasoning models: max_tokens covers hidden reasoning
   plus output.** Caps under ~1024 silently produce EMPTY or clipped content with a
   200 OK. Treat "empty content, no error" as a reasoning-budget symptom first.
@@ -36,39 +46,9 @@ Formerly Anthropic-powered; migrated 2026-06-22 for cost. Any `anthropic` refere
 - 429 storms with 20-50s backoffs are the free tier working as designed, not a bug.
   The openai client is constructed with max_retries=5 everywhere - keep it.
 
-## Architecture
-- `orchestrator.py` - routing (fast paths + classifier; model router lands in GAMEPLAN R2.2),
-  `call_claude()` helper, `Orchestrator` class, critic (disabled: `config.ENABLE_CRITIC = False`)
-- `agents/react.py` - Task agent: ReAct tool loop on gpt-oss-120b. Guards: duplicate-call
-  dedupe, tool_use_failed retries, JSON-parse guard, 4000-char tool result cap,
-  max 8 iterations, forced tool-free final answer on exhaustion
-- `agents/direct.py` - Chat agent, no tools, warm prose (GAMEPLAN R2.1; may not exist yet)
-- `agents/evaluator.py` - independent PASS/FAIL contract check on file-mode outputs;
-  one retry with feedback; fails open
-- `agents/research_loop.py` - deep research loop; archives research.md with a timestamp
-  before each new run
-- `agents/monitor.py` - scheduled digest + watchlist via APScheduler; read-only by design
-- `agents/prod_memory.py` - memory-file write helper (`_write_to_memory` with allowlists);
-  becomes the ConfigEdit agent in GAMEPLAN R2.3
-- `agents/research.py` - Exa search helpers (`_run_search`, `_format_results`), not an agent
-- `interfaces/discord_bot.py` - Discord DMs only; outbound punctuation sanitizer
-  (`_PUNCT_MAP` - keep new typographic chars mapped to ASCII); chunker hard-splits
-  lines > 2000 chars
-- `context_store.py` - SQLite rolling context (window in config.py, currently 6)
-- `watchdog.py` + `start.sh` + crash markers - 3-layer safety stack (below)
-- `config.py` - env vars and settings. **Single source of truth for models and window.**
-- `memory/` - markdown config and memory files on the server, Syncthing-managed
-
-## Safety Stack (3 layers)
-- **Layer 1 (start.sh)**: `python3 -m compileall` before launch; on failure `git checkout -- .` and retry.
-- **Layer 2 (watchdog.py / igor-watchdog.service)**: independent systemd service; IGOR writes
-  `/opt/igor/restart_requested`, watchdog restarts the service within 5s; 300s cooldown.
-- **Layer 3 (start.sh crash recovery)**: `.crash_detected` marker on non-zero exit ->
-  next boot restores last known good code.
-- `restart_self` notifies the user on Discord with the reason and last commit before restarting.
-
 ## Deployment Workflow (Claude Code runs all of this directly via the Bash tool)
 Local repo: `c:\Dev\IGOR`. Server: `/opt/igor`, service `igor`, user `igor`.
+Current host IP is in `STATE.md`.
 
 1. Edit locally, then `python -m py_compile <changed files>` - never skip.
 2. Commit and push (heredoc for multi-line messages).
@@ -78,6 +58,8 @@ ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=y
 ```
 4. Expected: `active`. On anything else: `sudo journalctl -u igor -n 30 --no-pager`.
 5. Ask the user for a Discord smoke test after changes to routing, react.py, or the bot.
+6. After restarting `igor`, confirm `igor-watchdog` is also active. It was enabled
+   but never started after the 2026-08 migration, leaving safety Layer 2 down.
 
 Server memory files are edited with `sudo -u igor` (tee/sed), never as root, never via git.
 IGOR sometimes commits on the server itself; if pull reports divergence, prefer
@@ -97,25 +79,8 @@ which terminal (local PowerShell vs SSH); PowerShell has no `&&`.
 5. **Model behaves like config was ignored** -> confirm the running process is on the
    commit you think (`sudo -u igor git -C /opt/igor log -1 --oneline`) and was restarted
    after the change. Config/env is read at startup only (memory prompt files: per call).
-
-## Agent Prompt Pattern
-Every agent uses `_DEFAULT_SYSTEM_PROMPT` with a file-based override:
-
-```python
-def _get_system_prompt() -> str:
-    path = config.MEMORY_DIR / "prompt_<agent>.md"
-    if path.exists():
-        content = path.read_text(encoding="utf-8").strip()
-        if content:
-            return content
-    return _DEFAULT_SYSTEM_PROMPT
-```
-
-- File override takes effect immediately (no restart). Reset: delete or empty the file.
-- Prompt files in use: prompt_react.md, prompt_monitor.md, prompt_prodmem.md,
-  prompt_direct.md, prompt_evaluator.md
-- Prompt files are edited through Claude Code sessions only - never via Discord
-  (ProdMem's legacy `%%WRITE%%` regex truncates at the first `%%END%%`).
+6. **IGOR silent for a long stretch** -> check the host exists before debugging code.
+   The whole instance was terminated once. `scripts/backup_memory.ps1` alerts on this.
 
 ## Style Rules (All Agents)
 Every `_DEFAULT_SYSTEM_PROMPT` must include:
@@ -131,19 +96,6 @@ IGOR source. The Discord layer additionally sanitizes typographic punctuation to
 ASCII on the way out (`_PUNCT_MAP` in discord_bot.py) - extend the map when a new
 character class appears as mojibake in the user's viewer.
 
-## Config Files (memory/ on the server)
-Read at startup (restart required):
-- `schedule_config.md` - scheduled job times
-Read per call (immediate effect):
-- `digest_config.md` - digest sections (valid: tasks, projects, daily_forecast, ai_news, unreal_news)
-- `watchlist.md` - Monitor watchlist items
-- `prompt_*.md` - agent prompt overrides
-- `skills_react.md` - learned skills injected into React's prompt
-Removed: `system_config.md` once silently overrode MODEL and CONTEXT_WINDOW at startup
-and caused two multi-hour debugging sessions. GAMEPLAN R1.1 deletes the mechanism; if
-it still exists when you read this, treat it as a landmine: any model/window change
-must be mirrored there or it will silently revert.
-
 ## Implementation Discipline
 Before building anything:
 1. Read the relevant existing code - understand what's already there
@@ -156,6 +108,11 @@ Do not ship until edge cases are handled. Moving fast and patching later has cos
 the user money and lost work. If something is discussed and agreed on, it gets
 built - not noted and forgotten.
 
+**Test the failure path, not just the happy path.** Two bugs in the backup and
+alerting script were invisible on read and only appeared when the failure case was
+deliberately triggered - including one that killed the script before it could alert,
+on the exact scenario it existed for.
+
 ## Code Conventions
 - No comments unless the WHY is non-obvious
 - No premature abstractions - three similar lines is fine
@@ -167,4 +124,6 @@ built - not noted and forgotten.
 - Do not assume code has been deployed - verify the server commit
 - Do not assume a previous command succeeded - check output
 - Do not assume the model saw your prompt change - skills and prompt overrides win
+- Do not assume a documented fact is current - ARCHITECTURE.md and STATE.md are
+  maintained by hand and can lag the code
 - Ask before proceeding when state is uncertain

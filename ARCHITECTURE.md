@@ -17,6 +17,32 @@ agent, plus a scheduler and a research loop bolted alongside.
 
 ---
 
+## Stack and host
+
+Self-hosted personal AI assistant. A Discord bot, DMs only, single authorized
+user.
+
+- **Language:** Python 3.10
+- **Interface:** discord.py
+- **Models:** Groq free tier through the `openai` SDK, per-agent models
+- **Scheduling:** APScheduler
+- **Search:** exa-py
+- **Persistence:** markdown files plus SQLite, no database server
+- **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
+  1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
+
+The host was an ARM A1 with 4 OCPU / 24 GB until 2026-07, when Oracle cut the
+Always Free A1 allowance and terminated the instance for exceeding the new
+limit. Anything describing IGOR as ARM is out of date.
+
+Formerly Anthropic-powered; migrated 2026-06-22 for cost. `anthropic` is still
+installed and imported by nothing - it is the deliberate hook for GAMEPLAN R4.1.
+
+**The runtime is the server.** There is no local run; discord.py is not installed
+locally. Test pure logic with standalone Python snippets instead.
+
+---
+
 ## Message lifecycle
 
 A Discord DM travels this path every time:
@@ -93,6 +119,26 @@ On iteration exhaustion, one final tool-free call forces a real answer.
 
 This naming is a significant source of confusion when reading the tree.
 
+### File map
+
+| File | Role |
+|---|---|
+| `main.py` | entry point: logging, memory-file templates, starts the bot |
+| `orchestrator.py` | keyword classifier, `call_claude()` helper, `Orchestrator`, critic (disabled) |
+| `agents/react.py` | the ReAct tool loop. 12 tools, 8 iterations, dedupe and retry guards |
+| `agents/monitor.py` | scheduled digest and watchlist via APScheduler. Read-only by design |
+| `agents/research_loop.py` | deep research loop; timestamps and archives `research.md` before each run |
+| `agents/evaluator.py` | PASS/FAIL contract check on file-mode output. Fails open |
+| `agents/prod_memory.py` | memory-write helper with allowlists. Not an agent. Becomes ConfigEdit in R2.3 |
+| `agents/research.py` | Exa search helpers. Not an agent |
+| `interfaces/discord_bot.py` | DMs only, `_PUNCT_MAP` sanitizer, 2000-char chunker |
+| `context_store.py` | SQLite rolling context |
+| `config.py` | env and settings. **Single source of truth for models and context window** |
+| `watchdog.py`, `start.sh` | safety stack layers 2 and 1/3 |
+| `scripts/backup_memory.ps1` | daily off-host backup and health alerting. Runs on the Windows machine, not the server |
+
+`agents/direct.py` is referenced in GAMEPLAN R2.1 and **does not exist yet**.
+
 ---
 
 ## Models and rate limits
@@ -136,10 +182,26 @@ retained on disk), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 
 ### Agent prompt override pattern
 
-Every agent reads `prompt_<agent>.md` from `memory/` and falls back to its
-`_DEFAULT_SYSTEM_PROMPT`. File override takes effect immediately, no restart.
-Reset by deleting or emptying the file. Prompt files are edited through Claude
-Code sessions only.
+Every agent uses `_DEFAULT_SYSTEM_PROMPT` with a file-based override:
+
+```python
+def _get_system_prompt() -> str:
+    path = config.MEMORY_DIR / "prompt_<agent>.md"
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        if content:
+            return content
+    return _DEFAULT_SYSTEM_PROMPT
+```
+
+Overrides take effect immediately, no restart. Reset by deleting or emptying the
+file. Prompt files are edited through Claude Code sessions only, never through
+Discord: ProdMem's legacy `%%WRITE%%` regex truncates at the first `%%END%%`.
+
+**Status as of 2026-08-02: no `prompt_*.md` files exist on the server.** Every
+agent is running its built-in default. The mechanism is supported and unused, so
+if an agent behaves unexpectedly, the prompt in the source is the prompt in play.
+`skills_react.md` is the exception that still modifies React's prompt at runtime.
 
 ---
 
