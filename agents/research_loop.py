@@ -14,36 +14,85 @@ _report_sent: bool = False
 
 _MAX_LOOP_ITERATIONS = 100
 
-_WORKER_SYSTEM_PROMPT = """You are a research worker executing one iteration of an autonomous research loop. Follow the instructions in the user message exactly. Use tools efficiently and keep any prose brief.
+# The research model is a reasoning model: max_tokens covers hidden reasoning
+# plus output, so a tight cap returns empty content with a 200 OK rather than an
+# error. CLAUDE.md puts the floor at 1024. Specced this at 200 and 600 first and
+# both calls came back empty, exactly as documented.
+_MIN_REASONING_BUDGET = 1024
+
+# Gathering and synthesis run in separate contexts on purpose. The previous design
+# handed one ReAct loop a batch of searches plus a write instruction, and ReAct
+# appends every tool result to a single growing history, so raw material and the
+# synthesis competed for one 8000 TPM budget. Raw material won: two runs in a row
+# spent all 8 iterations searching, never reached the write, and recorded nothing.
+# Here no context ever holds more than one search's results.
+_PLAN_SYSTEM = """You plan one step of a research investigation.
+
+Given the question and the findings so far, produce ONE web search query aimed at a specific angle that has not been covered yet.
+
+Output the query alone, on one line. No quotes, no explanation, no preamble.
+
+Search runs on Exa: do not put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. Naming a source type ("research paper", "case study", "post mortem", "benchmark") gives sharper results than naming the topic alone."""
+
+_DISTILL_SYSTEM = """You turn raw search results into durable research findings.
+
+You are seeing the results of ONE search. They are discarded the moment you reply, so anything worth keeping has to appear in your answer.
+
+Write 3 to 5 findings, each on its own line starting with "- ". Each finding:
+- states a specific fact, number, name, or claim - not a summary of what a page is about
+- ends with its source URL in parentheses
+- says why it matters, where that is not obvious
+
+Ignore results that are marketing, contentless, or off-question. Three real findings beat five padded ones. If nothing in these results is worth keeping, say so in one line instead of inventing findings.
+
+Then a final line, exactly:
+Next: <the single most promising thread to pursue next>
 
 Style:
 - No emojis
 - No em dashes - use plain hyphens
 - No exclamation points"""
 
-_DEFAULT_MODE = """You are running one iteration of a deep research loop.
+_client: Optional[openai.AsyncOpenAI] = None
 
-Your tool budget this iteration is STRICT: 3 searches + 2 fetches + 1 write = 6 tool calls maximum.
 
-Follow this exact sequence - do not deviate:
-1. Run 2-3 searches on ONE specific unexplored angle (check current findings to avoid repeating)
-2. Fetch 1-2 of the most relevant URLs from those results
-3. Call memory_write to append your findings to research.md - THIS IS REQUIRED, do it before you run out of calls
-4. End with "Next: [thread to pursue next iteration]"
+def _get_client() -> openai.AsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = openai.AsyncOpenAI(
+            api_key=config.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1",
+            max_retries=5,
+        )
+    return _client
 
-Writing findings is not optional. If you use all your tool calls on searches and fetches without writing, the iteration produces nothing.
 
-When writing findings:
-- Be specific: cite sources, quote exact numbers, name companies and papers
-- Explain why it matters and what it points toward
-- Structure each finding clearly so the next iteration can build on it
+async def _call(system: str, user: str, max_tokens: int) -> str:
+    """One isolated model call. Nothing persists between calls.
 
-Prohibited actions - do not call these under any circumstances:
-- send_message (the loop handles user notification when complete)
-- memory_write to any file other than research.md
-- restart_self
-
-Do not repeat any thread listed under "Recently pursued threads" above."""
+    Retries once at double budget on empty content: the research model is a
+    reasoning model, so max_tokens covers hidden reasoning plus output and a tight
+    cap returns an empty 200 rather than an error. RateLimitError propagates to the
+    loop, which stops and reports.
+    """
+    client = _get_client()
+    budget = max_tokens
+    for attempt in range(2):
+        response = await client.chat.completions.create(
+            model=config.MODELS["research"],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            max_tokens=budget,
+        )
+        content = (response.choices[0].message.content or "").strip()
+        if content:
+            return content
+        if attempt == 0:
+            budget = min(budget * 2, 2048)
+            logger.warning("Research call returned empty content, retrying at %d tokens", budget)
+    return ""
 
 
 def _timestamp() -> str:
@@ -130,7 +179,7 @@ def is_running() -> bool:
 
 
 async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> None:
-    from agents import react
+    from agents import research
 
     research_path = config.MEMORY_DIR / "research.md"
 
@@ -150,9 +199,6 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
             elif notify:
                 await notify(contents)
 
-    mode_path = config.MEMORY_DIR / "research_mode.md"
-    mode = mode_path.read_text(encoding="utf-8").strip() if mode_path.exists() else _DEFAULT_MODE
-
     consecutive_empty = 0
     for iteration in range(1, max_iterations + 1):
         if stop_event.is_set():
@@ -164,31 +210,62 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
         current = _smart_truncate(current, max_chars=3000)
 
         threads = _extract_recent_threads(current)
-        thread_section = f"\nRecently pursued threads (do not repeat these):\n{threads}\n" if threads else ""
+        thread_section = f"\nAlready pursued, do not repeat:\n{threads}\n" if threads else ""
 
         size_before = research_path.stat().st_size if research_path.exists() else 0
 
-        prompt = f"""{mode}
-
----
-
-Question: {question}
-{thread_section}
-Current findings:
-{current}
-
----
-
-Iteration {iteration}. Run your searches, fetch, write findings, stop."""
-
         try:
-            await react.handle(
-                prompt, [], max_tokens=1280, max_iterations=8,
-                model=config.MODELS["research"],
-                allowed_tools=["search", "fetch_url", "python_run", "memory_read", "memory_write", "search_memory"],
-                system_override=_WORKER_SYSTEM_PROMPT,
+            # 1. PLAN - sees the question and prior findings, never raw results.
+            plan_user = (
+                f"Question: {question}\n{thread_section}\n"
+                f"Findings so far:\n{current}\n\n"
+                f"Give one search query for the next unexplored angle."
             )
-        except openai.RateLimitError as e:
+            query = await _call(_PLAN_SYSTEM, plan_user, max_tokens=_MIN_REASONING_BUDGET)
+            query = query.splitlines()[0].strip().strip('"').strip() if query else ""
+            if not query:
+                query = question
+                logger.warning("Iteration %d: planner returned nothing, searching the question itself", iteration)
+            logger.info("Iteration %d query: %s", iteration, query[:100])
+
+            if stop_event.is_set():
+                break
+
+            # 2. SEARCH - no model involved.
+            results = await research._run_search(query, max_results=5)
+            if not results:
+                logger.warning("Iteration %d: search returned no results", iteration)
+                results = []
+
+            if stop_event.is_set():
+                break
+
+            findings = ""
+            if results:
+                # 3. DISTILL - sees only this one search. Raw results end here and
+                # never reach another context.
+                distill_user = (
+                    f"Question: {question}\n\nSearch query: {query}\n\n"
+                    f"Results:\n{research._format_results(results)}"
+                )
+                findings = await _call(_DISTILL_SYSTEM, distill_user, max_tokens=_MIN_REASONING_BUDGET)
+
+            # 4. APPEND - code, not a model call. Only writer of research.md.
+            if findings:
+                block = (
+                    f"\n## Iteration {iteration} - {_timestamp()}\n"
+                    f"Query: {query}\n\n{findings}\n"
+                )
+                try:
+                    with research_path.open("a", encoding="utf-8") as f:
+                        f.write(block)
+                except Exception as e:
+                    logger.error("Iteration %d: could not append findings - %s: %s",
+                                 iteration, type(e).__name__, e)
+            else:
+                logger.warning("Iteration %d: distillation produced nothing", iteration)
+
+        except openai.RateLimitError:
             await _stop_with_report(f"rate limit on iteration {iteration} - try again later")
             break
         except Exception as e:

@@ -301,9 +301,21 @@ Reply with the single word only.
 
 ## Phase R3 - Quality loops
 
-- [ ] **R3.0 Isolate gathering from synthesis inside a research iteration.**
-  DO THIS BEFORE R3.1 - R3.1 changes how findings are delivered, and there are
-  currently no findings to deliver.
+- [x] **R3.0 Isolate gathering from synthesis inside a research iteration.**
+  DONE 2026-08-02. Built as specced. One correction found by testing, and it was a
+  violation of a rule this very file states: PLAN was specced at max_tokens=200 and
+  DISTILL at 600. The research model is a reasoning model, so max_tokens covers
+  hidden reasoning plus output, and both calls returned empty content with a 200 OK
+  - the exact symptom CLAUDE.md describes and hard rule 4 warns about ("Small
+  synthesis calls: >= 1024, never less"). Both now use `_MIN_REASONING_BUDGET`
+  = 1024. Verified live against Groq and Exa over two iterations: findings written
+  for both, distinct queries, bulleted claims with source URLs, and a Next: thread
+  carried forward. Measured budget is roughly 2200 tokens for PLAN and 1800 for
+  DISTILL against an 8000 bucket, versus 7500 and dying before. No R2.0 trims fired.
+  Minor known wart: distilled findings can carry non-ASCII punctuation from source
+  pages into research.md. The Discord sanitizer handles it on delivery, so this
+  only affects the file on disk.
+  Original step text follows.
 
   **Symptom (observed twice, 2026-08-02).** Two research runs produced an empty
   research.md. The worker ran 8 searches, never called memory_write, hit
