@@ -23,7 +23,7 @@ def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
 _TOOLS = [
     {
         "name": "search",
-        "description": "Search the web for current information, documentation, news, or facts. Use specific, targeted queries. Call multiple times with different queries to cover different angles.",
+        "description": "Search the web for current information, documentation, news, or facts. Use specific, targeted queries. Call multiple times with different queries to cover different angles. Search runs on Exa: do NOT put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. For news, naming the source type ('AI research paper', 'AI product launch') gives more precise hits than the topic alone.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -64,7 +64,7 @@ _TOOLS = [
     },
     {
         "name": "python_run",
-        "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (anthropic, exa_py, requests, etc.).",
+        "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (exa_py, httpx, requests) and the standard library.",
         "input_schema": {
             "type": "object",
             "properties": {

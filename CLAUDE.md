@@ -81,6 +81,11 @@ which terminal (local PowerShell vs SSH); PowerShell has no `&&`.
    after the change. Config/env is read at startup only (memory prompt files: per call).
 6. **IGOR silent for a long stretch** -> check the host exists before debugging code.
    The whole instance was terminated once. `scripts/backup_memory.ps1` alerts on this.
+7. **A scheduled job silently does nothing** -> APScheduler failures surface only in
+   ERROR lines in journalctl. The httpx request logs will not show a failed job, so
+   an absence of request logs is the symptom, not the evidence.
+8. **`NameError: asyncio`** in an agent or monitor module -> asyncio is not
+   transitively available from other imports. Import it explicitly at the top.
 
 ## Style Rules (All Agents)
 Every `_DEFAULT_SYSTEM_PROMPT` must include:
