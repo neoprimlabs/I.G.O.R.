@@ -206,8 +206,17 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
             await notify(f"Research stopped: {reason}")
         contents = research_path.read_text(encoding="utf-8") if research_path.exists() else None
         if contents:
+            # Raw and unfiltered, deliberately. The user's designed flow is funnel,
+            # then the user sees the findings, then filtering - not a model deciding
+            # on their behalf what was worth keeping. A 19KB unfiltered result was
+            # collapsed and then permanently lost that way once already.
             if notify_file:
                 await notify_file(contents)
+                if notify:
+                    await notify(
+                        'Raw findings attached, nothing filtered out. '
+                        'Say "synthesize research" if you want a condensed read.'
+                    )
             elif notify:
                 await notify(contents)
 

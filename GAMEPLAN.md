@@ -402,7 +402,17 @@ Reply with the single word only.
   "trimmed tool results" lines appear during the run. Commit:
   `Research iterations isolate gathering from synthesis instead of one ReAct context (R3.0)`
 
-- [ ] **R3.1 Research filtering (old 2.2).** In research_loop._stop_with_report:
+- [x] **R3.1 Research filtering (old 2.2).** DONE 2026-08-02. Half was already
+  true: _stop_with_report sends research.md as a raw file attachment with no
+  model-side synthesis, so nothing was collapsing findings. Added the follow-up
+  message offering a condensed read, and a SynthesizeResearch fast path
+  (synthesize/summarise research, both spellings) that routes to React with an
+  explicit instruction to read research.md, keep source URLs, and not search for
+  anything new - React would not open the file from "synthesize research" alone.
+  Placed before the research triggers so it cannot be mistaken for a request to
+  gather more. Verified: three phrasings route to synthesis while deep research,
+  stop research, chat about research, and plain greetings are unaffected.
+  Original step text follows. In research_loop._stop_with_report:
   send the raw research.md as the file attachment FIRST (existing behavior), but
   remove any model-side synthesis/collapse before sending - the file goes to the
   user unfiltered. Then send a short follow-up message: "Raw findings attached.
@@ -526,7 +536,12 @@ none depend on each other. Good filler work.
   behavioural skills and were kept. This does not foreclose any of the three
   options above.
 
-- [ ] **C.4 Delete server strays.** `start.sh.bak`, `research_synthesis.md`,
+- [x] **C.4 Delete server strays.** DONE 2026-08-02. Confirmed unreferenced by any
+  .py or .sh first, and confirmed all five are preserved in the 2026-07-31 rescue
+  backup at c:\Dev\IGOR_backup\igor\ before removing anything - the daily backup
+  only covers memory/ and .env, so root-level files are not in it. Removed
+  start.sh.bak, research_synthesis.md, both persistent_judgement summaries, and
+  financials.md. Original step text follows. `start.sh.bak`, `research_synthesis.md`,
   `persistent_judgement_gap_summary.md`, `persistent_judgement_layer_gap_summary.md`,
   and `financials.md` (the file React fixated on during the July context-poisoning
   incident) all sit in /opt/igor doing nothing. Remove with `sudo -u igor`, confirm

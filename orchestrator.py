@@ -51,6 +51,12 @@ _RESEARCH_LOOP_TRIGGERS = frozenset({
     "start research loop",
 })
 
+_SYNTH_TRIGGERS = frozenset({
+    "synthesize research", "synthesise research",
+    "summarize research", "summarise research",
+    "summarize the research", "summarise the research",
+})
+
 _STOP_RESEARCH_TRIGGERS = frozenset({
     "stop research",
     "stop the research",
@@ -221,6 +227,10 @@ class Orchestrator:
     async def _classify(self, content: str) -> str:
         lower = content.lower().strip()
 
+        # Before the research triggers: "synthesize research" is about findings
+        # that already exist, not a request to gather more.
+        if any(trigger in lower for trigger in _SYNTH_TRIGGERS):
+            return "SynthesizeResearch"
         if any(lower.startswith(trigger) for trigger in _RESEARCH_LOOP_TRIGGERS):
             return "ResearchLoop"
         if any(trigger in lower for trigger in _STOP_RESEARCH_TRIGGERS):
@@ -309,6 +319,18 @@ class Orchestrator:
         if destination == "ConfigEdit":
             from agents import prod_memory
             return await prod_memory.handle(content, call)
+
+        if destination == "SynthesizeResearch":
+            # React has research.md in its memory_read allowlist, but it will not
+            # know to open it from "synthesize research" alone. Say so explicitly.
+            content = (
+                "Read the memory file research.md and write a condensed synthesis of "
+                "what it contains: the strongest through-lines across iterations, "
+                "what is well supported by sources, what is thin or single-sourced, "
+                "and what is still open. Keep the source URLs for anything you cite. "
+                "Do not go and search for anything new.\n\n"
+                f"The user asked: {content}"
+            )
 
         react.set_notify(self._notify)
         response = await react.handle(content, self._window(), max_tokens=max_tokens)
