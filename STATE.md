@@ -24,23 +24,30 @@ Last updated: **2026-08-02**
 
 ## Next action
 
-**Phase R2 is complete.** R0, R1 and R2 are all done. The harness described in
-IGOR_SPEC is restored: a model router in front of a tool-free chat agent, the
-ReAct tool agent, Monitor, ConfigEdit and the research loop, each on its own
-model.
+**Only three items left in the whole queue.** R0, R1, R2, Phase C except C.5, and
+R3.0/R3.1/R3.4 are all done and deployed.
 
-Remaining, in rough priority order:
+- **R3.2** startup smoke test on routing fast paths and model config. Pure logic,
+  no API calls, testable locally. Smallest of the three.
+- **R3.3** injection screening. Respecced 2026-08-02 because the original guarded
+  the wrong boundary - it screened the user's own messages, but the user is the
+  only authorised sender. The exposure is content React fetches and feeds back
+  into its own conversation. Read the rewritten step before building.
+- **C.5** in-bot heartbeat for gateway liveness. Needs one free external account
+  from the user, so it cannot be done unattended.
 
-- **R3.1** research delivers raw findings before synthesis
-- **R3.2** startup smoke test on routing and model config
-- **R3.3** injection screening, rewritten to guard fetched content rather than
-  user messages
-- **Phase C** four small independent items. C.1 (React's unused `call_claude`)
-  and C.3 (what `skills_react.md` is for) are decisions, not just tasks.
+Nothing blocks anything else. Start with whichever suits the session.
 
-Measured effect of R2, same evening: "What's new IGOR?" went from four minutes and
-six escalating 429 backoffs, answered with a five-section status report, to an
-instant reply in prose. One 429 in the twenty minutes after the router landed.
+## What R2 and R3.0 actually changed, measured
+
+- "What's new IGOR?" went from four minutes and six escalating 429 backoffs,
+  answered with a five-section status report, to an instant reply in prose.
+- 429s dropped from a storm inside a single turn to one in twenty minutes.
+- Research went from recording nothing at all - two runs, zero findings - to three
+  iterations completing with 10 of 10 findings carrying source URLs and zero
+  fabricated "nobody is doing X" claims.
+- Chat now works *during* a research run. Confirmed live: `Router: CHAT -> Direct`
+  fired mid-run without disturbing it.
 
 ## Known broken
 
@@ -74,6 +81,14 @@ outside the repo. Test the alert path with `-TestAlert`.
 Caveat: it only runs when this machine is on. Task Scheduler catches up when the
 machine returns, so time away means late alerts rather than none.
 
+## Unverified on the server
+
+One thing was deployed but never smoke tested, because the session ended first:
+Direct's rule against reporting on IGOR was broadened after it invented a status
+report ("in the testing phase, promising results"). Ask "How is the deep research
+feature working out?" - it should say it cannot see that from a conversation and
+offer to check, not describe how the feature is performing.
+
 ## Recent
 
 - **2026-07-24ish:** Oracle cut the Always Free A1 allowance from 4 OCPU/24 GB
@@ -81,3 +96,18 @@ machine returns, so time away means late alerts rather than none.
 - **2026-07-31:** Data recovered. A1 capacity was exhausted in all three Ashburn
   ADs; recovery went through a region-scoped boot volume backup restored into
   AD-1, then an E2.1.Micro with the clone attached as a data disk. Nothing lost.
+- **2026-08-02:** Long session. Docs restructured into rules/facts/plan/state,
+  backups and alerting built, Phase R2 completed, R3.0 designed against published
+  practice rather than patched, and most of Phase C cleared.
+
+## Lesson worth keeping from 2026-08-02
+
+Every real bug that day was found by running the thing, not by reading it. The
+watchdog's `2>&1` failure, the router reading opinion questions as CONFIG, empty
+reasoning budgets, the "deep research" misroute, and Direct inventing a status
+report were all invisible on the page and obvious on first contact.
+
+Related: fixing the exact phrasing that failed, rather than the class of failure,
+produced the same bug twice in one evening. Direct's "nothing has changed" was
+patched, and it returned as "it is in the testing phase". Ask what class a bug
+belongs to before fixing the instance.
