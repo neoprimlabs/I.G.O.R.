@@ -31,23 +31,35 @@ R0.1, R1.1 and R1.2 are done. Everything from R2 onward is not started.
 
 ## Known broken
 
-1. **No external heartbeat.** The July outage went unnoticed for roughly two
-   days. IGOR exposes no HTTP port, so a pull-based uptime monitor cannot check
-   application health. Needs a push-based dead-man's-switch, ideally emitted
-   from inside the APScheduler loop so it proves the bot is alive rather than
-   just the box.
-2. Still on Oracle Always Free, so an entitlement change can terminate the
+1. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
+2. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
+   systemd reports active but the Discord connection has silently dropped, the
+   check reports healthy while the green dot is out. Closing that needs a
+   heartbeat emitted from inside the bot, gated on `is_ready()` and a finite
+   `bot.latency`. Not built.
 
-## Backups
+## Backups and monitoring
 
-`scripts/backup_memory.ps1` pulls `memory/` and `.env` to
-`C:\Dev\IGOR_backup\` as dated archives, keeping the last 30. Registered as the
-daily Windows Scheduled Task "IGOR memory backup" at 3am. Pull-based because the
-server has no git push credentials. Run on demand with
+`scripts/backup_memory.ps1` does both jobs in one daily pass, registered as the
+Windows Scheduled Task "IGOR memory backup" at 3am. Run on demand with
 `Start-ScheduledTask -TaskName 'IGOR memory backup'`.
 
-Caveat: it only runs when this machine is on. That is the remaining gap.
+- Pulls `memory/` and `.env` to `C:\Dev\IGOR_backup\` as dated archives, last 30
+  retained. Pull-based because the server has no git push credentials.
+- Checks that `igor` and `igor-watchdog` are active, and compares systemd's
+  restart count against the previous run to catch crash loops.
+- Alerts to a Discord webhook on: unreachable host, service not active, backup
+  failure, or restart count jumping by 3 or more. A webhook is used rather than
+  IGOR itself because the alert has to work when IGOR cannot.
+- Sends one all-clear on Sundays, so prolonged silence means the task stopped
+  running rather than everything being fine.
+
+Webhook URL lives at `C:\Users\Nucbox\Documents\IGOR_Keys\discord_webhook.txt`,
+outside the repo. Test the alert path with `-TestAlert`.
+
+Caveat: it only runs when this machine is on. Task Scheduler catches up when the
+machine returns, so time away means late alerts rather than none.
 
 ## Recent
 
