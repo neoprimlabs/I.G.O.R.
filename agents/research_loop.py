@@ -132,9 +132,6 @@ def is_running() -> bool:
 async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callable[[str], Awaitable[None]]] = None, notify_file: Optional[Callable[[str], Awaitable[None]]] = None, max_iterations: int = _MAX_LOOP_ITERATIONS) -> None:
     from agents import react
 
-    async def _dummy_caller(system: str, messages: list, max_tokens: int = 1024) -> str:
-        return ""
-
     research_path = config.MEMORY_DIR / "research.md"
 
     async def _stop_with_report(reason: str) -> None:
@@ -186,7 +183,7 @@ Iteration {iteration}. Run your searches, fetch, write findings, stop."""
 
         try:
             await react.handle(
-                prompt, [], _dummy_caller, max_tokens=1280, thinking=False, max_iterations=8,
+                prompt, [], max_tokens=1280, max_iterations=8,
                 model=config.MODELS["research"],
                 allowed_tools=["search", "fetch_url", "python_run", "memory_read", "memory_write", "search_memory"],
                 system_override=_WORKER_SYSTEM_PROMPT,

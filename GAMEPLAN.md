@@ -364,7 +364,22 @@ Reply with the single word only.
 Found 2026-08-02 while writing ARCHITECTURE.md. None of these block R2 or R3, and
 none depend on each other. Good filler work.
 
-- [ ] **C.1 Resolve react.handle's dead parameters.** `handle()` accepts
+- [x] **C.1 Resolve react.handle's dead parameters.** DONE 2026-08-02. Decided:
+  removed rather than wired in. Git shows the `call_claude` parameter arrived in
+  7adc065 on 2026-06-14, the same commit that created react.py, and was never used
+  in any revision. It exists because every pre-ReAct agent had the shape
+  `handle(message, context, call_claude)`; React was written to match, then
+  immediately needed `tools=`, `finish_reason` and `tool_calls`, which call_claude
+  cannot provide because it returns a string. It could never have worked.
+  Confirming evidence: research_loop had written a `_dummy_caller` returning ""
+  purely to satisfy the required argument. Also removed `thinking` (unused) and
+  `_THINKING_BUDGET` (never referenced). Three call sites updated.
+  call_claude itself is very much alive - Monitor, Direct and ConfigEdit all use
+  it. NOTE for a future step: it also notifies the user on rate limits ("Rate
+  limit reached. Retrying in 30 seconds") and React does not, which is why a
+  rate-limited React turn is four minutes of silence. React already holds
+  `_notify_fn`, so surfacing backoff is a small independent improvement.
+  Original step text follows. `handle()` accepts
   `call_claude` and `thinking` and uses neither, and `_THINKING_BUDGET` is defined
   and never referenced. The orchestrator builds a bound caller with rate-limit
   handling and user notification, passes it in, and React ignores it in favour of
@@ -377,7 +392,20 @@ none depend on each other. Good filler work.
   the R2.4 commit because it touched the same file and would otherwise have cost a
   second deploy. Now reads "(exa_py, httpx, requests) and the standard library".
 
-- [ ] **C.3 Decide what skills_react.md is for.** It is injected into every React
+- [x] **C.3 Decide what skills_react.md is for.** DONE 2026-08-02. Decided: remove
+  the mechanism. Of the two entries left after the formatting one was deleted, the
+  document-as-response-text rule was already stated word for word in React's system
+  prompt at react.py, so it was pure duplication. The brainstorming-reframe rule
+  was genuinely unique and has been folded into the system prompt under "How to
+  reason", where it is version-controlled, reviewable in a diff, and cannot drift
+  out of sync with the code. With nothing left to inject, `_read_skills()` and its
+  injection are gone, along with the file's entries in main.py's templates,
+  React's memory_read enum, and prod_memory's write allowlists, so nothing can
+  recreate, read or write it. `_SKILL_FILES` is now empty, which makes the
+  disabled critic inert instead of writing to a file nothing reads.
+  R4.4 is unaffected: review files with explicit sign-off share nothing with blind
+  append-and-inject, so it was always going to build its own storage.
+  Original step text follows. It is injected into every React
   prompt but nothing has written to it since `ENABLE_CRITIC` went False, so it is
   frozen at whatever it holds. A file that silently modifies every prompt and that
   nothing maintains is the exact shape of the bug that cost days in July. Three

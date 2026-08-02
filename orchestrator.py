@@ -92,9 +92,14 @@ def _extract_research_question(content: str) -> tuple[str, int]:
     return content.strip(), 100
 
 
-_SKILL_FILES: dict[str, str] = {
-    "React": "skills_react.md",
-}
+# Intentionally empty. The critic below is disabled (config.ENABLE_CRITIC) and
+# skills_react.md is gone: it injected unreviewed captures into every React prompt
+# with nothing maintaining it, and one stale formatting entry spent weeks steering
+# answers toward tables while prompt edits failed to override it. _critic_pass
+# returns immediately on an empty map, so the machinery below is inert rather than
+# writing to a file nothing reads. GAMEPLAN R4.4 replaces this with review files
+# and explicit sign-off, and will not reuse this storage.
+_SKILL_FILES: dict[str, str] = {}
 
 
 def _write_skill(agent_name: str, content: str) -> None:
@@ -304,7 +309,7 @@ class Orchestrator:
             return await prod_memory.handle(content, call)
 
         react.set_notify(self._notify)
-        response = await react.handle(content, self._window(), call, max_tokens=max_tokens)
+        response = await react.handle(content, self._window(), max_tokens=max_tokens)
 
         if file_mode:
             from agents import evaluator
@@ -314,7 +319,7 @@ class Orchestrator:
                     f"{content}\n\n[Your previous attempt was rejected by an independent evaluator: "
                     f"{feedback}. Produce a corrected, complete response.]"
                 )
-                response = await react.handle(retry_content, self._window(), call, max_tokens=max_tokens)
+                response = await react.handle(retry_content, self._window(), max_tokens=max_tokens)
                 passed, feedback = await evaluator.evaluate(content, response)
                 if not passed:
                     response = f"[Evaluator warning: {feedback}]\n\n{response}"

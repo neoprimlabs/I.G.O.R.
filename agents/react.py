@@ -12,7 +12,6 @@ _client: Optional[openai.AsyncOpenAI] = None
 _notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 
 _MAX_ITERATIONS = 8
-_THINKING_BUDGET = 8000
 _TOOL_RESULT_CAP = 4000
 
 # Groq counts prompt + max_tokens against the per-minute bucket at request time,
@@ -53,7 +52,7 @@ _TOOLS = [
                     "type": "string",
                     "enum": [
                         "tasks.md", "projects.md", "user.md", "agents.md",
-                        "digest_config.md", "watchlist.md", "skills_react.md",
+                        "digest_config.md", "watchlist.md",
                         "research.md",
                     ],
                     "description": "The file to read",
@@ -208,6 +207,7 @@ How to reason:
 - Read a file once and act on it - do not re-read the same file multiple times
 - Scope strictly to the task given - do not investigate adjacent issues mid-task
 - Decide and act - avoid excessive exploration before making a change
+- When the user hits a recurring dead end in brainstorming (every idea loops back to the same obstacle), name the structural constraint causing the loop, then reframe the core question itself before generating more options
 
 Self-modification workflow (follow this exactly):
 1. Read the target file with read_file
@@ -317,16 +317,6 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
-def _read_skills() -> str:
-    path = config.MEMORY_DIR / "skills_react.md"
-    if not path.exists():
-        return ""
-    lines = [
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
-    return "\n".join(f"- {l}" for l in lines) if lines else ""
 
 
 async def _run_code(code: str, timeout: int = 10) -> str:
@@ -576,9 +566,7 @@ async def _execute_tool(name: str, inputs: dict) -> str:
 async def handle(
     message: str,
     context: list[dict],
-    call_claude: Callable[..., Awaitable[str]],
     max_tokens: int = 1024,
-    thinking: bool = True,
     max_iterations: int = _MAX_ITERATIONS,
     model: str | None = None,
     allowed_tools: list[str] | None = None,
@@ -594,9 +582,6 @@ async def handle(
         system_text = f"Current date and time: {current_dt}\n\n{system_override}"
     else:
         system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
-        skills = _read_skills()
-        if skills:
-            system_text += f"\n\nLearned skills:\n{skills}"
 
     import json
     messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]
