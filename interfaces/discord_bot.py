@@ -7,31 +7,9 @@ import discord
 import config
 from agents import monitor
 from orchestrator import Orchestrator
+from sanitize import clean as _sanitize
 
 logger = logging.getLogger(__name__)
-
-
-_PUNCT_MAP = str.maketrans({
-    "—": "-", "–": "-", "‑": "-", "‒": "-", "―": "-",
-    "‘": "'", "’": "'",
-    "“": '"', "”": '"',
-    "…": "...",
-    " ": " ", " ": " ", " ": " ",
-    "­": "",
-    "•": "-", "·": "-",
-})
-
-
-# Em dashes are parenthetical delimiters and are usually written unspaced, so
-# mapping them straight to a hyphen glues words together: "autonomous
-# agents-diagnostic, scheduling, and site-reliability-manufacturing plants" was a
-# real research finding rendered unreadable. Space them instead. En dashes are
-# left alone because they are mostly numeric ranges, where "2020-2025" is right.
-_EM_DASH_RE = re.compile(r"\s*[—―]\s*")
-
-
-def _sanitize(content: str) -> str:
-    return _EM_DASH_RE.sub(" - ", content).translate(_PUNCT_MAP)
 
 
 def _filename_from_response(content: str) -> str:

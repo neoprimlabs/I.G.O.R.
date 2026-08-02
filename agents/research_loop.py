@@ -273,7 +273,11 @@ async def _run(question: str, stop_event: asyncio.Event, notify: Optional[Callab
 
             # 4. APPEND - code, not a model call. Only writer of research.md.
             if findings:
-                block = (
+                # Cleaned on the way in, not just on the way out to Discord. This
+                # file syncs to the user's phone and gets archived, and the style
+                # rules cover memory files too.
+                from sanitize import clean
+                block = clean(
                     f"\n## Iteration {iteration} - {_timestamp()}\n"
                     f"Query: {query}\n\n{findings}\n"
                 )
