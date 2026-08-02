@@ -301,6 +301,95 @@ Reply with the single word only.
 
 ## Phase R3 - Quality loops
 
+- [ ] **R3.0 Isolate gathering from synthesis inside a research iteration.**
+  DO THIS BEFORE R3.1 - R3.1 changes how findings are delivered, and there are
+  currently no findings to deliver.
+
+  **Symptom (observed twice, 2026-08-02).** Two research runs produced an empty
+  research.md. The worker ran 8 searches, never called memory_write, hit
+  max_iterations, and the loop stopped after 2 consecutive empty iterations.
+  `_DEFAULT_MODE` explicitly says "3 searches + 2 fetches + 1 write" and "Writing
+  findings is not optional". It was ignored both times.
+
+  **Root cause.** One ReAct context is asked to accumulate all raw search results
+  AND produce the synthesis. ReAct appends every tool result to a single growing
+  message history by construction, so raw material and synthesis compete for the
+  same 8000 TPM budget and raw material wins. Logs show trims at ~7455, ~7483 and
+  ~7517 estimated tokens with 1280 reserved, meaning ~6200 tokens of message
+  history. At `_TOOL_RESULT_CAP` of 4000 chars, three or four results is the whole
+  budget; the prompt asks for five before writing. The write step is unreachable.
+  Compounding it: at that fill level a 20B model is deep into context rot, where
+  recall of anything earlier in the window degrades, so it does not recover the
+  plan.
+
+  **What the established pattern says** (Anthropic, "Effective context engineering
+  for AI agents" and "When to use multi-agent systems"):
+  - Three techniques for long-horizon work: compaction, structured note-taking,
+    and sub-agent isolation.
+  - Sub-agent isolation means an orchestrator delegates a subtask to a clean
+    context and only "a condensed, distilled summary" returns to the parent.
+    Explicitly contrasted with "one agent accumulating every subtask's tool output
+    in a single growing window", which is what we do today.
+  - "Tool result clearing" is called "one of the safest lightest touch forms of
+    compaction" - this validates R2.0, which should stay.
+  - Guiding rule: "find the smallest set of high-signal tokens that maximize the
+    likelihood of some desired outcome".
+  - Decompose by context, not by problem type, or coordination costs more than the
+    work.
+
+  **What we already do right, and must not break.** The outer loop is textbook.
+  research.md is structured note-taking (persist outside the window, pull back in
+  later). `_smart_truncate(current, 3000)` is compaction. Every iteration is a
+  fresh context. R3.0 changes nothing here.
+
+  **What we cannot copy.** The published systems run subagents in parallel and pay
+  3-10x tokens for it (Anthropic's own research system runs ~15x). On a free tier
+  already at its ceiling that is not available. We take the isolation and run it
+  serially - which is *cheaper* than today, not more expensive, because raw
+  results stop accumulating.
+
+  **Build.** In `agents/research_loop.py`, replace the single per-iteration
+  `react.handle` call with a fixed pipeline. Each stage is its own model call
+  holding only what it needs. Do not use the ReAct tool loop for this at all.
+
+  1. **PLAN** - one call, `model=config.MODELS["research"]`, max_tokens=200.
+     Sees: the question, current findings (already truncated to 3000 chars), and
+     the recently-pursued-threads list. Returns one search query as plain text,
+     nothing else. On empty or unparseable output, fall back to the question
+     itself as the query and log a WARNING.
+  2. **SEARCH** - no model. `research._run_search(query, max_results=5)`.
+     On zero results, log and count the iteration as empty.
+  3. **DISTILL** - one call, max_tokens=600. Sees ONLY this query's raw results
+     plus the question. Returns 3-5 bullet findings with source URLs, then a final
+     line `Next: <thread>`. The raw results are discarded after this call and never
+     enter another context. On empty content, retry once with doubled max_tokens
+     (the reasoning-model budget rule from CLAUDE.md).
+  4. **APPEND** - code, not model. Append the distilled block to research.md with
+     the iteration number and a UTC timestamp. This is the only writer; the model
+     no longer needs the memory_write tool here.
+  5. The `Next:` line feeds `_extract_recent_threads` for the following iteration,
+     as it does today.
+
+  **Budget check.** PLAN is roughly question + 850 tokens of findings + 200
+  reserved. DISTILL is roughly 1150 tokens of raw results + question + 600
+  reserved. Around 3200 tokens per iteration against an 8000 bucket, versus 7500+
+  and dying today. R2.0's trimming should never fire during research once this
+  lands - if it does, the budget maths is wrong and needs revisiting.
+
+  **Failure modes to handle explicitly:** PLAN returns nothing (fall back to the
+  question); search returns nothing (empty iteration, existing 2-strike rule
+  applies); DISTILL returns empty (one retry at double budget, then empty
+  iteration); 429 on any call (existing RateLimitError handling stops the loop and
+  reports); research.md write fails (log ERROR, do not silently continue).
+
+  **Keep:** the stop_event checks, the 2-consecutive-empty rule, archiving
+  research.md before each run, and `_stop_with_report`.
+
+  **Verify:** `deep research [3] <question>` writes findings from all three
+  iterations to research.md, no "produced no findings" warnings appear, and no
+  "trimmed tool results" lines appear during the run. Commit:
+  `Research iterations isolate gathering from synthesis instead of one ReAct context (R3.0)`
+
 - [ ] **R3.1 Research filtering (old 2.2).** In research_loop._stop_with_report:
   send the raw research.md as the file attachment FIRST (existing behavior), but
   remove any model-side synthesis/collapse before sending - the file goes to the
