@@ -1,4 +1,8 @@
 discord.py>=2.0.0
+# Client SDK, not the provider: every client points at Groq's
+# OpenAI-compatible endpoint. See ARCHITECTURE.md.
+openai>=1.0.0
+# Unused today. Kept as the hook for GAMEPLAN R4.1 (optional Anthropic roles).
 anthropic>=0.30.0
 exa-py>=1.0.0
 youtube-transcript-api>=0.6.0
