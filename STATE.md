@@ -24,15 +24,23 @@ Last updated: **2026-08-02**
 
 ## Next action
 
-**GAMEPLAN R2.0** - the in-turn token budget guard in `react.handle`. Now a
-proper numbered step with full implementation detail. Then R2.1 (Direct agent),
-R2.2 (router, the biggest felt improvement), R2.3, R2.4.
+**Phase R2 is complete.** R0, R1 and R2 are all done. The harness described in
+IGOR_SPEC is restored: a model router in front of a tool-free chat agent, the
+ReAct tool agent, Monitor, ConfigEdit and the research loop, each on its own
+model.
 
-R0.1, R1.1 and R1.2 are done. Everything from R2 onward is not started.
+Remaining, in rough priority order:
 
-Phase C in GAMEPLAN holds five small independent cleanup items that block nothing
-and can be picked up in any order. C.3 (what `skills_react.md` is for) needs a
-decision from the user rather than an implementation.
+- **R3.1** research delivers raw findings before synthesis
+- **R3.2** startup smoke test on routing and model config
+- **R3.3** injection screening, rewritten to guard fetched content rather than
+  user messages
+- **Phase C** four small independent items. C.1 (React's unused `call_claude`)
+  and C.3 (what `skills_react.md` is for) are decisions, not just tasks.
+
+Measured effect of R2, same evening: "What's new IGOR?" went from four minutes and
+six escalating 429 backoffs, answered with a five-section status report, to an
+instant reply in prose. One 429 in the twenty minutes after the router landed.
 
 ## Known broken
 
