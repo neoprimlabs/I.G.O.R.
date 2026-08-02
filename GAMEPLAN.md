@@ -251,7 +251,19 @@ Reply with the single word only.
   digest", and confirms sensible routing in journalctl (`Router:` lines). Commit:
   `Model-based intent router on llama-3.1-8b-instant; Direct chat wired in`
 
-- [ ] **R2.3 ConfigEdit agent.** Rebuild agents/prod_memory.py into a routed
+- [x] **R2.3 ConfigEdit agent.** DONE 2026-08-02 (this commit). Three additions to
+  the step, all guarding failure modes it did not mention. (a) Digest section names
+  are validated against the five the digest actually recognises before writing:
+  Monitor gates sections with an exact string match, so an invented name would be
+  accepted, written, and then silently ignored forever - the worst kind of bug.
+  On a bad name it refuses, leaves the file untouched, and lists the valid ones.
+  (b) A rolling `<file>.bak` is written before each overwrite, so a bad edit is
+  recoverable immediately instead of waiting on the daily off-host backup. Bounded
+  at three files. (c) The editable set is a dict mapping filename to
+  restart-required, so the reply cannot claim the wrong thing about whether a
+  restart is needed. Verified with 19 tests covering the parser, section
+  validation, and handle() end to end against a stubbed model. Original step text
+  follows. Rebuild agents/prod_memory.py into a routed
   agent. Add `async def handle(message, call_claude) -> str`:
   1. Editable files allowlist: digest_config.md, schedule_config.md, watchlist.md
      ONLY. (Prompt files stay Claude-Code-only; task/memory files belong to React's

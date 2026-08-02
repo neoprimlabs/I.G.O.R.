@@ -300,9 +300,8 @@ class Orchestrator:
             return await direct.handle(content, self._window(), call)
 
         if destination == "ConfigEdit":
-            # R2.3 builds the real agent. Until then React can at least write to
-            # memory files, so fall through rather than dead-ending the request.
-            logger.info("ConfigEdit not built yet, falling through to React")
+            from agents import prod_memory
+            return await prod_memory.handle(content, call)
 
         react.set_notify(self._notify)
         response = await react.handle(content, self._window(), call, max_tokens=max_tokens)
