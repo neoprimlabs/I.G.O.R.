@@ -164,6 +164,28 @@ MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
 
 ## Phase R2 - Restore the harness
 
+- [ ] **R2.0 In-turn message budget guard.** DO THIS FIRST. Root cause of three
+  failed research runs on 2026-07-19 (see Progress Log). `react.handle` has no
+  budget guard *within* a single call: every tool round appends up to 4000 chars
+  of results, so by internal iteration 7-8 the request itself exceeds the model's
+  TPM limit and 413s. Prompt trims only delayed the crossing by one round each.
+  In `agents/react.py`, before each `client.chat.completions.create()` in the
+  main loop:
+  1. Estimate request tokens as `sum(len(m["content"] or "") for m in messages)
+     / 3.5 + max_tokens`.
+  2. If the estimate exceeds 7000, walk `messages` oldest-first and replace the
+     `content` of `role == "tool"` entries with `"[trimmed for budget]"`,
+     skipping the newest two tool results, until the estimate fits.
+  3. If it still exceeds 7000 after trimming everything eligible, break out of
+     the loop to the existing forced-final-answer path rather than sending.
+  Log each trim at INFO with the before/after estimate. Do not change
+  `_TOOL_RESULT_CAP`, `_MAX_ITERATIONS`, or any prompt text in this step.
+  Why 7000 and not 8000: `react` runs on gpt-oss-120b (8000 TPM) and the estimate
+  is approximate, so leave headroom rather than trying to land exactly.
+  Verify: py_compile; deploy; run `deep research [3] <question>` and confirm it
+  completes without a 413 while the user chats in parallel. Commit:
+  `React trims oldest tool results when a turn approaches the TPM ceiling (R2.0)`
+
 - [ ] **R2.1 Direct chat agent.** New file agents/direct.py. Pattern-match
   react.py's structure: `_DEFAULT_SYSTEM_PROMPT`, `_get_system_prompt()` reading
   `prompt_direct.md`, and `async def handle(message, context, call_claude) -> str`
@@ -270,6 +292,45 @@ Reply with the single word only.
   Verify: `deep research [3] <question>` completes without 429 storms while the
   user chats simultaneously. Commit: `Docs: research loop re-enabled on isolated model bucket`
 
+## Phase C - Cleanup and hardening (small, independent, any order)
+
+Found 2026-08-02 while writing ARCHITECTURE.md. None of these block R2 or R3, and
+none depend on each other. Good filler work.
+
+- [ ] **C.1 Resolve react.handle's dead parameters.** `handle()` accepts
+  `call_claude` and `thinking` and uses neither, and `_THINKING_BUDGET` is defined
+  and never referenced. The orchestrator builds a bound caller with rate-limit
+  handling and user notification, passes it in, and React ignores it in favour of
+  its own client. So the main chat path has no `call_claude` retry-and-notify
+  logic, relying on the SDK's `max_retries=5` instead. This is a decision, not a
+  deletion: either remove the dead params, or wire `call_claude` in properly and
+  gain the notify path. Pick one deliberately. Commit accordingly.
+
+- [ ] **C.2 Fix the python_run tool description.** `agents/react.py` advertises
+  `anthropic` to the model as an available sandbox package. It is installed but
+  unused, and naming it invites the model to reach for it. Five-minute fix.
+  Commit: `python_run description no longer advertises anthropic to the model`
+
+- [ ] **C.3 Decide what skills_react.md is for.** It is injected into every React
+  prompt but nothing has written to it since `ENABLE_CRITIC` went False, so it is
+  frozen at whatever it holds. A file that silently modifies every prompt and that
+  nothing maintains is the exact shape of the bug that cost days in July. Three
+  options: re-enable capture (blocked on R4.4), remove the injection, or freeze it
+  deliberately with a comment saying so. Needs the user.
+
+- [ ] **C.4 Delete server strays.** `start.sh.bak`, `research_synthesis.md`,
+  `persistent_judgement_gap_summary.md`, `persistent_judgement_layer_gap_summary.md`,
+  and `financials.md` (the file React fixated on during the July context-poisoning
+  incident) all sit in /opt/igor doing nothing. Remove with `sudo -u igor`, confirm
+  nothing references them first.
+
+- [ ] **C.5 In-bot heartbeat for gateway liveness.** Current monitoring
+  (`scripts/backup_memory.ps1`) detects a dead host or dead process, but not a live
+  process whose Discord gateway has silently dropped: systemd reports active while
+  the green dot is out. Fix: ping a dead-man's-switch from inside the bot on a
+  timer, gated on `bot.is_ready()` and `math.isfinite(bot.latency)` so it means
+  what the green dot means. Needs one free external account for the switch.
+
 ## Phase R4 - Later (do not start without the user)
 
 - R4.1 Paid escape hatch: optional ANTHROPIC key for file-mode/research when the
@@ -278,6 +339,16 @@ Reply with the single word only.
 - R4.3 Raw/wiki memory restructure + ingest pipelines (old 2.6/2.7).
 - R4.4 Improvement loop with sign-off buckets (old 2.3) - revisit once the
   harness is stable; the critic stays disabled until then.
+- R4.5 **Hosting decision.** Everything in R2/R3/C works on the current Oracle
+  Always Free box. The entitlement risk does not go away until IGOR leaves the
+  free tier: Oracle changed the A1 allowance under a running instance in July 2026
+  and terminated it. A paid VPS removes both that risk and the A1 capacity lottery.
+  User declined paid hosting on 2026-08-01; revisit when they raise it.
+- R4.6 **Commercial direction.** The user has raised deploying IGOR for paying
+  clients. That contradicts IGOR_SPEC.md's "Not a public-facing product" non-goal
+  and the single-authorized-user security model that Principle 1 is built on. If
+  it becomes real, the spec needs amending first, and containerisation moves from
+  nice-to-have to requirement. Do not build toward this until the spec says so.
 
 ## Progress Log
 
@@ -315,8 +386,41 @@ Reply with the single word only.
   the target channel ID (UCWOf9GaQxUQWSmSln8ETvmA) before dying - the model was
   capable, the harness ran out of headroom.
 
-- NEXT SESSION START HERE: R2.1 (Direct agent), then R2.2 (router), then R2.3
-  (ConfigEdit), then R2.4. Follow the steps as written. After R2.2 deploys, ask
-  the user to smoke test: "hello" (expect warm prose, fast), "what's our status"
-  (expect Monitor, no file spelunking), "drop tasks from the digest" (expect
-  ConfigEdit once R2.3 lands; React fallback before that).
+- 2026-07-24 to 08-02: OUTAGE AND RECOVERY. Oracle cut the Always Free Ampere A1
+  allowance from 4 OCPU/24GB to 2 OCPU/12GB and TERMINATED the instance for being
+  over the new limit. IGOR was down roughly a week; nothing external was watching,
+  so it went unnoticed for about two days. The boot volume survived, so no data was
+  lost. Recovery was awkward and is worth recording: A1 capacity was exhausted in
+  all three Ashburn ADs (85+ failed launches), and AD-2, where the boot volume
+  lived, does not offer E2.1.Micro at all. Only AD-1 does. Route out was a
+  region-scoped boot volume backup restored into AD-1, then an E2.1.Micro there
+  with the clone attached as a read-only data disk. IGOR now runs on that micro:
+  x86_64, 1 OCPU / 956MB + 2GB swap, at a new IP (see STATE.md). Same code, memory
+  and .env; venv rebuilt for x86.
+
+- 2026-08-02: Documentation restructured and three gaps closed.
+  - 88098d5: dead IP replaced in CLAUDE.md and GAMEPLAN.md.
+  - 729db75: ARCHITECTURE.md and STATE.md added; requirements.txt was missing
+    `openai` entirely, so a clean install produced a bot that died on its first
+    model call - the live box only worked because it was installed by hand.
+  - a91f2e8: scripts/backup_memory.ps1 now pulls memory/ and .env off the host
+    daily AND checks igor + igor-watchdog are active, alerting to a Discord
+    webhook. Two bugs were found only by testing the failure path: `2>&1` on
+    ssh.exe under ErrorActionPreference=Stop killed the script before it could
+    alert (on the unreachable-host path, the one case it exists for), and
+    `date -d "$var"` lost its quotes to Windows argument escaping. This also
+    caught that igor-watchdog was enabled but never started after the migration,
+    leaving safety Layer 2 down since 08-01.
+  - 454f5d9: CLAUDE.md split - rules stay, facts moved to ARCHITECTURE.md. It had
+    already drifted: still said ARM A1, listed five prompt_*.md overrides as "in
+    use" when none exist on the server, and warned about the system_config.md
+    landmine R1.1 had already removed.
+  - Phase C added below R3 for cleanup found while writing ARCHITECTURE.md.
+
+- NEXT SESSION START HERE: **R2.0** (in-turn budget guard - now a real step, do it
+  first), then R2.1 (Direct agent), R2.2 (router), R2.3 (ConfigEdit), R2.4. Follow
+  the steps as written. After R2.2 deploys, ask the user to smoke test: "hello"
+  (expect warm prose, fast), "what's our status" (expect Monitor, no file
+  spelunking), "drop tasks from the digest" (expect ConfigEdit once R2.3 lands;
+  React fallback before that). Phase C items are independent filler and need no
+  particular order.

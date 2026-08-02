@@ -23,11 +23,15 @@ Last updated: **2026-08-01**
 
 ## Next action
 
-**GAMEPLAN R2.0** - add the in-turn token budget guard to `react.handle`. It is
-described in GAMEPLAN's Progress Log but has never been promoted to a numbered
-step. Do that first, then R2.1 (Direct agent), then R2.2 (router).
+**GAMEPLAN R2.0** - the in-turn token budget guard in `react.handle`. Now a
+proper numbered step with full implementation detail. Then R2.1 (Direct agent),
+R2.2 (router, the biggest felt improvement), R2.3, R2.4.
 
 R0.1, R1.1 and R1.2 are done. Everything from R2 onward is not started.
+
+Phase C in GAMEPLAN holds five small independent cleanup items that block nothing
+and can be picked up in any order. C.3 (what `skills_react.md` is for) needs a
+decision from the user rather than an implementation.
 
 ## Known broken
 
