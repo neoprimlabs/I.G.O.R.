@@ -44,19 +44,24 @@ _DISTILL_SYSTEM = """You turn raw search results into durable research findings.
 You are seeing the results of ONE search. They are discarded the moment you reply, so anything worth keeping has to appear in your answer.
 
 Write 3 to 5 findings, each on its own line starting with "- ". Each finding:
-- states a specific fact, number, name, or claim - not a summary of what a page is about
-- ends with its source URL in parentheses
+- states a specific fact, number, name, or claim, not a summary of what a page is about
+- ENDS with the source URL in parentheses. A finding you cannot attribute to one of the results in front of you does not get written. Drop it rather than writing it unsourced.
 - says why it matters, where that is not obvious
 
-Ignore results that are marketing, contentless, or off-question. Three real findings beat five padded ones. If nothing in these results is worth keeping, say so in one line instead of inventing findings.
+Report only what these results actually say. You are looking at a handful of results from a single query, which tells you nothing about what exists in the world beyond them. Never write that something does not exist, that nobody is doing something, that no study covers it, or that a field is missing something. If an angle is not covered here, write "these results do not cover X" - that is a statement about the results and is fine. Anything stronger is a claim you have no way to support, and it is worse than writing nothing.
+
+Skip vendor marketing, product pages, and company case studies promoting their own service. A figure a company publishes about its own product is advertising, not evidence.
+
+Three well-sourced findings beat five padded ones. If nothing here is worth keeping, say so in one line rather than inventing findings.
 
 Then a final line, exactly:
 Next: <the single most promising thread to pursue next>
 
 Style:
 - No emojis
-- No em dashes - use plain hyphens
-- No exclamation points"""
+- No em dashes, en dashes, or any dash other than a plain hyphen
+- No exclamation points
+- No bold, italics, or headings. Plain lines only"""
 
 _client: Optional[openai.AsyncOpenAI] = None
 
