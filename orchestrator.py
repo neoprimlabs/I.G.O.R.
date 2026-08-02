@@ -9,13 +9,38 @@ import config
 
 logger = logging.getLogger(__name__)
 
-_MONITOR_TRIGGERS = frozenset({
-    "digest",
-    "monitor status", "monitoring status",
-    "what are you monitoring", "what is being monitored",
-    "watchlist", "scheduler", "scheduled jobs", "next run",
-    "system health",
+# Exact commands only. The broad substring triggers this replaced sent any message
+# containing "digest", "watchlist" or "scheduler" to the read-only Monitor, so
+# "deep research on digest formats" never reached the research branch and
+# "drop weather from the digest" hit an agent that cannot write. The router owns
+# intent now; these are here purely so a known command never costs a model call.
+_DIGEST_COMMANDS = frozenset({
+    "trigger digest", "run digest", "send digest",
+    "fire digest", "morning digest",
 })
+
+# Deviates from the GAMEPLAN text, which ended the CONFIG line with "preferences".
+# Live testing showed llama-3.1-8b reading opinion questions ("what do you think
+# about self hosting") as CONFIG, because "preferences" reads as "opinions" as
+# easily as "saved settings". CONFIG is now stated as an action on stored config,
+# and CHAT explicitly claims opinion questions.
+_ROUTER_PROMPT = """Classify the user message into exactly one word from this list:
+CHAT - greetings, small talk, opinions, what you think about something, questions about yourself, anything social
+TASK - requests to do work: search, write, analyze, code, read files, produce documents, calculations
+MONITOR - questions asking about scheduler status, watchlist contents, digest contents, system health
+CONFIG - requests to CHANGE saved settings: add or remove a digest section, change a schedule time, edit the watchlist
+RESEARCH - requests to start deep or long-running research
+Reply with the single word only."""
+
+_VERDICT_MAP = {
+    "CHAT": "Direct",
+    "TASK": "React",
+    "MONITOR": "Monitor",
+    "CONFIG": "ConfigEdit",
+    "RESEARCH": "ResearchLoop",
+}
+
+_ROUTER_TIMEOUT_S = 15
 
 _RESEARCH_LOOP_TRIGGERS = frozenset({
     "deep research",
@@ -148,7 +173,9 @@ class Orchestrator:
         file_mode = content.lower().startswith("file:")
         task = content[5:].strip() if file_mode else content
 
-        destination = self._classify(task)
+        # A "file:" request is always document work regardless of what it asks
+        # for, so it skips the router and goes straight to the tool agent.
+        destination = "React" if file_mode else await self._classify(task)
         if destination == "StopResearch":
             file_mode = True
 
@@ -184,15 +211,43 @@ class Orchestrator:
         suffix = "\n\n" + " ".join(parts) if parts else ""
         return f"{response}{suffix}", file_mode
 
-    def _classify(self, content: str) -> str:
-        lower = content.lower()
-        if any(trigger in lower for trigger in _MONITOR_TRIGGERS):
-            return "Monitor"
-        if any(trigger in lower for trigger in _STOP_RESEARCH_TRIGGERS):
-            return "StopResearch"
+    async def _classify(self, content: str) -> str:
+        lower = content.lower().strip()
+
         if any(lower.startswith(trigger) for trigger in _RESEARCH_LOOP_TRIGGERS):
             return "ResearchLoop"
-        return "React"
+        if any(trigger in lower for trigger in _STOP_RESEARCH_TRIGGERS):
+            return "StopResearch"
+        if lower in _DIGEST_COMMANDS:
+            return "Monitor"
+
+        # The router runs on its own mostly-idle 6000 TPM bucket and reserves 10
+        # tokens, so it costs almost nothing. Called directly rather than through
+        # call_claude because call_claude's rate-limit path notifies the user and
+        # sleeps 30s or more, which is the wrong behaviour for classification -
+        # better to fail fast to React than to make the user wait to be routed.
+        try:
+            response = await asyncio.wait_for(
+                self._client.chat.completions.create(
+                    model=config.MODELS["router"],
+                    messages=[
+                        {"role": "system", "content": _ROUTER_PROMPT},
+                        {"role": "user", "content": content[:1000]},
+                    ],
+                    max_tokens=10,
+                    temperature=0,
+                ),
+                timeout=_ROUTER_TIMEOUT_S,
+            )
+            raw = (response.choices[0].message.content or "").strip().upper()
+        except Exception as e:
+            logger.warning("Router unavailable (%s: %s) - defaulting to React", type(e).__name__, e)
+            return "React"
+
+        verdict = raw.split()[0].strip(".,:;\"'") if raw.split() else ""
+        destination = _VERDICT_MAP.get(verdict, "React")
+        logger.info("Router: %s -> %s", verdict or "(empty)", destination)
+        return destination
 
     async def _critic_pass(self, destination: str, task: str, response: str) -> bool:
         if destination not in _SKILL_FILES:
@@ -239,6 +294,16 @@ class Orchestrator:
 
         if destination == "Monitor":
             return await monitor.handle(content, self._window(), call)
+
+        if destination == "Direct":
+            from agents import direct
+            return await direct.handle(content, self._window(), call)
+
+        if destination == "ConfigEdit":
+            # R2.3 builds the real agent. Until then React can at least write to
+            # memory files, so fall through rather than dead-ending the request.
+            logger.info("ConfigEdit not built yet, falling through to React")
+
         react.set_notify(self._notify)
         response = await react.handle(content, self._window(), call, max_tokens=max_tokens)
 

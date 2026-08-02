@@ -164,7 +164,12 @@ MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
 
 ## Phase R2 - Restore the harness
 
-- [ ] **R2.0 In-turn message budget guard.** DO THIS FIRST. Root cause of three
+- [x] **R2.0 In-turn message budget guard.** DONE 2026-08-02 (ac762c4). Implemented
+  as written. Also trims with keep_recent=0 on the forced-final-answer path, since
+  arriving there over budget would 413 and lose the turn anyway. Verified with a
+  standalone test against the real functions: a six-round tool session estimates
+  10661 tokens and comes down to 6113. Original step text follows.
+  Root cause of three
   failed research runs on 2026-07-19 (see Progress Log). `react.handle` has no
   budget guard *within* a single call: every tool round appends up to 4000 chars
   of results, so by internal iteration 7-8 the request itself exceeds the model's
@@ -186,7 +191,12 @@ MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
   completes without a 413 while the user chats in parallel. Commit:
   `React trims oldest tool results when a turn approaches the TPM ceiling (R2.0)`
 
-- [ ] **R2.1 Direct chat agent.** New file agents/direct.py. Pattern-match
+- [x] **R2.1 Direct chat agent.** DONE 2026-08-02 (5856b5f). Two deliberate
+  additions to the step as written: it uses the passed `call_claude` rather than
+  its own client, so chat gets rate-limit backoff and user notification that React
+  currently lacks (see C.1); and it does not read skills_react.md, since those
+  skills describe tool use and Direct has none. Original step text follows.
+  New file agents/direct.py. Pattern-match
   react.py's structure: `_DEFAULT_SYSTEM_PROMPT`, `_get_system_prompt()` reading
   `prompt_direct.md`, and `async def handle(message, context, call_claude) -> str`
   that makes ONE call via the passed caller with `model=config.MODELS["chat"]`,
@@ -196,7 +206,20 @@ MODEL = MODELS["react"]  # transitional alias; remove when nothing references it
   tables, or bullet dumps in casual conversation, plus the standard Style block.
   Do not wire it into routing yet. Verify: py_compile only. Commit: `Add Direct chat agent: no tools, warm prose, chat model`
 
-- [ ] **R2.2 Model-based router.** In orchestrator.py replace `_classify` with:
+- [x] **R2.2 Model-based router.** DONE 2026-08-02 (this commit). One deviation
+  from the step: the router prompt below ended its CONFIG line with "preferences",
+  and live testing showed llama-3.1-8b classifying opinion questions ("what do you
+  think about self hosting") as CONFIG, because "preferences" reads as "opinions"
+  as readily as "saved settings". CONFIG is now phrased as an action on stored
+  config and CHAT explicitly claims opinion questions. 20/20 classification cases
+  pass against the live model, including the discriminator pair "what time is the
+  digest scheduled for" (Monitor) versus "change the digest time to 8am"
+  (ConfigEdit). The router is called directly rather than through call_claude:
+  call_claude's rate-limit path notifies the user and sleeps 30s or more, which is
+  wrong for classification - failing fast to React beats making the user wait to be
+  routed. `file:` requests skip the router entirely and go to React, since they are
+  document work regardless of what they ask for. Original step text follows.
+  In orchestrator.py replace `_classify` with:
   1. Fast paths first (keep exact behavior): message starts with a
      _RESEARCH_LOOP_TRIGGERS entry -> ResearchLoop; contains a
      _STOP_RESEARCH_TRIGGERS entry -> StopResearch; starts with "file:" -> Task
