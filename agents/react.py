@@ -15,6 +15,17 @@ _MAX_ITERATIONS = 8
 _THINKING_BUDGET = 8000
 _TOOL_RESULT_CAP = 4000
 
+# Groq counts prompt + max_tokens against the per-minute bucket at request time,
+# and react runs on an 8000 TPM model. Within a single handle() call every tool
+# round appends up to _TOOL_RESULT_CAP chars, so long tool sessions used to cross
+# the ceiling around iteration 7-8 and 413. Ceiling is 7000 rather than 8000
+# because the estimate below is approximate - leave headroom instead of trying to
+# land exactly on the limit.
+_BUDGET_CEILING = 7000
+_CHARS_PER_TOKEN = 3.5
+_KEEP_RECENT_TOOL_RESULTS = 2
+_TRIM_PLACEHOLDER = "[trimmed for budget]"
+
 
 def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
     global _notify_fn
@@ -225,6 +236,51 @@ Style:
 - No em dashes - use plain hyphens
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+
+def _estimate_tokens(messages: list[dict], max_tokens: int) -> int:
+    chars = 0
+    for m in messages:
+        chars += len(m.get("content") or "")
+        for tc in m.get("tool_calls") or []:
+            chars += len(tc.get("function", {}).get("arguments") or "")
+    return int(chars / _CHARS_PER_TOKEN) + max_tokens
+
+
+def _trim_to_budget(
+    messages: list[dict],
+    max_tokens: int,
+    keep_recent: int = _KEEP_RECENT_TOOL_RESULTS,
+) -> tuple[list[dict], bool]:
+    """Blank the oldest tool results until the request fits the TPM ceiling.
+
+    Returns (messages, fits). Tool results are the only thing trimmed: the system
+    prompt, the user's message and the assistant's own reasoning all have to
+    survive for the answer to make sense.
+    """
+    before = _estimate_tokens(messages, max_tokens)
+    if before <= _BUDGET_CEILING:
+        return messages, True
+
+    out = list(messages)
+    tool_positions = [i for i, m in enumerate(out) if m.get("role") == "tool"]
+    trimmable = tool_positions[:-keep_recent] if keep_recent else tool_positions
+
+    estimate = before
+    for i in trimmable:
+        if out[i].get("content") == _TRIM_PLACEHOLDER:
+            continue
+        out[i] = {**out[i], "content": _TRIM_PLACEHOLDER}
+        estimate = _estimate_tokens(out, max_tokens)
+        if estimate <= _BUDGET_CEILING:
+            break
+
+    if estimate != before:
+        logger.info(
+            "ReAct trimmed tool results for budget: ~%d -> ~%d tokens (ceiling %d)",
+            before, estimate, _BUDGET_CEILING,
+        )
+    return out, estimate <= _BUDGET_CEILING
 
 
 def _get_client() -> openai.AsyncOpenAI:
@@ -552,6 +608,13 @@ async def handle(
     length_retried = False
     seen_calls: set = set()
     for i in range(max_iterations):
+        messages, fits = _trim_to_budget(messages, max_tokens)
+        if not fits:
+            logger.warning(
+                "ReAct still over budget after trimming at iteration %d - forcing a final answer",
+                i + 1,
+            )
+            break
         try:
             response = await client.chat.completions.create(
                 model=use_model,
@@ -632,6 +695,9 @@ async def handle(
         "role": "user",
         "content": "[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open.]",
     }]
+    # Last chance, so trim everything eligible rather than protecting recent
+    # results. Arriving here over budget would 413 and lose the whole turn.
+    messages, _ = _trim_to_budget(messages, max_tokens, keep_recent=0)
     try:
         final = await client.chat.completions.create(
             model=use_model,
