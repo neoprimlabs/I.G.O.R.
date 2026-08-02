@@ -17,7 +17,13 @@ venv/
 env/
 
 # Memory files — runtime data, not code. Populated on first run.
-memory/*.md
+#
+# This was "memory/*.md" until 2026-08-02, which missed context.db. A local test
+# instantiated an Orchestrator, context_store created an empty db, and git add -A
+# committed it. Zero rows so nothing leaked, but a deploy would have pulled that
+# empty file over the server's real conversation context. Ignore all of it -
+# main.py recreates the directory and its templates on first run.
+memory/*
 
 # Logs
 *.log
