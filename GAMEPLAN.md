@@ -585,6 +585,90 @@ none depend on each other. Good filler work.
   timer, gated on `bot.is_ready()` and `math.isfinite(bot.latency)` so it means
   what the green dot means. Needs one free external account for the switch.
 
+## Phase M - What IGOR believes about itself
+
+Added 2026-08-03. Restoration is finished; this is the first phase of forward work.
+
+- [x] **M.1 Architecture out of memory/agents.md.** DONE 2026-08-03. The file
+  duplicated the architecture and had drifted months out of date - keyword routing,
+  four agents, Claude with extended thinking, a 20-search research loop,
+  context_store described as safety Layer 3. React reads that file and reported it
+  to the user as current fact, which is where "five routing agents" came from. Cut
+  from 90 lines to 29: preferences only. Also removed the React tool table, which
+  duplicated the schemas React already receives in every request for no benefit and
+  had drifted too. React's prompt now points at ARCHITECTURE.md for anything about
+  how the system works. Backup at memory/agents.md.bak-20260803.
+  Worth recording: the first rewrite quoted the stale claims while explaining they
+  were false, which put them back in front of the model. A description of how
+  something used to work is indistinguishable from how it works, a few lines into a
+  file. Do not enumerate corrected facts inside the corrected file.
+
+- [x] **M.2 Correct projects.md.** DONE 2026-08-03. The IGOR entry claimed "MVP
+  complete - all 5 agents routing correctly". Replaced with pointers to
+  ARCHITECTURE.md, STATE.md and GAMEPLAN.md rather than a fourth copy of the facts.
+  Backup at memory/projects.md.bak-20260803.
+
+- [ ] **M.3 Decide what memory files are for.** agents.md and projects.md both
+  accumulated architecture nobody maintained, the same failure as CLAUDE.md and
+  skills_react.md. Three files have now drifted the same way, so the pattern is the
+  problem rather than any one file. Decide the rule: memory holds preferences,
+  history and user facts; anything verifiable against source lives in the repo and
+  is read with read_file. Then enforce it, probably by making the memory_write tool
+  description say so. Feeds directly into V.2.
+
+## Phase T - Make the last two days repeatable
+
+- [ ] **T.1 Tests into the repo.** Roughly six test files were written on
+  2026-08-02 and 2026-08-03 and every one was a throwaway in the session scratchpad.
+  Between them they caught: the `2>&1` bug that would have silenced the watchdog on
+  the one path it exists for, the router classifying opinion questions as CONFIG,
+  reasoning budgets set below the empty-content floor, a missing stdlib import that
+  would have crashed a deploy, the full injection quarantine including same-batch
+  ordering, and the date-stripping edge cases. None of that is reproducible and
+  nothing prevents any of it regressing. They need no network except the router and
+  research ones, which need GROQ_API_KEY. Put them in tests/, document how to run
+  them, and reference them from CLAUDE.md's deployment workflow.
+
+- [ ] **T.2 C.5 in-bot heartbeat.** See Phase C. Needs a free account from the user.
+
+- [ ] **T.3 Weather fetch failure in the digest.** monitor.py logged
+  `HTTPError: HTTP Error 503` at 13:00 on 2026-08-02 during the morning digest. The
+  error handling worked; nobody looked. Check whether it is transient or the
+  provider changed, and make the digest degrade gracefully rather than erroring.
+
+## Phase V - The spec's unbuilt vision
+
+- [ ] **V.1 Improvement loop with sign-off buckets.** Was R4.4. Now the highest
+  value item on the list: the critic is off and skills_react.md is gone, so IGOR
+  cannot learn anything at all. Self-improvement is the stated vision in
+  IGOR_SPEC.md. Design must avoid what broke it last time - an extra API call on
+  every turn, unbounded growth, and blind injection of unreviewed skills. Buckets:
+  auto-approve low risk, write high-stakes suggestions to a review file for user
+  sign-off, flag needs-more-context. Include expiry and curation.
+
+- [ ] **V.2 Memory restructure.** Was R4.3. Raw sources plus a curated index rather
+  than flat files that drift. M.3 decides the rule this implements. NOTE for a
+  possible future app: keep a user dimension possible in the schema even though
+  IGOR is single-user today. Costs nothing now, and memory plus context is the one
+  layer that would be expensive to retrofit for multi-tenancy.
+
+- [ ] **V.3 Dev and Comms as real specialists.** IGOR_SPEC.md describes five
+  specialists; there are four routed destinations. Both are currently absorbed into
+  React. Only worth doing if their prompts would genuinely differ from React's.
+
+## Phase I - Interface
+
+- [ ] **I.1 Web or Flutter UI.** Spec Phase 2. projects.md already tracks this as
+  "I.G.O.R. App (Front-End)" with phone location enabling location-aware digests.
+- [ ] **I.2 Voice** via qwen3-tts, local on the instance. After I.1.
+
+## Phase X - Containerisation
+
+- [ ] **X.1 Containerise IGOR.** Dual purpose. Oracle terminated the instance once
+  over an entitlement change, and a container makes the host interchangeable, which
+  is the real answer to that. It is also a prerequisite if the app idea ever becomes
+  real. Worth doing on its own merits either way.
+
 ## Phase R4 - Later (do not start without the user)
 
 - R4.1 Paid escape hatch: optional ANTHROPIC key for file-mode/research when the
