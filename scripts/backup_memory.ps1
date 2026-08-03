@@ -75,8 +75,13 @@ function Send-Alert {
 
 if ($Install) {
     $script = $MyInvocation.MyCommand.Path
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script`""
+    # conhost --headless runs the console host with no window at all. A plain
+    # powershell.exe action under an Interactive logon opens a real console in the
+    # user's session - at 3am that stole focus from a fullscreen game. -WindowStyle
+    # Hidden alone still flashes. Interactive logon is kept deliberately: S4U would
+    # hide it too but strips the network token, and this task needs SSH.
+    $action = New-ScheduledTaskAction -Execute 'conhost.exe' `
+        -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script`""
     $trigger = New-ScheduledTaskTrigger -Daily -At 3am
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
         -DontStopIfGoingOnBatteries -AllowStartIfOnBatteries
