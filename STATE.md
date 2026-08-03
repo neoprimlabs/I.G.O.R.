@@ -63,7 +63,7 @@ that would be expensive to retrofit.
    **Needs a decision before fixing** - see below.
 2. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
-2. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
+3. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
    systemd reports active but the Discord connection has silently dropped, the
    check reports healthy while the green dot is out. Closing that needs a
    heartbeat emitted from inside the bot, gated on `is_ready()` and a finite
