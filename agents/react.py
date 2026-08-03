@@ -71,7 +71,7 @@ _TOOLS = [
                 "query": {"type": "string", "description": "The search query"},
                 "recency_days": {
                     "type": "integer",
-                    "description": "Only return results published within this many days. Use it whenever the question is time-sensitive - latest, recent, current, news, what is happening now, this week, this year. 30 is a good default for news, 365 for a field's state of the art. Omit it only for questions where old sources are equally valid, like history or definitions.",
+                    "description": "Only return results published within this many days. Set it whenever the question is time-sensitive: 30 for news, 365 for a field's state of the art. If the query contains a word like latest, recent, current or news and you leave this unset, a 180 day window is applied automatically - so set it explicitly when you need something wider or narrower. Never put a year or month in the query itself to express recency; that reaches for dates from your training data and gets stripped.",
                 },
             },
             "required": ["query"],
@@ -512,27 +512,42 @@ _RECENCY_WORDS = re.compile(
     re.IGNORECASE,
 )
 _YEAR_TOKEN = re.compile(r"\b(19|20)\d{2}\b")
+_MONTH_TOKEN = re.compile(
+    r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)"
+    r"(uary|ruary|ch|il|e|y|ust|tember|ober|ember)?\b",
+    re.IGNORECASE,
+)
+
+# Applied when the query asks for recency but the model did not set recency_days.
+# Recency then holds regardless of whether the model remembered to ask for it.
+_DEFAULT_RECENCY_DAYS = 180
 
 
-def _strip_stale_year(query: str) -> tuple[str, str | None]:
-    """Remove a year from queries that also ask for recency.
+def _strip_stale_dates(query: str) -> tuple[str, str | None]:
+    """Remove absolute dates from queries that also ask for recency.
 
-    The tool description already tells the model not to put years in Exa queries.
-    It does it anyway, and reaches for its training-era year rather than the
-    current one: "latest AI technology developments 2024", asked in August 2026,
-    returned a page of December 2024 announcements presented as current.
+    The tool description already says not to put years in Exa queries. React does
+    it anyway and reaches for its training-era date rather than the real one. Asked
+    for "the latest AI tech" in August 2026 it searched "latest AI technology
+    developments 2024", then on the retry "latest AI technology announcements
+    December 2024" - twice, with the current date at the top of its prompt.
 
-    A year plus a recency word is self-contradictory, so the year is dropped. A
-    year without one is probably the actual subject ("1969 moon landing") and is
+    "Latest" and "December 2024" cannot both be true, so the absolute date loses.
+    Months are stripped alongside years, otherwise removing the year leaves an
+    orphan month that skews results on its own. A date with no recency word is
+    probably the subject ("1969 moon landing", "who won the 2024 election") and is
     left alone.
     """
     if not (_RECENCY_WORDS.search(query) and _YEAR_TOKEN.search(query)):
         return query, None
-    cleaned = _YEAR_TOKEN.sub("", query)
-    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -,")
-    if not cleaned:
+    cleaned = _MONTH_TOKEN.sub("", _YEAR_TOKEN.sub("", query))
+    words = [w for w in cleaned.split() if re.search(r"[a-z0-9]", w, re.IGNORECASE)]
+    # Under two words there is no subject left to search on - "latest 2024" would
+    # become "latest". Keep the original in that case; the recency window still
+    # applies and constrains it.
+    if len(words) < 2:
         return query, None
-    return cleaned, query
+    return " ".join(words), query
 
 
 async def _fetch_url(url: str) -> str:
@@ -606,12 +621,18 @@ async def _execute_tool(name: str, inputs: dict) -> str:
     if name == "search":
         from agents import research
         query = inputs.get("query", "")
-        query, original = _strip_stale_year(query)
+        query, original = _strip_stale_dates(query)
         if original:
-            logger.info("ReAct search: stripped year from %r -> %r", original, query)
-        cutoff = None
+            logger.info("ReAct search: stripped dates from %r -> %r", original, query)
+
         days = inputs.get("recency_days")
-        if isinstance(days, int) and days > 0:
+        if not (isinstance(days, int) and days > 0):
+            days = _DEFAULT_RECENCY_DAYS if _RECENCY_WORDS.search(query) else None
+            if days:
+                logger.info("ReAct search: recency query with no window, defaulting to %d days", days)
+
+        cutoff = None
+        if days:
             from datetime import datetime, timedelta, timezone
             cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         results = await research._run_search(query, max_results=5, start_published_date=cutoff)
