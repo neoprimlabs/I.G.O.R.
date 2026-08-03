@@ -329,18 +329,41 @@ connect, report healthy, and silently drop every message.
 
 ## Safety stack
 
-1. **`start.sh`** - `compileall` before launch; on failure `git checkout -- .`
-   and retry.
-2. **`watchdog.py` / `igor-watchdog.service`** - independent systemd service.
-   IGOR writes `restart_requested`, the watchdog restarts within 5s, 300s
-   cooldown.
-3. **`start.sh` crash recovery** - `.crash_detected` marker on non-zero exit
-   restores last known good code on next boot.
+**Read this section before trusting any of it. Most of the documented stack does
+not execute.** Verified on the running server 2026-08-03.
 
-All three operate **above** the host. None can fire if the machine itself
-disappears, which is exactly what happened in July 2026. `scripts/backup_memory.ps1`
-covers that case from outside: a daily off-host backup of `memory/` and `.env`
-plus a service health check, alerting to a Discord webhook.
+| Layer | Documented | Reality |
+|---|---|---|
+| 1. `start.sh` compile check and revert | runs before launch | **never runs.** `igor.service` is `ExecStart=/opt/igor/venv/bin/python main.py`, so start.sh is bypassed entirely |
+| 2. `watchdog.py` restart on sentinel | restarts within 5s | **service is active but powerless.** It shells `sudo systemctl restart igor` as user `igor`, and `igor` has no sudoers entry. Zero restarts in the watchdog's entire journal |
+| 3. `start.sh` crash recovery | reverts to last good commit | **never runs**, same cause as Layer 1 |
+
+The files exist and contain correct logic. Nothing invokes them. This was
+documented as working because the files were checked for content rather than for
+being executed - a distinction worth making explicitly when verifying anything
+here.
+
+**What actually protects the system today**, all of it added 2026-08-02/03:
+
+- `main._smoke_test()` - config sanity plus importing every agent module, exits 1
+  rather than raising so a broken commit refuses to start
+- systemd `Restart=always` - a broken deploy becomes a visible crash loop instead
+  of quiet breakage
+- `scripts/backup_memory.ps1` - compares systemd's restart count against the
+  previous run and alerts on a crash loop, within a day
+
+So a bad change will not run and will be noticed. **Nothing reverts it**, and IGOR
+stays down until a human intervenes.
+
+**Consequence for self-modification:** React can write code and can write the
+restart sentinel, but the restart never happens. Changes sit on disk unloaded
+until someone restarts the service by hand. `restart_self` has never been called
+in 30 days, so this has been true without being noticed.
+
+None of these operate below the host either. When Oracle terminated the instance
+in July 2026, every layer was irrelevant. `scripts/backup_memory.ps1` covers that
+case from outside: a daily off-host backup of `memory/` and `.env` plus a service
+health check, alerting to a Discord webhook.
 
 ---
 

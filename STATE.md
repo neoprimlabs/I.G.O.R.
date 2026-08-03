@@ -52,7 +52,16 @@ that would be expensive to retrofit.
 
 ## Known broken
 
-1. Still on Oracle Always Free, so an entitlement change can terminate the
+1. **The safety stack does not execute, and self-modification cannot deploy.**
+   Found 2026-08-03. `igor.service` runs `main.py` directly, so `start.sh` is never
+   invoked and Layers 1 and 3 (compile check, crash revert) do not run. The
+   watchdog is active but has no sudoers entry, so its `sudo systemctl restart
+   igor` fails - zero restarts in its entire journal. React can therefore write
+   code and write the restart sentinel, but nothing loads the change. What does
+   protect the system: main._smoke_test, systemd Restart=always, and the backup
+   script's crash-loop alert. Nothing reverts a bad change. See ARCHITECTURE.md.
+   **Needs a decision before fixing** - see below.
+2. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 2. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
    systemd reports active but the Discord connection has silently dropped, the
