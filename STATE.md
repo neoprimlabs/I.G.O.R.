@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-02**
+Last updated: **2026-08-03**
 
 ---
 
@@ -24,30 +24,31 @@ Last updated: **2026-08-02**
 
 ## Next action
 
-**Only three items left in the whole queue.** R0, R1, R2, Phase C except C.5, and
-R3.0/R3.1/R3.4 are all done and deployed.
+Restoration is finished. R0, R1, R2, R3 and Phase C except C.5 are all done. The
+queue is now forward work, in GAMEPLAN phases M, T, V, I and X.
 
-- **R3.2** startup smoke test on routing fast paths and model config. Pure logic,
-  no API calls, testable locally. Smallest of the three.
-- **R3.3** injection screening. Respecced 2026-08-02 because the original guarded
-  the wrong boundary - it screened the user's own messages, but the user is the
-  only authorised sender. The exposure is content React fetches and feeds back
-  into its own conversation. Read the rewritten step before building.
-- **C.5** in-bot heartbeat for gateway liveness. Needs one free external account
-  from the user, so it cannot be done unattended.
+**Next: T.1 - tests into the repo.** Roughly eight test files were written on
+2026-08-02 and 08-03 and every one was a throwaway in the session scratchpad.
+Between them they caught the watchdog's `2>&1` bug, the router classifying opinion
+questions as CONFIG, reasoning budgets below the empty-content floor, a missing
+stdlib import that would have crashed a deploy, the full injection quarantine, and
+the search date edge cases. None of it is reproducible and nothing prevents any of
+it regressing. A routing regression was caused and caught by an ad-hoc test on
+08-03, which is the argument.
 
-Nothing blocks anything else. Start with whichever suits the session.
+Then **V.1**, the improvement loop with sign-off buckets. Highest value item on the
+list: the critic is off and skills_react.md is gone, so IGOR cannot currently learn
+anything, and self-improvement is the stated vision.
 
-## What R2 and R3.0 actually changed, measured
+M.1 and M.2 are done. **M.3 matters more than it looks** - four files have now
+drifted the same way (CLAUDE.md, skills_react.md, agents.md/projects.md, and
+ARCHITECTURE.md itself). The rule to settle is that any file stating verifiable
+facts needs an owner and a trigger, or it eventually lies to the user.
 
-- "What's new IGOR?" went from four minutes and six escalating 429 backoffs,
-  answered with a five-section status report, to an instant reply in prose.
-- 429s dropped from a storm inside a single turn to one in twenty minutes.
-- Research went from recording nothing at all - two runs, zero findings - to three
-  iterations completing with 10 of 10 findings carrying source URLs and zero
-  fabricated "nobody is doing X" claims.
-- Chat now works *during* a research run. Confirmed live: `Router: CHAT -> Direct`
-  fired mid-run without disturbing it.
+**The user has decided IGOR stays a personal tool.** An app-store version was
+considered and set aside, not ruled out. Do not build toward multi-tenancy, but do
+not deepen single-user coupling either: memory and context are the only layers
+that would be expensive to retrofit.
 
 ## Known broken
 
