@@ -194,6 +194,17 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> st
                 f"{', '.join(sorted(_VALID_DIGEST_SECTIONS))}."
             )
 
+    # A question can reach this agent - the router is an 8B model and "what time is
+    # the digest scheduled for" has classified as CONFIG. Writing an identical file
+    # in response to a question is at best noise and at worst a mangled rewrite, so
+    # an unchanged result is treated as "nothing was asked for" and reported instead.
+    if new_content.strip() == (_read_config(filename) or "").strip():
+        logger.info("ConfigEdit produced no change to %s, treating as a question", filename)
+        return (
+            f"Nothing to change - {filename} already reads that way. "
+            f"If you did want something altered, say what should be different."
+        )
+
     # One rolling backup per file, so a bad edit is recoverable immediately rather
     # than waiting on the daily off-host backup.
     path = config.MEMORY_DIR / filename

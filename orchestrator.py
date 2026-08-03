@@ -25,14 +25,17 @@ _DIGEST_COMMANDS = frozenset({
 # easily as "saved settings". CONFIG is now stated as an action on stored config,
 # and CHAT explicitly claims opinion questions.
 _ROUTER_PROMPT = """Classify the user message into exactly one word from this list:
-CHAT - greetings, small talk, opinions, what you think about something, questions about yourself, anything social
-TASK - requests to do work: search, write, analyze, code, read files, produce documents, calculations
-MONITOR - questions asking about scheduler status, watchlist contents, digest contents, system health
-CONFIG - requests to CHANGE saved settings: add or remove a digest section, change a schedule time, edit the watchlist
+CHAT - greetings, small talk, opinions, what you think about something, how you are doing, anything social
+TASK - requests to do work: search, write, analyze, code, read files, produce documents, calculations. Also any question whose subject is IGOR's own implementation: its models, agents, routing, tools, memory design, code, architecture or how any part of it is built or set up
+MONITOR - questions asking what the current setup is: scheduler status, schedule times, watchlist contents, digest contents, system health
+CONFIG - requests to CHANGE a saved setting: add or remove a digest section, change a schedule time, edit the watchlist
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-A message that mentions research, or talks about the research feature, without asking to start one is CHAT."""
+Three rules that override the above:
+A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
+Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
+Asking how IGOR works internally is TASK, not CHAT, even though the subject is IGOR."""
 
 _VERDICT_MAP = {
     "CHAT": "Direct",
