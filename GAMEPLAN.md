@@ -717,6 +717,16 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   IGOR is single-user today. Costs nothing now, and memory plus context is the one
   layer that would be expensive to retrofit for multi-tenancy.
 
+  Design the index in terms of entities and relationships - tasks belong to
+  projects, projects have states, watchlist items have sources - because that is
+  what it is whether or not it is called one. Do NOT reach for RDF, OWL or a graph
+  database to express it. Considered 2026-08-03 after a talk on agents and
+  ontologies: the principle transfers, the machinery does not. Those tools earn
+  their cost on domains with genuinely tangled relationships, and IGOR's whole
+  domain is a task list, a project list, a watchlist and five section names. A
+  formal schema would also be one more hand-maintained description of facts that
+  change, which is the exact failure that hit five files in one week.
+
 - [ ] **V.3 Dev and Comms as real specialists.** IGOR_SPEC.md describes five
   specialists; there are four routed destinations. Both are currently absorbed into
   React. Only worth doing if their prompts would genuinely differ from React's.

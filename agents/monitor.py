@@ -60,25 +60,40 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
+def _parse_digest_schedule(content: str) -> Optional[tuple[int, int]]:
+    """Extract (hour, minute) UTC from schedule_config.md content, or None.
+
+    Split out from _get_digest_schedule so ConfigEdit can check a proposed file
+    against the real parser before writing it. Validating against a second copy of
+    these rules would just create two things that can drift apart.
+    """
+    current_section = None
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            current_section = stripped[3:].strip()
+        elif current_section == "morning_digest" and stripped.lower().startswith("time:"):
+            tokens = stripped[5:].strip().split()
+            if not tokens:
+                continue
+            parts = tokens[0].split(":")
+            if len(parts) != 2:
+                continue
+            try:
+                hour, minute = int(parts[0]), int(parts[1])
+            except ValueError:
+                continue
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return hour, minute
+    return None
+
+
 def _get_digest_schedule() -> tuple[int, int]:
     """Read morning_digest time from schedule_config.md. Returns (hour, minute) UTC."""
     path = config.MEMORY_DIR / "schedule_config.md"
     if not path.exists():
         return 13, 0
-    current_section = None
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            current_section = stripped[3:].strip()
-        elif current_section == "morning_digest" and stripped.lower().startswith("time:"):
-            time_str = stripped[5:].strip().split()[0]
-            parts = time_str.split(":")
-            if len(parts) == 2:
-                try:
-                    return int(parts[0]), int(parts[1])
-                except ValueError:
-                    pass
-    return 13, 0
+    return _parse_digest_schedule(path.read_text(encoding="utf-8")) or (13, 0)
 
 
 def _get_watchlist() -> list[str]:

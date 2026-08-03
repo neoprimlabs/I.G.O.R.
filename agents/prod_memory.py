@@ -183,6 +183,22 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> st
         logger.info("ConfigEdit reply for %s had no usable file block", filename)
         return f"[ConfigEdit could not apply this automatically] {raw.strip()}"
 
+    if filename == "schedule_config.md":
+        # Round-trip through the parser that will actually read this at startup.
+        # Without it, "change the digest to 8am" could write `time: 8am`, report
+        # success, and leave the digest firing at its old time forever with nothing
+        # to say otherwise - a silent failure of exactly the kind the debugging
+        # playbook warns about.
+        from agents import monitor
+        if monitor._parse_digest_schedule(new_content) is None:
+            logger.warning("ConfigEdit rejected an unparseable schedule")
+            return (
+                "I did not apply that. schedule_config.md needs a line like "
+                "`time: 08:00 UTC` under `## morning_digest`, in 24-hour HH:MM. "
+                "What that would have written does not parse, so the digest would "
+                "have kept running at its old time without telling you."
+            )
+
     if filename == "digest_config.md":
         bad = _invalid_digest_sections(new_content)
         if bad:
