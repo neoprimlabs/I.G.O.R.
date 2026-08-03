@@ -578,12 +578,35 @@ none depend on each other. Good filler work.
   incident) all sit in /opt/igor doing nothing. Remove with `sudo -u igor`, confirm
   nothing references them first.
 
-- [ ] **C.5 In-bot heartbeat for gateway liveness.** Current monitoring
-  (`scripts/backup_memory.ps1`) detects a dead host or dead process, but not a live
-  process whose Discord gateway has silently dropped: systemd reports active while
-  the green dot is out. Fix: ping a dead-man's-switch from inside the bot on a
-  timer, gated on `bot.is_ready()` and `math.isfinite(bot.latency)` so it means
-  what the green dot means. Needs one free external account for the switch.
+- [ ] **C.5 In-bot heartbeat for gateway liveness.** Two gaps, one fix.
+
+  First: `scripts/backup_memory.ps1` detects a dead host or dead process, but not a
+  live process whose Discord gateway has silently dropped. systemd reports active
+  while the green dot is out.
+
+  Second, and larger: that script only runs when the user's PC is on. While the PC
+  is off, nothing watches IGOR at all. T.4 removes the PC from backups; this removes
+  it from alerting.
+
+  **Build.** A `discord.ext.tasks` loop in `interfaces/discord_bot.py`, every 5
+  minutes, pinging a dead-man's-switch URL. **Gate it on `bot.is_ready()` and
+  `math.isfinite(bot.latency)`.** A bare timer keeps firing happily while the
+  gateway is down, reporting healthy with the dot out - which is the exact failure
+  this exists to catch. Those two conditions make the ping mean what the green dot
+  means.
+
+  **Failure modes:** the ping itself failing must never disturb the bot - wrap it,
+  log at WARNING, carry on. Do not ping during startup before the first
+  `on_ready`. The switch URL is a credential of sorts, so it goes in `.env`, not the
+  repo, and the loop should no-op cleanly when the variable is unset so local runs
+  and forks do not error.
+
+  **Verify:** confirm pings arrive on a normal run. Stop the service and confirm an
+  alert arrives after the grace period. Ideally also sever the gateway while leaving
+  the process up, and confirm pings stop - that is the case the gating exists for.
+
+  **Needs from the user:** one free account, healthchecks.io or UptimeRobot's
+  heartbeat monitor. Commit: `Heartbeat from inside the gateway connection, so silence means the dot is out`
 
 ## Phase M - What IGOR believes about itself
 
@@ -630,6 +653,48 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   them, and reference them from CLAUDE.md's deployment workflow.
 
 - [ ] **T.2 C.5 in-bot heartbeat.** See Phase C. Needs a free account from the user.
+
+- [ ] **T.4 Server-side memory push, so backups do not depend on the PC.**
+  Added 2026-08-03 after the 3am task ran and the question came up.
+
+  **Problem.** `scripts/backup_memory.ps1` is a Windows Scheduled Task. No PC, no
+  backup. `StartWhenAvailable` catches up on return, so a week away produces one
+  backup rather than seven, and memory changes during the gap are unprotected if
+  the server dies. The health check rides in the same task, so while the PC is off
+  nothing is watching IGOR at all - which is exactly the July failure, where the
+  instance was gone for two days before anyone noticed.
+
+  **Build.** A systemd timer on the server, hourly, that commits `memory/*.md` to a
+  SEPARATE private repo and pushes over a deploy key.
+
+  - `/opt/igor` is already a git work tree and `memory/` is gitignored there, so do
+    not nest a repo. Preferred: a separate GIT_DIR with the work tree pointed at
+    memory, `git --git-dir=/opt/igor-memory.git --work-tree=/opt/igor/memory`.
+    Acceptable fallback: rsync into a staging clone and commit there.
+  - **Allowlist, never denylist.** Add `*.md` explicitly. Do not add everything and
+    exclude `.env` - one mistake in an ignore rule publishes the Discord token, the
+    Groq key and the Exa key. An allowlist fails closed.
+  - **Exclude `context.db`.** It changes on every message, it is binary, and hourly
+    commits would churn the repo for something ephemeral. The daily PC-side backup
+    already captures it.
+  - Commit only when something changed (`git diff --quiet`), so quiet days produce
+    no commits.
+  - `.env` is handled separately and by hand. It changes rarely and secrets do not
+    belong in a repo, private or otherwise.
+
+  **Failure modes to handle:** push fails on network or auth - log at ERROR, exit
+  cleanly, retry next hour, never crash or block IGOR. Deploy key revoked - this
+  fails silently forever, so the PC-side backup should check the age of the newest
+  remote commit and alert if it exceeds a day. Repo growth - .md files are small,
+  but revisit if it ever matters.
+
+  **Verify:** edit a memory file on the server, wait for the timer, confirm the
+  commit appears on the remote. Confirm `.env` and `context.db` are absent from the
+  repo. Break the remote temporarily and confirm the timer logs an error and does
+  not disturb IGOR.
+
+  **Needs from the user:** a private repo and a deploy key on the server. About ten
+  minutes. Commit: `Server pushes memory to a private repo hourly, independent of the PC`
 
 - [ ] **T.3 Weather fetch failure in the digest.** monitor.py logged
   `HTTPError: HTTP Error 503` at 13:00 on 2026-08-02 during the morning digest. The
