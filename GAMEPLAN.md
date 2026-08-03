@@ -765,6 +765,43 @@ applicable. What is left is a deployment-safety problem, which has mature answer
 health-gated rollout, automatic rollback, immutable versioned artifacts, success
 criteria defined upfront and enforced by the system.
 
+**UPDATED 2026-08-03 against current work.** DGM is arXiv 2505, fifteen months old.
+A survey of 1,250 papers (arXiv 2607.07663, July 2026) changes the emphasis in four
+ways.
+
+1. **The field left unrestricted self-modification behind.** "Rather than full
+   self-reference, modern approaches evolve one component of the system while
+   freezing the rest." Contemporary work targets rubric and verifier evolution, not
+   codebase rewriting. IGOR should not aim at DGM's shape.
+
+2. **The verification hierarchy, in descending reliability:** formal verifiers,
+   then execution feedback (tests, compilers), then learned judges (LLM-as-judge),
+   then intrinsic signals (confidence). "Demonstrated self-improvement strength
+   tracks this hierarchy. Collapse and failure concentrate at lower rungs."
+   S.1 gates on compile, import and gateway connection - rung 2, the highest
+   available here. **Never gate a deploy on a model's judgement or an agent's own
+   confidence.** Those are rungs 3 and 4 and they are where systems fail.
+
+3. **Where the stakes are.** "Nearly all of the 1,250 papers surveyed here study
+   bounded self-refinement (human-on-the-loop cells); open-ended RSI - closed loops
+   that also modify their own evaluators - is where the safety stakes concentrate."
+   IGOR's original design was exactly that case: start.sh sat inside the tree
+   write_file could edit. Target position is bounded, deployment-time,
+   human-on-the-loop. Not a closed loop.
+
+4. **Self-confirming loops.** "When generator and evaluator share weights,
+   confidence-coupled rewards systematically over-reward high-confidence mistakes."
+   Any evaluator must be a different model from the one being evaluated, and
+   preferably not a model at all.
+
+**Consequence for priority: V.1 is closer to current practice than S.2.** The survey
+describes mature systems accumulating "persistent skill libraries" held externally
+and constraining self-modification to "human-auditable rubric policies" - which is
+a description of V.1's sign-off buckets, not of code self-modification. It also
+notes process-level improvements (reusable verified procedures) compound while
+result-level ones do not. **Do V.1 before S.2.** S.1 remains worth doing on its own
+merits regardless of either.
+
 - [ ] **S.1 Health-gated deploy with automatic rollback. Do this regardless.**
 
   Protects every deploy including manual ones. Today a bad push is compile-checked
