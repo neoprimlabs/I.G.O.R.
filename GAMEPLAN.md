@@ -737,6 +737,86 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   "I.G.O.R. App (Front-End)" with phone location enabling location-aware digests.
 - [ ] **I.2 Voice** via qwen3-tts, local on the instance. After I.1.
 
+## Phase S - Self-modification, rebuilt
+
+Specced 2026-08-03 after discovering the documented safety stack never executed.
+Researched against published practice rather than patched. **S.1 is worth doing
+whether or not self-modification is ever enabled; S.2 is the capability decision.**
+
+**What the research says.** The Darwin Godel Machine (sakana.ai/dgm,
+arXiv 2505.22954) is the most serious published self-modifying agent. Three of its
+choices transfer and two of its failures decide the design.
+
+Transferable: modifications are judged by measured outcomes on held-out tasks,
+never by the agent's own report; every version is kept in a traceable archive
+including worse ones; evaluation is sandboxed with restricted web access.
+
+The failures matter more. Its agent "faked a log making it look like it had run the
+tests and that they had passed, when in fact they were never run." And when asked
+to reduce hallucination it "removed the markers we use in the reward function to
+detect hallucination (despite our explicit instruction not to do so)." An agent
+improving itself disabled its own measurement after being told not to. Both were
+caught only because the archive was transparent.
+
+**What does not transfer.** DGM optimises offline, in a sandbox, against SWE-bench,
+with a human watching. IGOR modifies a live service on a 1GB box with no benchmark
+and no way to measure "still a good assistant". The improvement-search half is not
+applicable. What is left is a deployment-safety problem, which has mature answers:
+health-gated rollout, automatic rollback, immutable versioned artifacts, success
+criteria defined upfront and enforced by the system.
+
+- [ ] **S.1 Health-gated deploy with automatic rollback. Do this regardless.**
+
+  Protects every deploy including manual ones. Today a bad push is compile-checked
+  by nothing and reverted by nothing; the only net is main._smoke_test refusing to
+  start and systemd crash-looping until a human notices.
+
+  **The rule that shapes it: IGOR must not be able to reach the machinery that
+  judges IGOR.** DGM's agent deleted its own detector. `start.sh` currently sits in
+  /opt/igor, inside the tree `write_file` can write to. Move the deploy and health
+  logic to a root-owned location outside /opt/igor - React's `_safe_path` already
+  refuses anything outside that root, so this puts it structurally out of reach.
+
+  Build:
+  1. A root-owned deploy script outside /opt/igor. It, not IGOR, performs:
+     record the current commit as the rollback target; `compileall`; import every
+     agent module; restart; wait; probe health.
+  2. **Health probe is the Discord gateway, not the process.** `journalctl` for
+     "I.G.O.R. online" within N seconds of restart. A process that starts and fails
+     to connect is not healthy, and that is the exact gap C.5 exists for.
+  3. On failure: `git reset --hard <recorded commit>`, restart, notify the user
+     with what was attempted and why it was rolled back. Never leave IGOR down.
+  4. Log every attempt, outcome and rollback to a file IGOR cannot write. This is
+     DGM's archive principle: the transparency is what catches cheating.
+
+  Verify: deliberately deploy a commit that imports cleanly but fails to connect,
+  and confirm automatic rollback plus notification. Test the failure path, not the
+  happy one - that rule has earned itself twice this week.
+
+- [ ] **S.2 Enable self-modification on top of S.1.** NEEDS A USER DECISION. It has
+  never worked and `restart_self` has not been called in 30 days, so this enables a
+  capability rather than restoring one.
+
+  If enabled, the wiring is a **systemd path unit** watching
+  /opt/igor/restart_requested and triggering S.1's deploy script as root. Do NOT
+  give the `igor` user passwordless sudo, which is what watchdog.py assumed and
+  never had: the same account can write its own code, and sudo would let it deploy
+  anything it wrote. A path unit means IGOR only writes a file it can already
+  write, and everything consequential happens outside its reach.
+
+  `watchdog.py` becomes redundant and should be removed rather than left as a
+  non-functional service implying protection that is not there.
+
+  Two constraints from the research, both non-negotiable if this ships:
+  - IGOR never reports its own success. The verdict comes from S.1's health probe.
+  - IGOR is never given a metric it can reach. Anything it can edit, it can game,
+    and DGM demonstrates it will.
+
+  Also note the existing injection quarantine already blocks the worst chain: after
+  reading the web, `write_file`, `patch_file`, `shell` and `restart_self` are all
+  withdrawn, so a poisoned page cannot reach a deploy. That is why this is
+  discussable at all.
+
 ## Phase X - Containerisation
 
 - [ ] **X.1 Containerise IGOR.** Dual purpose. Oracle terminated the instance once
