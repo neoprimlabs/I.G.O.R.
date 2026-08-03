@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Awaitable, Callable, Optional
 
 import openai
@@ -67,7 +68,11 @@ _TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The search query"}
+                "query": {"type": "string", "description": "The search query"},
+                "recency_days": {
+                    "type": "integer",
+                    "description": "Only return results published within this many days. Use it whenever the question is time-sensitive - latest, recent, current, news, what is happening now, this week, this year. 30 is a good default for news, 365 for a field's state of the art. Omit it only for questions where old sources are equally valid, like history or definitions.",
+                },
             },
             "required": ["query"],
         },
@@ -223,7 +228,8 @@ _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operation
 Use tools when they improve your response. Do not use them for things you already know well.
 
 When to use tools:
-- search: current information, facts you are uncertain about, documentation, news, anything time-sensitive
+- search: current information, facts you are uncertain about, documentation, news, anything time-sensitive. For anything time-sensitive, set recency_days - without it you will get years-old articles that read as current
+- Every search result carries a Published date. Check it against the current date at the top of this prompt before calling anything recent, latest, or new. If the best sources you found are old, say how old rather than presenting them as current
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
 - memory_write: when the user asks you to remember, add, store, or update something
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
@@ -500,6 +506,35 @@ async def _run_shell(command: str, timeout: int = 10) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
+_RECENCY_WORDS = re.compile(
+    r"\b(latest|recent|recently|current|currently|newest|new|news|today|"
+    r"this week|this month|this year|right now|so far|up to date|state of the art)\b",
+    re.IGNORECASE,
+)
+_YEAR_TOKEN = re.compile(r"\b(19|20)\d{2}\b")
+
+
+def _strip_stale_year(query: str) -> tuple[str, str | None]:
+    """Remove a year from queries that also ask for recency.
+
+    The tool description already tells the model not to put years in Exa queries.
+    It does it anyway, and reaches for its training-era year rather than the
+    current one: "latest AI technology developments 2024", asked in August 2026,
+    returned a page of December 2024 announcements presented as current.
+
+    A year plus a recency word is self-contradictory, so the year is dropped. A
+    year without one is probably the actual subject ("1969 moon landing") and is
+    left alone.
+    """
+    if not (_RECENCY_WORDS.search(query) and _YEAR_TOKEN.search(query)):
+        return query, None
+    cleaned = _YEAR_TOKEN.sub("", query)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -,")
+    if not cleaned:
+        return query, None
+    return cleaned, query
+
+
 async def _fetch_url(url: str) -> str:
     import httpx
 
@@ -571,9 +606,18 @@ async def _execute_tool(name: str, inputs: dict) -> str:
     if name == "search":
         from agents import research
         query = inputs.get("query", "")
-        results = await research._run_search(query, max_results=5)
+        query, original = _strip_stale_year(query)
+        if original:
+            logger.info("ReAct search: stripped year from %r -> %r", original, query)
+        cutoff = None
+        days = inputs.get("recency_days")
+        if isinstance(days, int) and days > 0:
+            from datetime import datetime, timedelta, timezone
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        results = await research._run_search(query, max_results=5, start_published_date=cutoff)
         body = research._format_results(results) if results else "No results found."
-        return f"{_UNTRUSTED_OPEN}\nSearch results for: {query}\n\n{body}\n{_UNTRUSTED_CLOSE}"
+        window = f" (published within {days} days)" if cutoff else ""
+        return f"{_UNTRUSTED_OPEN}\nSearch results for: {query}{window}\n\n{body}\n{_UNTRUSTED_CLOSE}"
 
     if name == "memory_read":
         filename = inputs.get("file", "")

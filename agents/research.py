@@ -15,7 +15,15 @@ async def _run_search(query: str, max_results: int = 5, start_published_date: st
             kwargs["start_published_date"] = start_published_date
         response = exa.search_and_contents(query, **kwargs)
         return [
-            {"title": r.title or "No title", "url": r.url, "body": r.text or ""}
+            {
+                "title": r.title or "No title",
+                "url": r.url,
+                "body": r.text or "",
+                # Exa returns this and it was being discarded, so callers had no way
+                # to notice a result was years old. React reported December 2024
+                # releases as "the latest AI tech" in August 2026 because of it.
+                "published": (getattr(r, "published_date", None) or "")[:10],
+            }
             for r in response.results
         ]
 
@@ -30,5 +38,11 @@ async def _run_search(query: str, max_results: int = 5, start_published_date: st
 def _format_results(results: list[dict]) -> str:
     lines = []
     for i, r in enumerate(results, 1):
-        lines.append(f"[{i}] {r.get('title', 'No title')}\nURL: {r.get('url', '')}\n{r.get('body', '')}")
+        published = r.get("published") or "date unknown"
+        lines.append(
+            f"[{i}] {r.get('title', 'No title')}\n"
+            f"URL: {r.get('url', '')}\n"
+            f"Published: {published}\n"
+            f"{r.get('body', '')}"
+        )
     return "\n\n".join(lines)

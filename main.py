@@ -84,6 +84,18 @@ def _smoke_test() -> None:
         "synthesize research": "SynthesizeResearch",
     }
 
+    # Import every agent module. py_compile only checks syntax, so a module-level
+    # NameError (a missing stdlib import is the usual one) passes the pre-commit
+    # check and then fails on the first message that routes there. Agents are
+    # imported lazily at call time, so nothing else catches this at startup.
+    for module in ("agents.direct", "agents.react", "agents.monitor",
+                   "agents.research", "agents.research_loop",
+                   "agents.prod_memory", "agents.evaluator", "context_store"):
+        try:
+            __import__(module)
+        except Exception as e:
+            problems.append(f"{module} failed to import - {type(e).__name__}: {e}")
+
     try:
         from orchestrator import Orchestrator
 

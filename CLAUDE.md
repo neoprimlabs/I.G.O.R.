@@ -84,8 +84,11 @@ which terminal (local PowerShell vs SSH); PowerShell has no `&&`.
 7. **A scheduled job silently does nothing** -> APScheduler failures surface only in
    ERROR lines in journalctl. The httpx request logs will not show a failed job, so
    an absence of request logs is the symptom, not the evidence.
-8. **`NameError: asyncio`** in an agent or monitor module -> asyncio is not
+8. **`NameError` on a stdlib module** (asyncio, re, json) in an agent -> it is not
    transitively available from other imports. Import it explicitly at the top.
+   `py_compile` will NOT catch this: it checks syntax, not names, so the commit
+   passes and the module fails when something first routes to it. The startup check
+   in main.py imports every agent module for exactly this reason.
 
 ## Style Rules (All Agents)
 Every `_DEFAULT_SYSTEM_PROMPT` must include:
