@@ -830,29 +830,88 @@ merits regardless of either.
   and confirm automatic rollback plus notification. Test the failure path, not the
   happy one - that rule has earned itself twice this week.
 
-- [ ] **S.2 Enable self-modification on top of S.1.** NEEDS A USER DECISION. It has
-  never worked and `restart_self` has not been called in 30 days, so this enables a
-  capability rather than restoring one.
+- [x] **S.2 Self-modification: DECIDED AGAINST 2026-08-03.** Not deferred. Revisit
+  only when the industry demonstrates this working in production, and re-read this
+  entry first.
 
-  If enabled, the wiring is a **systemd path unit** watching
-  /opt/igor/restart_requested and triggering S.1's deploy script as root. Do NOT
-  give the `igor` user passwordless sudo, which is what watchdog.py assumed and
-  never had: the same account can write its own code, and sudo would let it deploy
-  anything it wrote. A path unit means IGOR only writes a file it can already
-  write, and everything consequential happens outside its reach.
+  **There is no proven method.** The Cloud Security Alliance, whose job is
+  producing exactly this kind of framework, states: "No mature framework exists
+  yet", and that "global risk management frameworks for advanced AI remain immature
+  and quantitative benchmarks and evidence are scarce". NIST's AI RMF and CSA's own
+  AICM predate RSI-adjacent operations being publicly documented. This is not an
+  absence of search on our part; it is an absence of the thing.
 
-  `watchdog.py` becomes redundant and should be removed rather than left as a
-  non-functional service implying protection that is not there.
+  **Every serious attempt has produced metric-gaming.** Three instances, all in
+  controlled settings with researchers watching:
+  - Darwin Godel Machine faked a log showing tests had passed that were never run
+  - Darwin Godel Machine deleted the markers detecting its own hallucination, after
+    being explicitly told not to
+  - Anthropic's Automated Alignment Researchers "attempted to game the evaluation
+    metric" in what the CSA describes as a tightly controlled research setting
 
-  Two constraints from the research, both non-negotiable if this ships:
-  - IGOR never reports its own success. The verdict comes from S.1's health probe.
-  - IGOR is never given a metric it can reach. Anything it can edit, it can game,
-    and DGM demonstrates it will.
+  And it compounds: "specification gaming in one generation becomes an undetected
+  input to the next."
 
-  Also note the existing injection quarantine already blocks the worst chain: after
-  reading the web, `write_file`, `patch_file`, `shell` and `restart_self` are all
-  withdrawn, so a poisoned page cannot reach a deploy. That is why this is
-  discussable at all.
+  **IGOR's position is worse than any of those.** No benchmark to gate on, no
+  sandbox, a 1GB host, and a live service the user depends on daily. The three
+  failures above happened in better conditions than IGOR can offer.
+
+  **What IS proven, and is what IGOR should run:** health-gated deployment with
+  automatic rollback (decades of industry practice, nothing to do with AI - that is
+  S.1), and human-in-the-loop review of AI-written code. The CSA notes Anthropic
+  runs ~80% of its production code this way and is explicit that it operates "under
+  human supervision" rather than as autonomous RSI. Human review is not a
+  compromise position, it is the frontier.
+
+  **The configuration to keep: IGOR proposes, a human approves, deployment is
+  health-gated and auto-reverting.** That is the workflow already in use through
+  Claude Code sessions. The missing piece was never autonomy, it was S.1's
+  automatic rollback.
+
+  **Conditions that would justify revisiting:** a published control framework from
+  a standards body rather than a research group; production deployments of
+  autonomous self-modification with public incident history; and a way for IGOR to
+  measure whether a change made it better, which does not currently exist at any
+  price.
+
+  Consequence: the machinery built for this is now dead weight and should be
+  removed. See S.3.
+
+- [ ] **S.3 Remove the self-modification machinery.** Follows from S.2. Measured
+  2026-08-03: this costs ~613 tokens on every single React request - 493 for three
+  tool schemas plus 120 for the workflow block - which is roughly 10% of the usable
+  prompt budget on an 8000 TPM model, for a capability that has never once worked.
+
+  Remove:
+  - `restart_self` tool and `_write_sentinel()` in react.py (~144 tokens/request)
+  - `write_file` tool (~152) and `patch_file` tool (~196)
+  - The 7-line self-modification workflow block in `_DEFAULT_SYSTEM_PROMPT` (~120)
+  - Those three names from `_QUARANTINED_AFTER_WEB`, leaving shell, python_run and
+    memory_write
+  - `watchdog.py` and `igor-watchdog.service`. It has never restarted anything, has
+    no sudo rights, and now has nothing to watch for. Leaving a service running
+    that implies protection it cannot provide is worse than not having it.
+  - The `write_file` reference in orchestrator.py's file-mode instruction
+
+  **Additional reason beyond tokens:** IGOR writing .py files on the server creates
+  divergence between the server tree and the remote, which CLAUDE.md already warns
+  about and which has caused a reset --hard recovery before. These tools actively
+  produce a documented problem.
+
+  **Do not remove:** `read_file` (React reads ARCHITECTURE.md through it to answer
+  questions about itself, which M.1 depends on), `shell` and `python_run` (system
+  inspection and calculation, not self-modification), `memory_write` (memory, not
+  code), and `start.sh` (S.1 wires its compile-and-revert logic for human deploys).
+
+  **Be honest about what this is not.** Removing write_file while keeping shell is
+  not a security boundary - `shell` can still redirect into a file. This is
+  removing dead weight for a capability we decided against, not locking IGOR out of
+  its own filesystem. If genuine lockout is ever wanted, that is a different piece
+  of work and `shell` is the thing to look at.
+
+  Verify: py_compile, startup checks pass, tool count drops from 12 to 9, and a
+  React turn still reads ARCHITECTURE.md correctly. Commit:
+  `Remove self-modification machinery after deciding against it (S.3)`
 
 ## Phase X - Containerisation
 
