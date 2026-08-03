@@ -422,7 +422,23 @@ Reply with the single word only.
   Verify: run `deep research [2] <question>`, confirm raw file arrives, then
   "synthesize research" produces a summary. Commit: `Research loop delivers raw findings first; synthesis only on request`
 
-- [ ] **R3.2 Self-mod smoke test (old 2.4).** In start.sh, after launching is not
+- [x] **R3.2 Self-mod smoke test (old 2.4).** DONE 2026-08-03. `_smoke_test()` runs
+  in main.py after `_ensure_memory_files()`. Checks all six `config.MODELS` roles
+  are present and non-empty, four routing fast paths resolve correctly, and - added
+  beyond the step - that DISCORD_BOT_TOKEN, GROQ_API_KEY and AUTHORIZED_USER_ID are
+  set and CONTEXT_WINDOW is at least 1. The credential checks earn their place
+  because an unset AUTHORIZED_USER_ID is the worst failure mode available: the bot
+  connects, reports healthy, and silently drops every message. Exits 1 rather than
+  raising so start.sh crash recovery restores the last good commit.
+  The four probe messages all resolve on fast paths, so no API call happens at
+  startup; if one ever stops matching, the check would make a real call, which is
+  why they are exact. Verified with seven cases: healthy config passes, and blanked
+  model, removed model key, zero AUTHORIZED_USER_ID, empty GROQ key, zero
+  CONTEXT_WINDOW and a broken fast path each exit 1 with a specific message.
+  NOTE on testing: the first version of that test was worthless - every case exited
+  1 because `import main` pulls in discord.py, which is deliberately not installed
+  locally, so six failures looked like six passes. The Discord layer has to be
+  stubbed in sys.modules to exercise this. Original step text follows. In start.sh, after launching is not
   possible (main.py blocks), so instead: in main.py, after `_ensure_memory_files()`,
   add a `_smoke_test()` that instantiates the Orchestrator classifier fast paths
   with three canned strings and asserts expected destinations (pure logic, no API

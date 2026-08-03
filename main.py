@@ -46,9 +46,73 @@ def _ensure_memory_files() -> None:
             logging.getLogger(__name__).info("Created memory file: %s", filename)
 
 
+def _smoke_test() -> None:
+    """Fail loudly at boot instead of quietly at runtime.
+
+    Config and pure logic only, no API calls. The bar for inclusion is: would this
+    let IGOR start successfully and then be unable to do its job? An empty
+    AUTHORIZED_USER_ID is the clearest case - the bot connects, looks healthy, and
+    silently drops every message the user sends.
+
+    On failure this exits 1 rather than raising, so start.sh's crash recovery
+    restores the last good commit on the next boot.
+    """
+    log = logging.getLogger(__name__)
+    problems: list[str] = []
+
+    for role in ("router", "chat", "react", "research", "evaluator", "summary"):
+        model = config.MODELS.get(role)
+        if not isinstance(model, str) or not model.strip():
+            problems.append(f"config.MODELS[{role!r}] is missing or empty")
+
+    if not config.DISCORD_BOT_TOKEN:
+        problems.append("DISCORD_BOT_TOKEN is empty - check .env")
+    if not config.GROQ_API_KEY:
+        problems.append("GROQ_API_KEY is empty - check .env")
+    if not config.AUTHORIZED_USER_ID:
+        problems.append("AUTHORIZED_DISCORD_USER_ID is unset - every message would be silently dropped")
+    if config.CONTEXT_WINDOW < 1:
+        problems.append(f"CONTEXT_WINDOW is {config.CONTEXT_WINDOW}, must be at least 1")
+
+    # These four messages all resolve on routing fast paths, which return before
+    # any model call. If one ever stops matching, this makes a real API call at
+    # startup instead - so keep them exact.
+    expected = {
+        "deep research the history of the transistor": "ResearchLoop",
+        "stop research": "StopResearch",
+        "trigger digest": "Monitor",
+        "synthesize research": "SynthesizeResearch",
+    }
+
+    try:
+        from orchestrator import Orchestrator
+
+        async def _noop(_: str) -> None:
+            return None
+
+        async def _check() -> dict:
+            orch = Orchestrator(notify=_noop)
+            return {msg: await orch._classify(msg) for msg in expected}
+
+        for message, got in asyncio.run(_check()).items():
+            if got != expected[message]:
+                problems.append(f"routing: {message!r} went to {got}, expected {expected[message]}")
+    except Exception as e:
+        problems.append(f"routing check could not run - {type(e).__name__}: {e}")
+
+    if problems:
+        for problem in problems:
+            log.critical("STARTUP CHECK FAILED: %s", problem)
+        log.critical("Refusing to start. Fix the above, or crash recovery will restore the last good commit.")
+        sys.exit(1)
+
+    log.info("Startup checks passed: %d models, 4 routing fast paths, credentials present", len(config.MODELS))
+
+
 def main() -> None:
     _setup_logging()
     _ensure_memory_files()
+    _smoke_test()
     asyncio.run(run_bot())
 
 
