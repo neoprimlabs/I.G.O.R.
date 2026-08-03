@@ -1,19 +1,25 @@
 # ARCHITECTURE.md - What IGOR Actually Is
 
 Describes the system **as it exists today**, verified against the source on
-2026-08-01. Nothing aspirational appears here.
+2026-08-03. Nothing aspirational appears here.
 
 - `IGOR_SPEC.md` is the vision. Some of it has never been built.
 - `GAMEPLAN.md` is the plan. All of it is unbuilt by definition.
 - **This file is reality.** If it disagrees with the code, the code wins and this
   file is wrong - fix it in the same commit.
 
+> That last rule was broken once already. Between 2026-08-02 and 2026-08-03 this
+> file went 24 commits without an update while R2.0 through R3.3 changed most of
+> what it describes. IGOR reads this file to answer questions about itself, so it
+> confidently told the user it used keyword routing days after the model router
+> shipped. **Updating this file is part of the change, not a follow-up to it.**
+
 ---
 
 ## The shape, in one sentence
 
-An orchestrator with a keyword router in front of one tool-using generalist
-agent, plus a scheduler and a research loop bolted alongside.
+A model router in front of five destinations, each on its own Groq model and
+rate-limit bucket, plus a scheduler and a research pipeline alongside.
 
 ---
 
@@ -52,38 +58,89 @@ A Discord DM travels this path every time:
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
    auth check in the system; everything downstream trusts it.
-3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. This
-   is a flag, not a route.
-4. **`orchestrator._classify`** - pure keyword matching, no model call:
+3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
+   `file:` request skips the router entirely and goes to React, because it is
+   document work regardless of what it asks for.
+4. **`orchestrator._classify`** - fast paths first, no model call:
 
    ```
-   substring in _MONITOR_TRIGGERS       -> Monitor
-   substring in _STOP_RESEARCH_TRIGGERS -> StopResearch
+   contains    _SYNTH_TRIGGERS          -> SynthesizeResearch
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
-   anything else                        -> React
+   contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
+   exact match _DIGEST_COMMANDS         -> Monitor
    ```
 
-   That last line is why React handles nearly everything.
+   Anything else goes to **one router call**: `MODELS["router"]`
+   (`llama-3.1-8b-instant`), `temperature=0`, `max_tokens=10`, 15s timeout, on a
+   mostly idle bucket. It returns one word, mapped by `_VERDICT_MAP`:
+
+   | Verdict | Destination |
+   |---|---|
+   | `CHAT` | Direct |
+   | `TASK` | React |
+   | `MONITOR` | Monitor |
+   | `CONFIG` | ConfigEdit |
+   | `RESEARCH` | ResearchLoop |
+
+   Any failure - unparseable output, exception, timeout - falls through to React.
+   Fail toward capability, never toward dropping the message. The verdict is
+   logged as `Router: <verdict> -> <destination>`.
+
+   The router is called directly rather than through `call_claude`, because
+   `call_claude`'s rate-limit path notifies the user and sleeps 30s or more, which
+   is wrong for classification. Failing fast to React beats making the user wait
+   to be routed.
+
 5. **`orchestrator._route`** - builds a bound `call_claude`, sets max_tokens
-   (2048 chat, 3072 file mode), dispatches.
-6. **`agents/react.py` `handle`** - the ReAct loop. Detailed below.
-7. **Evaluator** - file mode only. One PASS/FAIL contract check, one retry with
+   (2048 chat, 3072 file mode), dispatches to the destination.
+6. **Evaluator** - file mode only. One PASS/FAIL contract check, one retry with
    feedback, then delivers with an `[Evaluator warning: ...]` prefix. Fails open.
-8. **`orchestrator.process` tail** - critic (disabled), context update (both
+7. **`orchestrator.process` tail** - critic (disabled), context update (both
    sides truncated to 1500 chars, written to the in-memory list and SQLite),
    `[Monitor]` suffix when applicable.
-9. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
-   chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
+8. **`discord_bot`** - `_sanitize` converts em dashes to spaced hyphens and maps
+   remaining typographic punctuation to ASCII, then chunks to Discord's 2000-char
+   limit, hard-splitting over-long single lines.
 
-### Inside the ReAct loop
+---
 
-System prompt is rebuilt on every call from three parts: current UTC datetime,
-then `prompt_react.md` if it exists and is non-empty otherwise the built-in
-default, then learned skills from `skills_react.md`. Messages become
-`[system] + context window + user message`. All 12 tools are attached unless
+## What actually runs
+
+| Component | Reachable via | Model role | Tools |
+|---|---|---|---|
+| Orchestrator | every message | `router` | none |
+| **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 12 |
+| **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
+| **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
+| **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
+| Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` | none |
+
+`agents/research.py` is an Exa search wrapper (`_run_search`, `_format_results`),
+called by React and Monitor. It is not routable and not an agent.
+
+### Direct
+
+One model call, no tool schemas at all, on `llama-3.3-70b-versatile`. It uses the
+`call_claude` passed to it, so chat gets rate-limit backoff and user notification
+that React does not have.
+
+Its prompt forbids claiming anything about IGOR's own state, features or
+performance, because it cannot check. Asked something of that kind it must give a
+two-part answer: the limitation, then the specific check that would answer it.
+
+### React
+
+System prompt is rebuilt on every call from the current UTC datetime plus
+`prompt_react.md` if present, otherwise the built-in default. Messages become
+`[system] + context window + user message`. All 12 tools attach unless
 `allowed_tools` narrows them.
 
-Then up to 8 iterations:
+**The 12 tools:** `search`, `memory_read`, `search_memory`, `python_run`,
+`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
+`send_message`, `memory_write`.
+
+Up to 8 iterations:
 
 | `finish_reason` | Behavior |
 |---|---|
@@ -94,50 +151,85 @@ Then up to 8 iterations:
 
 On iteration exhaustion, one final tool-free call forces a real answer.
 
-**The 12 tools:** `search`, `memory_read`, `search_memory`, `python_run`,
-`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`.
+**Budget guard.** Before every request, `_trim_to_budget` estimates prompt plus
+`max_tokens` and, above 7000, blanks the oldest tool results (protecting the
+newest two) until it fits. Only tool results are touched. If it still does not
+fit, the loop breaks to the forced-final-answer path, which trims with
+`keep_recent=0`. Without this, long tool sessions crossed the model's TPM limit
+around iteration 7 and 413'd, losing the whole turn.
+
+**Search behaviour.** Queries containing both a recency word and an absolute date
+have the date stripped, because the model writes its training-era year into
+queries despite the real date being in its prompt. A recency query with no
+`recency_days` gets a 180-day window automatically. Results carry `Published`
+dates.
+
+### ConfigEdit
+
+Rebuilt from the old ProdMem write helper. Edits exactly three files:
+`digest_config.md`, `schedule_config.md`, `watchlist.md`. Rejects any other
+filename, validates digest section names against the set the digest actually
+reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
+
+**If its output matches the current file, it writes nothing and says so.** The
+router is an 8B model and questions have classified as `CONFIG`; a write agent
+reachable by a question needs a guard that does not depend on classification being
+right.
+
+`prod_memory._write_to_memory` is still used separately by React's `memory_write`
+tool, with a wider allowlist.
+
+### ResearchLoop
+
+**Not a ReAct loop.** Each iteration is a fixed pipeline of isolated calls:
+
+1. **PLAN** - sees the question and prior findings, returns one search query
+2. **SEARCH** - no model, `research._run_search`
+3. **DISTILL** - sees only this one search's raw results, returns 3-5 sourced
+   findings plus a `Next:` thread. The raw results are discarded here and never
+   enter another context
+4. **APPEND** - code, not a model, writes to `research.md`
+
+Gathering and synthesis are deliberately in separate contexts. The previous design
+handed one ReAct loop a batch of searches plus a write instruction, and ReAct
+appends every tool result to a single growing history, so raw material and
+synthesis competed for one 8000 TPM budget. Raw material won: two consecutive runs
+spent all 8 iterations searching, never reached the write, and recorded nothing.
+
+Findings are delivered as a **raw file attachment with no model pass over them**,
+followed by an offer to synthesize on request. A `synthesize research` fast path
+routes to React with an instruction to read the file and not search.
+
+This shape is also, incidentally, the Dual LLM pattern for injection defence: the
+context that sees untrusted web content holds no tools.
 
 ---
 
-## What actually runs
+## Prompt injection defence
 
-| Component | Reachable via | Model role |
-|---|---|---|
-| Orchestrator | every message | none (keyword only) |
-| React (`agents/react.py`) | default for anything unmatched | `react` |
-| Monitor (`agents/monitor.py`) | trigger words + APScheduler | `summary` |
-| ResearchLoop (`agents/research_loop.py`) | `deep research` prefix | `research` |
-| Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` |
+React holds all three legs of the "lethal trifecta" in one context: private data
+(memory files), untrusted content (`fetch_url`, `search`), and outward action
+(`shell`, file writes, self-modification).
 
-### Not agents, despite living in `agents/`
+Two controls, neither of which costs a model call:
 
-- **`prod_memory.py`** is a write helper. React calls `_write_to_memory` through
-  the `memory_write` tool. It is not routable.
-- **`research.py`** is an Exa search wrapper (`_run_search`, `_format_results`).
-  React and Monitor call it. It is not routable.
+1. **Framing.** Search and fetch results are wrapped in
+   `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
+   inside has no authority regardless of what it claims, including claims to come
+   from the user or the system.
+2. **Quarantine.** The moment a web tool runs in a turn, six tools - `shell`,
+   `python_run`, `write_file`, `patch_file`, `restart_self`, `memory_write` - are
+   withdrawn from the schema **and** refused at execution for the rest of that
+   turn. Both layers, because one batch can contain a search and a shell call and
+   `asyncio.gather` gives no ordering guarantee, so the batch is judged as a whole
+   before anything runs.
 
-This naming is a significant source of confusion when reading the tree.
+Consequence: "search for X and save it to tasks.md" takes two turns. React reports
+what it found and the user asks for the write separately, which is a confirmation
+gate on any action derived from the open web.
 
-### File map
-
-| File | Role |
-|---|---|
-| `main.py` | entry point: logging, memory-file templates, starts the bot |
-| `orchestrator.py` | keyword classifier, `call_claude()` helper, `Orchestrator`, critic (disabled) |
-| `agents/react.py` | the ReAct tool loop. 12 tools, 8 iterations, dedupe and retry guards |
-| `agents/monitor.py` | scheduled digest and watchlist via APScheduler. Read-only by design |
-| `agents/research_loop.py` | deep research loop; timestamps and archives `research.md` before each run |
-| `agents/evaluator.py` | PASS/FAIL contract check on file-mode output. Fails open |
-| `agents/prod_memory.py` | memory-write helper with allowlists. Not an agent. Becomes ConfigEdit in R2.3 |
-| `agents/research.py` | Exa search helpers. Not an agent |
-| `interfaces/discord_bot.py` | DMs only, `_PUNCT_MAP` sanitizer, 2000-char chunker |
-| `context_store.py` | SQLite rolling context |
-| `config.py` | env and settings. **Single source of truth for models and context window** |
-| `watchdog.py`, `start.sh` | safety stack layers 2 and 1/3 |
-| `scripts/backup_memory.ps1` | daily off-host backup and health alerting. Runs on the Windows machine, not the server |
-
-`agents/direct.py` is referenced in GAMEPLAN R2.1 and **does not exist yet**.
+Classifier-based screening was specified and deliberately not built. Detection is
+heuristic and cannot guarantee prevention; the constraint is structural instead.
 
 ---
 
@@ -159,6 +251,10 @@ independent buckets, and vary by model (verified empirically 2026-07-09):
 Groq bills against the bucket. Never configure a call where the sum can exceed
 the model's limit.
 
+The research model is a reasoning model, so `max_tokens` covers hidden reasoning
+plus output. Anything under about 1024 returns empty content with a 200 OK rather
+than an error.
+
 **The `openai` package is a client library, not a provider.** Every client is
 built with `base_url="https://api.groq.com/openai/v1"` and `GROQ_API_KEY`.
 Nothing talks to OpenAI. The SDK choice follows from Groq implementing an
@@ -174,11 +270,21 @@ they exist only on the host unless deliberately backed up.
 **Read at startup, restart required:** `schedule_config.md`
 
 **Read per call, immediate effect:** `digest_config.md`, `watchlist.md`,
-`prompt_*.md`, `skills_react.md`
+`prompt_*.md`
 
 **Data:** `context.db` (SQLite rolling context, `CONTEXT_WINDOW = 6`, 200 rows
 retained on disk), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
+
+**Memory holds preferences, history and user facts. It does not hold
+architecture.** `agents.md` and `projects.md` both accumulated architecture
+descriptions that nobody maintained, drifted months out of date, and were reported
+to the user as current fact. Anything verifiable against source belongs in this
+file and is read with `read_file`.
+
+`skills_react.md` and the critic that wrote it are both gone. Nothing modifies
+React's prompt at runtime except `prompt_react.md`, which does not currently
+exist.
 
 ### Agent prompt override pattern
 
@@ -198,10 +304,26 @@ Overrides take effect immediately, no restart. Reset by deleting or emptying the
 file. Prompt files are edited through Claude Code sessions only, never through
 Discord: ProdMem's legacy `%%WRITE%%` regex truncates at the first `%%END%%`.
 
-**Status as of 2026-08-02: no `prompt_*.md` files exist on the server.** Every
-agent is running its built-in default. The mechanism is supported and unused, so
-if an agent behaves unexpectedly, the prompt in the source is the prompt in play.
-`skills_react.md` is the exception that still modifies React's prompt at runtime.
+**No `prompt_*.md` files exist on the server.** Every agent runs its built-in
+default, so the prompt in the source is the prompt in play.
+
+---
+
+## Startup checks
+
+`main._smoke_test()` runs after `_ensure_memory_files()` and exits 1 rather than
+raising, so `start.sh` crash recovery restores the last good commit. It verifies:
+
+- all six `config.MODELS` roles present and non-empty
+- `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
+  at least 1
+- four routing fast paths resolve correctly (all on fast paths, so no API call)
+- **every agent module imports.** `py_compile` checks syntax, not names, and
+  agents are imported lazily, so a missing stdlib import otherwise passes the
+  commit and fails on the first message that routes there
+
+An unset `AUTHORIZED_USER_ID` is the failure this exists for: the bot would
+connect, report healthy, and silently drop every message.
 
 ---
 
@@ -216,45 +338,33 @@ if an agent behaves unexpectedly, the prompt in the source is the prompt in play
    restores last known good code on next boot.
 
 All three operate **above** the host. None can fire if the machine itself
-disappears, which is exactly what happened in July 2026.
+disappears, which is exactly what happened in July 2026. `scripts/backup_memory.ps1`
+covers that case from outside: a daily off-host backup of `memory/` and `.env`
+plus a service health check, alerting to a Discord webhook.
 
 ---
 
 ## Dead weight
 
-Present in the tree, does nothing:
-
-- **Critic is off** (`ENABLE_CRITIC = False`), so `_critic_pass`,
-  `_CRITIC_PROMPT` and `_write_skill` never execute. Consequence worth knowing:
-  `skills_react.md` is still injected into every React prompt, but nothing
-  writes to it anymore. It is frozen at whatever it currently holds.
-- `main.py` creates `skills_research.md`, `skills_dev.md`, `skills_comms.md` on
-  boot. Nothing reads them. (GAMEPLAN R2.4 removes them.)
-- `react.handle` accepts `call_claude` and `thinking`. **Both are unused.** The
-  orchestrator carefully builds a bound caller with rate-limit handling and
-  notification, passes it in, and React ignores it in favor of its own client at
-  `_get_client()`. The main chat path therefore relies on the SDK's
-  `max_retries=5` rather than `call_claude`'s retry-and-notify logic.
-- `_THINKING_BUDGET` is defined in `react.py` and never referenced.
-- `config.ANTHROPIC_API_KEY` is read and unused. Deliberate - it is the standing
-  hook for GAMEPLAN R4.1.
+- `config.ANTHROPIC_API_KEY` is read and unused. Deliberate - the standing hook
+  for GAMEPLAN R4.1.
+- **Critic is off** (`ENABLE_CRITIC = False`), so `_critic_pass` and
+  `_CRITIC_PROMPT` never execute. `_write_skill` and `skills_react.md` are gone
+  entirely. IGOR currently cannot learn anything; GAMEPLAN V.1 addresses that.
 
 ---
 
 ## Known sharp edges
 
-1. **`"digest"` is a bare substring** in `_MONITOR_TRIGGERS` and is checked
-   first. Any message containing that word routes to the read-only Monitor, so
-   "deep research on digest formats" never reaches the research branch.
-2. **No in-turn token budget guard** in `react.handle`. Within one call, every
-   tool round appends up to 4000 chars; by internal iteration 7 or 8 the request
-   itself can exceed the model's TPM limit and 413. This is the root cause of the
-   July 2026 research failures. GAMEPLAN R2.0.
-3. **`requirements.txt` omits `openai`** and includes unused `anthropic`. The
-   live deploy works because `openai` was installed by hand. A clean install from
-   that file produces a bot that fails on first model call.
-4. **`react.py` `python_run` description** advertises `anthropic` to the model as
-   an available sandbox package.
+1. **Monitoring detects a dead process, not a dead gateway.** If IGOR is running
+   and systemd reports active but the Discord connection has silently dropped, the
+   health check reports healthy while the green dot is out. GAMEPLAN C.5.
+2. **The router is an 8B model and misroutes at the margins.** 19 of 20 test cases
+   pass; "what tools do you have access to" lands on Direct rather than React.
+   Structural guards exist where a misroute would be harmful (ConfigEdit's no-op
+   check), and the rest degrade into a worse answer rather than a wrong action.
+3. **Still on Oracle Always Free.** An entitlement change can terminate the
+   instance again, as it did in July 2026.
 
 ---
 
@@ -262,11 +372,11 @@ Present in the tree, does nothing:
 
 Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
-- `agents/direct.py` does not exist. Chat goes through React, with all 12 tool
-  schemas attached, on the saturated 8k bucket. (R2.1)
-- The router is keyword matching, not a model call. (R2.2)
-- No ConfigEdit agent, so natural-language config requests dead-end. (R2.3)
-- Dev, Comms and Prod+Memory were never separate agents.
-- **Prompt-injection screening has never existed**, despite being a Spec
-  Principle 1 requirement. (R3.3)
-- No Flutter UI. Discord is the only interface. (Spec Phase 2)
+- **Dev and Comms as separate specialists.** The spec describes five; there are
+  five routed destinations but Dev and Comms remain absorbed into React.
+- **The improvement loop.** The critic is disabled and nothing writes learned
+  skills, so IGOR cannot improve itself. GAMEPLAN V.1.
+- **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
+- **Voice.** qwen3-tts is planned, not started.
+- **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
+  global, `context.db` has no user column. Single-user is assumed throughout.
