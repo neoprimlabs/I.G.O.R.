@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-03**
+Last updated: **2026-08-08**
 
 ---
 
@@ -24,31 +24,31 @@ Last updated: **2026-08-03**
 
 ## Next action
 
-Restoration is finished. R0, R1, R2, R3 and Phase C except C.5 are all done. The
-queue is now forward work, in GAMEPLAN phases M, T, V, I and X.
+Restoration finished 2026-08-03. Everything since is forward work and bug fixes
+found by using the system.
 
-**Next: T.1 - tests into the repo.** Roughly eight test files were written on
-2026-08-02 and 08-03 and every one was a throwaway in the session scratchpad.
-Between them they caught the watchdog's `2>&1` bug, the router classifying opinion
-questions as CONFIG, reasoning budgets below the empty-content floor, a missing
-stdlib import that would have crashed a deploy, the full injection quarantine, and
-the search date edge cases. None of it is reproducible and nothing prevents any of
-it regressing. A routing regression was caused and caught by an ad-hoc test on
-08-03, which is the argument.
+**The user's direction, set 2026-08-08: a fully autonomous, self improving
+assistant.** GAMEPLAN Phase A specs the path, researched then audited against its
+own sources. Build order, which is not the obvious one:
 
-Then **V.1**, the improvement loop with sign-off buckets. Highest value item on the
-list: the critic is off and skills_react.md is gone, so IGOR cannot currently learn
-anything, and self-improvement is the stated vision.
+1. **A.2 correction logging** - twenty lines, zero model calls, and it starts
+   accruing value immediately. Correction data has a lead time; every day it is not
+   collected is signal lost.
+2. **S.1 health-gated deploy with rollback** - before anything runs unattended
+3. **V.1 improvement loop** - batch review over a corpus that has accumulated
+4. **A.1 goals + A.3 decomposition** - together, once something consumes them
 
-M.1 and M.2 are done. **M.3 matters more than it looks** - four files have now
-drifted the same way (CLAUDE.md, skills_react.md, agents.md/projects.md, and
-ARCHITECTURE.md itself). The rule to settle is that any file stating verifiable
-facts needs an owner and a trigger, or it eventually lies to the user.
+Also open and worth doing: **T.1** (tests into the repo - every test written this
+week was a scratchpad throwaway) and **M.3** (settle the rule that any file stating
+verifiable facts needs an owner, after five files drifted the same way).
 
-**The user has decided IGOR stays a personal tool.** An app-store version was
-considered and set aside, not ruled out. Do not build toward multi-tenancy, but do
-not deepen single-user coupling either: memory and context are the only layers
-that would be expensive to retrofit.
+**Decided against, do not silently revisit: self-modification (S.2).** No proven
+method exists, and three independent research efforts all produced metric-gaming.
+Evidence is in GAMEPLAN Phase S.
+
+**IGOR stays a personal tool.** An app-store version was considered and set aside,
+not ruled out. Do not build toward multi-tenancy; do not deepen single-user
+coupling either.
 
 ## Known broken
 
@@ -93,11 +93,8 @@ machine returns, so time away means late alerts rather than none.
 
 ## Unverified on the server
 
-One thing was deployed but never smoke tested, because the session ended first:
-Direct's rule against reporting on IGOR was broadened after it invented a status
-report ("in the testing phase, promising results"). Ask "How is the deep research
-feature working out?" - it should say it cannot see that from a conversation and
-offer to check, not describe how the feature is performing.
+Nothing outstanding. Everything deployed on 2026-08-08 was tested in Discord by the
+user, and the digest fix was verified against the source article.
 
 ## Recent
 
@@ -110,14 +107,29 @@ offer to check, not describe how the feature is performing.
   backups and alerting built, Phase R2 completed, R3.0 designed against published
   practice rather than patched, and most of Phase C cleared.
 
-## Lesson worth keeping from 2026-08-02
+## Lessons worth keeping
 
-Every real bug that day was found by running the thing, not by reading it. The
-watchdog's `2>&1` failure, the router reading opinion questions as CONFIG, empty
-reasoning budgets, the "deep research" misroute, and Direct inventing a status
-report were all invisible on the page and obvious on first contact.
+**Every real bug this week was found by running the system, never by reading it.**
+The watchdog's `2>&1` failure on the one path it existed for. A router reading
+opinion questions as CONFIG. Reasoning budgets under the empty-content floor. A
+missing stdlib import that would have crashed a deploy. A documented safety stack
+that had never once executed. A news digest calling bacteriophages computer viruses.
+Checking a file's contents is not checking that anything runs it.
 
-Related: fixing the exact phrasing that failed, rather than the class of failure,
-produced the same bug twice in one evening. Direct's "nothing has changed" was
-patched, and it returned as "it is in the testing phase". Ask what class a bug
-belongs to before fixing the instance.
+**Fix the class, not the instance.** Patching the exact phrasing that failed
+produced the same bug twice in one evening, and six stacked "do not claim what you
+cannot verify" rules eventually told Direct not to read its own conversation.
+
+**Prefer a control in code to an instruction in a prompt.** The model ignored
+written guidance repeatedly - it kept writing its training-era year into search
+queries with the real date in its prompt. Every durable fix moved a rule out of the
+prompt and into code.
+
+**Verify a source's date and measurement conditions before citing it.** Two specs
+were written on overstated evidence: a fifteen-month-old paper quoted as current,
+and a 73% result that was the best of two tasks where the other was 14.5%. Both
+caught by the user, not by me. See the memory note of the same name.
+
+**A test that confirms the fix is not a test.** Diagnosing the digest bug, the first
+attempt hand-wrote a snippet containing the word "bacteriophage" and unsurprisingly
+passed. Only the real API response exposed the real cause.
