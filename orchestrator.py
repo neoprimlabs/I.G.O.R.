@@ -47,6 +47,24 @@ _VERDICT_MAP = {
 
 _ROUTER_TIMEOUT_S = 15
 
+# Storage is cheap, the per-request token budget is not, so these are separate
+# numbers. _STORE_CAP is what goes to SQLite; the rest govern what is injected.
+_STORE_CAP = 20000
+_OLD_ENTRY_CAP = 700
+
+# Per-destination context budgets, in characters. React carries 12 tool schemas
+# (~1900 tokens) on an 8000 TPM model, so it has roughly 2500 tokens of room for
+# history. Direct carries no tools on a 12000 bucket and can afford far more.
+# One number cannot serve both.
+_CONTEXT_BUDGET_REACT = 8500
+_CONTEXT_BUDGET_DIRECT = 24000
+
+
+def _cap(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n[truncated]"
+
 _RESEARCH_LOOP_TRIGGERS = frozenset({
     "deep research",
     "research loop",
@@ -317,11 +335,20 @@ class Orchestrator:
 
         if destination == "Direct":
             from agents import direct
-            return await direct.handle(content, self._window(), call)
+            # Direct carries no tool schemas on the 12000 bucket, so it can hold far
+            # more history than React. This is what makes "what did you just say"
+            # answerable in chat.
+            return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
 
         if destination == "ConfigEdit":
             from agents import prod_memory
-            return await prod_memory.handle(content, call)
+            config_result = await prod_memory.handle(content, call)
+            if config_result is not None:
+                return config_result
+            # ConfigEdit read the message and said it was not a config change. That
+            # is a better signal than the router's guess, so hand it to React rather
+            # than failing at the user. Costs one extra call on a misroute.
+            logger.info("ConfigEdit declined the message, forwarding to React")
 
         if destination == "SynthesizeResearch":
             # React has research.md in its memory_read allowlist, but it will not
@@ -352,15 +379,43 @@ class Orchestrator:
                     response = f"[Evaluator warning: {feedback}]\n\n{response}"
         return response
 
-    def _window(self) -> list[dict]:
-        return self._context[-config.CONTEXT_WINDOW:]
+    def _window(self, char_budget: int = _CONTEXT_BUDGET_REACT) -> list[dict]:
+        """Newest turns in full, older turns compressed, within a char budget.
+
+        "Reread that", "fix the third point", "you missed X" all refer to the most
+        recent thing said. That entry earns its tokens; a turn from twenty minutes
+        ago does not. Older entries keep their opening, which is enough to know what
+        was discussed without carrying the whole thing.
+
+        Spends the budget newest-first, so whatever the user is most likely talking
+        about survives whole and the compression falls on the oldest turns.
+        """
+        window = self._context[-config.CONTEXT_WINDOW:]
+        if not window:
+            return []
+
+        # Reserve a floor for every older entry up front, so the total is bounded by
+        # char_budget rather than approaching it. Spending newest-first and clamping
+        # as you go overshoots: entries past the budget still take their floor.
+        newest_allowance = max(_OLD_ENTRY_CAP, char_budget - _OLD_ENTRY_CAP * (len(window) - 1))
+        return [
+            {**m, "content": _cap(m.get("content") or "",
+                                  newest_allowance if i == len(window) - 1 else _OLD_ENTRY_CAP)}
+            for i, m in enumerate(window)
+        ]
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
+        """Store generously, inject sparingly.
+
+        This used to truncate to 1500 chars at write time, which destroyed the text
+        rather than merely leaving it out of the prompt. A 5500-char reply was kept
+        as 1500, so "reread that and fix X" had nothing to reread - and the model
+        answered from the fragment without saying so. Disk is free; the per-request
+        budget is what is scarce, so the trimming belongs in _window().
+        """
         from context_store import append
-        if len(user_msg) > 1500:
-            user_msg = user_msg[:1500] + "\n[truncated in context]"
-        if len(assistant_msg) > 1500:
-            assistant_msg = assistant_msg[:1500] + "\n[truncated in context]"
+        user_msg = _cap(user_msg, _STORE_CAP)
+        assistant_msg = _cap(assistant_msg, _STORE_CAP)
         self._context.append({"role": "user", "content": user_msg})
         self._context.append({"role": "assistant", "content": assistant_msg})
         if len(self._context) > config.CONTEXT_WINDOW:

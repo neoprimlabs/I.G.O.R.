@@ -159,7 +159,7 @@ def _invalid_digest_sections(content: str) -> list[str]:
     return bad
 
 
-async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> str:
+async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Optional[str]:
     """Apply a natural-language configuration change to one settings file."""
     current = "\n\n".join(
         f"=== {name} ===\n{_read_config(name)}" for name in _CONFIG_EDITABLE
@@ -176,12 +176,18 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> st
     filename, new_content = _parse_reply(raw or "")
 
     if filename not in _CONFIG_EDITABLE:
-        logger.info("ConfigEdit did not produce an editable filename (got %r)", filename)
-        return f"[ConfigEdit could not apply this automatically] {raw.strip()}"
+        # Not a config change. The router is an 8B model and misroutes at the
+        # margins: "I don't think I saw anything in there about PCG content" reads
+        # as a file being short of something. Returning None hands the message to
+        # React, which can actually answer it. Returning the raw reply instead
+        # printed the model's working - including the full contents of
+        # digest_config.md - at a user who had asked about a game prompt.
+        logger.info("ConfigEdit declining, not a config change (got %r)", filename)
+        return None
 
     if not new_content:
         logger.info("ConfigEdit reply for %s had no usable file block", filename)
-        return f"[ConfigEdit could not apply this automatically] {raw.strip()}"
+        return None
 
     if filename == "schedule_config.md":
         # Round-trip through the parser that will actually read this at startup.
