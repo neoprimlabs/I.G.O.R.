@@ -213,6 +213,12 @@ async def _check_model_update() -> None:
         logger.error("Model availability check failed - %s: %s", type(e).__name__, e)
 
 
+# 500 chars of an article is page chrome, not prose. Measured on a real result:
+# title, byline, "Skip to content", "Toggle Navigation", a nav link, and nothing
+# else. 1500 gets past the furniture into the lede. Budget: 5 results x 1500 =
+# ~2150 tokens on the 6000 TPM summary bucket, leaving room for max_tokens 1536.
+_NEWS_SNIPPET_CHARS = 1500
+
 _AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.
 
 Format:
@@ -222,6 +228,9 @@ Rules:
 - Exactly 3 bullets - no more, no fewer
 - Cover distinct topics - do not repeat similar stories
 - Lead with the most significant development
+- Stay inside what the result actually says. Do not add detail it does not contain, and do not resolve an unfamiliar or technical claim into a more familiar one - keep each story in the field its source puts it in.
+- Reuse the source's own wording for the key nouns rather than substituting your own
+- If a result is too thin to summarise honestly, use its title rather than inventing detail
 - No emojis
 - No em dashes - use plain hyphens
 - No exclamation points
@@ -325,7 +334,8 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         from datetime import datetime, timedelta
         from agents import research
         cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        results = await research._run_search("artificial intelligence news", max_results=5, start_published_date=cutoff)
+        results = await research._run_search("artificial intelligence news", max_results=5,
+                                             start_published_date=cutoff, use_summary=True)
         if not results:
             return None
 
@@ -378,7 +388,8 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
         from datetime import datetime, timedelta
         from agents import research
         cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        results = await research._run_search("Unreal Engine news update", max_results=3, start_published_date=cutoff)
+        results = await research._run_search("Unreal Engine news update", max_results=3,
+                                             start_published_date=cutoff, use_summary=True)
         if not results:
             return None
 
