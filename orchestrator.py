@@ -394,15 +394,22 @@ class Orchestrator:
         if not window:
             return []
 
-        # Reserve a floor for every older entry up front, so the total is bounded by
-        # char_budget rather than approaching it. Spending newest-first and clamping
-        # as you go overshoots: entries past the budget still take their floor.
-        newest_allowance = max(_OLD_ENTRY_CAP, char_budget - _OLD_ENTRY_CAP * (len(window) - 1))
-        return [
-            {**m, "content": _cap(m.get("content") or "",
-                                  newest_allowance if i == len(window) - 1 else _OLD_ENTRY_CAP)}
-            for i, m in enumerate(window)
-        ]
+        # Greedy newest-first: each entry takes what it needs, up to what is left.
+        # No per-entry floor and no reservation, so unused budget flows backwards to
+        # older turns instead of being held for a newest entry that does not want it.
+        # Reserving up front looked safe but starved the wrong turn: a digest sat at
+        # 700 chars while 20000 went unused because the newest entry was a 25-char
+        # acknowledgement.
+        out, remaining = [], char_budget
+        for m in reversed(window):
+            if remaining <= 0:
+                break
+            content = m.get("content") or ""
+            if len(content) > remaining:
+                content = _cap(content, remaining)
+            remaining -= len(content)
+            out.append({**m, "content": content})
+        return list(reversed(out))
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
         """Store generously, inject sparingly.
