@@ -423,6 +423,28 @@ class Orchestrator:
         append("user", user_msg)
         append("assistant", assistant_msg)
 
+    def record_outbound(self, text: str) -> None:
+        """Record something IGOR sent without being asked.
+
+        _update_context only runs for incoming messages, so proactive sends - the
+        morning digest, research reports, watchlist alerts, the send_message tool -
+        never entered context at all. IGOR would send the user a digest at 09:00 and
+        have no record of it at 14:00, which is exactly what happened on 2026-08-08.
+
+        Stored as an assistant turn with no paired user message, because there was
+        no user message. The marker matters: without it the model reads this as a
+        reply to whatever came before.
+        """
+        if not text or not text.strip():
+            return
+        entry = {"role": "assistant", "content": _cap(f"[sent proactively]\n{text.strip()}", _STORE_CAP)}
+        self._context.append(entry)
+        if len(self._context) > config.CONTEXT_WINDOW:
+            self._context = self._context[-config.CONTEXT_WINDOW:]
+        from context_store import append
+        append("assistant", entry["content"])
+        logger.info("Recorded proactive message into context (%d chars)", len(text))
+
     def reset_context(self) -> None:
         self._context.clear()
         from context_store import clear

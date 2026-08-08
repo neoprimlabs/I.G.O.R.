@@ -111,6 +111,13 @@ class IgorBot(discord.Client):
             return None
 
     async def send_to_user(self, content: str) -> None:
+        """Proactive send: digests, alerts, notifications, send_message.
+
+        Replies to the user go through _send_chunked in on_message and are recorded
+        by _update_context. Everything that arrives here was unprompted, so it is
+        recorded separately - otherwise IGOR has no memory of anything it says on
+        its own initiative.
+        """
         content = _sanitize(content)
         for attempt in range(2):
             channel = await self._get_dm_channel()
@@ -118,6 +125,8 @@ class IgorBot(discord.Client):
                 return
             try:
                 await self._send_chunked(channel, content)
+                if self._orchestrator is not None:
+                    self._orchestrator.record_outbound(content)
                 return
             except discord.HTTPException:
                 self._dm_channel = None
@@ -132,6 +141,12 @@ class IgorBot(discord.Client):
             try:
                 filename = _filename_from_response(content)
                 await channel.send(file=discord.File(io.BytesIO(content.encode("utf-8-sig")), filename=filename))
+                if self._orchestrator is not None:
+                    # The file itself can be large; record that it was sent and enough
+                    # of it to answer "what did you send me", not the whole thing.
+                    self._orchestrator.record_outbound(
+                        "Sent as file attachment ({}):\n{}".format(filename, content[:3000])
+                    )
                 return
             except discord.HTTPException:
                 self._dm_channel = None
