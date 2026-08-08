@@ -703,7 +703,10 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase V - The spec's unbuilt vision
 
-- [ ] **V.1 Improvement loop with sign-off buckets.** Was R4.4. Now the highest
+- [ ] **V.1 Improvement loop with sign-off buckets.** NOTE 2026-08-08: A.2 gives
+  this the signal it never had. Without captured corrections, improvement has no
+  definition and the critic was left guessing, which is how it produced junk.
+  Build A.2 first. Was R4.4. Now the highest
   value item on the list: the critic is off and skills_react.md is gone, so IGOR
   cannot learn anything at all. Self-improvement is the stated vision in
   IGOR_SPEC.md. Design must avoid what broke it last time - an extra API call on
@@ -736,6 +739,118 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 - [ ] **I.1 Web or Flutter UI.** Spec Phase 2. projects.md already tracks this as
   "I.G.O.R. App (Front-End)" with phone location enabling location-aware digests.
 - [ ] **I.2 Voice** via qwen3-tts, local on the instance. After I.1.
+
+## Phase A - Autonomy and learning
+
+Specced 2026-08-08 after the user set the direction: a fully autonomous, self
+improving assistant. Researched first rather than designed from instinct.
+
+**On "guaranteed".** It is not available and this spec does not pretend otherwise.
+The best published results are: CIPHER identifies the right user preference 47.8%
+of the time, ReAcTree completes 61% of long-horizon goals, and a task that doubles
+in duration quadruples its failure rate. Those are the good numbers. What IS
+achievable is that failures are visible and recoverable rather than silent, which
+is the property every fix that held this week shares. Build to that standard.
+
+**Research basis.** PRELUDE/CIPHER (arXiv 2404.15269) for learning from
+corrections. The RSI survey (arXiv 2607.07663) for what self-improvement means in
+practice. Long-horizon agent literature for goal persistence and decomposition.
+Governing quote, which is also this project's entire history: "the limiting factor
+is no longer model intelligence, it is the scaffolding that maintains coherence,
+manages context, and recovers from failure."
+
+**Order matters and is not obvious.** Goal persistence comes before correction
+capture, because everything hangs off it and IGOR's memory files are already most
+of the mechanism. S.1 must land before anything runs unattended.
+
+- [ ] **A.1 Goal persistence layer.** The literature calls this a concrete
+  architectural requirement, not an optimisation: goals must live OUTSIDE the
+  context window and be actively retrieved, because goals held in context drift as
+  the window rolls. IGOR lost a prompt to exactly that on 2026-08-05.
+
+  Today IGOR is scheduled, not goal-directed. It has no notion of what it is
+  working toward and nothing that decides what is worth doing next.
+
+  Build `memory/goals.md`. One entry per goal: id, one-line statement, status
+  (active / paused / done), created, last_reviewed, next_action. Completed goals
+  move to `goals_archive.md` rather than being deleted.
+
+  **Injection is the hard part, because React has no room.** Measured 2026-08-08:
+  a worst-case React request is 7797 of 8000 tokens. So only the one-line
+  statements of ACTIVE goals enter the system prompt, hard-capped at 400 characters
+  total (about 115 tokens), and `_CONTEXT_BUDGET_REACT` drops by 400 characters to
+  pay for it. Full goal detail is read on demand through `memory_read`.
+
+  **Failure modes:** the file grows unbounded, so cap active goals at 5 and refuse
+  the sixth out loud. Stale goals silently steer behaviour, so require
+  last_reviewed and flag anything older than 30 days rather than acting on it. The
+  injected summary creeps past its cap, so assert the cap in the startup check
+  rather than trusting review.
+
+  **Verify:** add a goal and confirm it appears in the prompt; confirm React reads
+  full detail via memory_read; confirm the sixth goal is refused; confirm a
+  worst-case React request still measures under 8000 tokens with goals injected.
+  Commit: `Goals live outside the context window and are actively retrieved (A.1)`
+
+- [ ] **A.2 Correction capture.** Every correction the user types is a labelled
+  example of what IGOR got wrong, and all of it is currently discarded when the
+  context window rolls.
+
+  PRELUDE's finding, which this follows: user corrections reflect a latent
+  preference expressible in natural language, and the useful move is to infer a
+  TEXT description of it rather than fine-tune anything. CIPHER cut rework by 73%
+  (edit distance 8391 against 30949) while costing FEWER tokens than naive
+  retrieval (3.0M against 8.0M), at only 47.8% preference accuracy. Partial credit
+  compounds. This does not need to be right to be worth having.
+
+  **Carry the threshold over.** CIPHER only infers a preference when the edit
+  exceeds a size threshold; small edits mean current behaviour was fine. Learning
+  from everything is precisely how six near-duplicate junk skills accumulated in
+  three days in July.
+
+  Build: a cheap prefilter (previous turn was IGOR's, current message carries
+  negation or correction markers), then ONE small call on the router's idle bucket
+  to decide whether this is a substantive correction and, if so, state the
+  preference in one sentence. Append to `memory/corrections.md` with the evidence
+  quote, what IGOR did, and the inferred preference.
+
+  **CAPTURE ONLY. DO NOT INJECT.** Applying these is V.1's job, behind sign-off. A
+  file that silently modifies every prompt with unreviewed content is the exact
+  failure that cost days in July and again in August.
+
+  **Honest gap:** CIPHER retrieves by embedding similarity. IGOR has no embedding
+  model, so v1 retrieval is recency and keyword based and therefore weaker.
+  sqlite-vec with a small local model is the upgrade path and belongs with V.2.
+
+  **Failure modes:** false positives where the user disagrees about content rather
+  than corrects behaviour - require an explicit corrective marker, and prefer
+  missing a correction to inventing one. One-off formatting gripes captured as
+  standing preferences, which is the July junk-skill shape. Preferences that
+  contradict earlier ones, which PRELUDE explicitly does NOT handle - store both
+  with dates and let V.1's review resolve them rather than silently overwriting.
+
+  **Verify:** correct IGOR deliberately and confirm a capture carrying the right
+  evidence quote; say something neutral and confirm no capture; contradict an
+  earlier preference and confirm both survive with dates. Commit:
+  `Capture corrections as evidence for review, never as silent instructions (A.2)`
+
+- [ ] **A.3 Subgoal decomposition with local replanning.** The 31% to 61% move.
+  Plain ReAct is the weak baseline for long-horizon work; ReAcTree roughly doubles
+  goal success using hierarchy and modular memory.
+
+  Two findings shape it. Decompose into a graph of subgoals and confine replanning
+  to the ACTIVE node, so a local failure does not trigger global replanning and
+  cascade. And close the loop per subgoal: plan, execute, verify, correct.
+
+  **Governing constraint: a task doubling in duration quadruples its failure rate.**
+  Autonomy is better spent on many short verified steps than one long run. The
+  research loop's plan/search/distill/append shape is already correct, it is simply
+  not goal-directed. Extend that pattern rather than inventing a second one.
+
+  Depends on A.1. Do not start before S.1: a decomposing agent running unattended
+  without health-gated rollback is unattended risk.
+
+  Commit: `Subgoal decomposition with local replanning, not global (A.3)`
 
 ## Phase S - Self-modification, rebuilt
 
