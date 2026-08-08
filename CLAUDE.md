@@ -121,6 +121,14 @@ Do not ship until edge cases are handled. Moving fast and patching later has cos
 the user money and lost work. If something is discussed and agreed on, it gets
 built - not noted and forgotten.
 
+**Prompt rules accumulate and interact. Read the whole prompt after editing it.**
+Direct collected six overlapping "do not claim what you cannot verify" rules across
+three separate bluffing incidents. Each was correct alone. Together they told it not
+to engage with its own conversation, so it asked the user to paste back a digest
+that was sitting in its context. Nobody had read the prompt as a whole since the
+first patch. After changing a prompt, re-read it start to finish and ask what it now
+says in aggregate, not whether the new line is right.
+
 **Test the failure path, not just the happy path.** Two bugs in the backup and
 alerting script were invisible on read and only appeared when the failure case was
 deliberately triggered - including one that killed the script before it could alert,
