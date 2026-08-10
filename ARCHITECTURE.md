@@ -412,8 +412,38 @@ here.
 - `scripts/backup_memory.ps1` - compares systemd's restart count against the
   previous run and alerts on a crash loop, within a day
 
-So a bad change will not run and will be noticed. **Nothing reverts it**, and IGOR
-stays down until a human intervenes.
+So a bad change will not run and will be noticed.
+
+### Health-gated deploy (S.1, built 2026-08-10)
+
+**This is the layer that actually executes**, and it is the one that reverts.
+`/usr/local/lib/igor-deploy/deploy.sh`, root-owned and deliberately outside
+`/opt/igor` so `write_file` cannot reach it. Logs every attempt to
+`/var/log/igor-deploy.log`, which the `igor` user also cannot write.
+
+Three gates in order. The first two run before any restart, so a change that fails
+them never takes IGOR down:
+
+| Gate | Catches | On failure |
+|---|---|---|
+| syntax | compiles every `.py` in memory | reset to previous commit, no restart |
+| imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
+| **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
+
+The third gate is the point. `systemctl is-active` reports a process, and a process
+that starts and never reaches Discord is not a working assistant - the gap in
+"Known broken" item 3. The probe is anchored to a timestamp taken before the
+restart, or the previous run's `online` line satisfies it and every deploy passes.
+
+Verified on 2026-08-10 by deploying a commit that imports cleanly and hangs before
+`bot.start`. Both gates passed correctly, the gateway missed its window, the deploy
+rolled back and IGOR was healthy again 7 seconds later. The webhook alert failed on
+the first run - the URL file, copied from Windows, carried a UTF-8 BOM and a CR that
+survive `$(cat)` - so the script now strips both and `--test-alert` exercises that
+path without breaking anything.
+
+**Still not covered:** a crash that happens later, after a healthy deploy. That is
+`Restart=always` plus the backup script's crash-loop alert, same as before.
 
 **Consequence for self-modification:** React can write code and can write the
 restart sentinel, but the restart never happens. Changes sit on disk unloaded

@@ -31,9 +31,12 @@ found by using the system.
 assistant.** GAMEPLAN Phase A specs the path, researched then audited against its
 own sources. Build order, which is not the obvious one:
 
-1. ~~**A.2 correction logging**~~ - shipped 2026-08-08 (`d4185c4`). Accruing now.
-2. **S.1 health-gated deploy with rollback** - next. Before anything runs unattended.
-3. **V.1 improvement loop** - batch review over a corpus that has accumulated
+1. ~~**A.2 correction logging**~~ - shipped 2026-08-08 (`d4185c4`). **Unverified:
+   `memory/corrections.md` does not exist yet.** Either nothing has been corrected
+   since Friday or the detection never fires, and those look identical from here.
+   One deliberately corrective Discord message settles it.
+2. ~~**S.1 health-gated deploy with rollback**~~ - built and tested 2026-08-10.
+3. **V.1 improvement loop** - next. Batch review over a corpus that has accumulated.
 4. **A.1 goals + A.3 decomposition** - together, once something consumes them
 
 **T.1 is started, not finished.** `tests/test_llm.py` is the first test in the repo,
@@ -64,15 +67,19 @@ coupling either.
 
 ## Known broken
 
-1. **The safety stack does not execute, and self-modification cannot deploy.**
-   Found 2026-08-03. `igor.service` runs `main.py` directly, so `start.sh` is never
-   invoked and Layers 1 and 3 (compile check, crash revert) do not run. The
-   watchdog is active but has no sudoers entry, so its `sudo systemctl restart
-   igor` fails - zero restarts in its entire journal. React can therefore write
-   code and write the restart sentinel, but nothing loads the change. What does
-   protect the system: main._smoke_test, systemd Restart=always, and the backup
-   script's crash-loop alert. Nothing reverts a bad change. See ARCHITECTURE.md.
-   **Needs a decision before fixing** - see below.
+1. **The old safety stack still does not execute** - but deploys are now gated.
+   `start.sh` is bypassed (`igor.service` runs `main.py` directly) and the watchdog
+   has no sudoers entry, so Layers 1-3 remain dead. S.3 deletes all of it.
+
+   What replaced them, built and tested 2026-08-10: **S.1 health-gated deploy with
+   automatic rollback**, at `/usr/local/lib/igor-deploy/deploy.sh`, root-owned and
+   outside `/opt/igor`. Syntax and import gates run before any restart; the third
+   gate waits for the Discord gateway and rolls back if it does not connect.
+   Verified against a deliberately hung commit - it rolled back and alerted.
+   **Deploy with that script, never `git pull && systemctl restart` by hand.**
+
+   Remaining gap: a crash *after* a healthy deploy. Covered only by
+   `Restart=always` and the backup script's crash-loop alert, as before.
 2. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 3. Monitoring detects a dead process, not a dead gateway. If IGOR is running and

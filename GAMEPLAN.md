@@ -984,7 +984,31 @@ notes process-level improvements (reusable verified procedures) compound while
 result-level ones do not. **Do V.1 before S.2.** S.1 remains worth doing on its own
 merits regardless of either.
 
-- [ ] **S.1 Health-gated deploy with automatic rollback. Do this regardless.**
+- [x] **S.1 Health-gated deploy with automatic rollback. DONE 2026-08-10.**
+
+  Built at `/usr/local/lib/igor-deploy/deploy.sh`, root-owned, outside `/opt/igor`.
+  Log at `/var/log/igor-deploy.log`, also unwritable by `igor`. Both verified by
+  attempting a write as the service user. Authoritative copy and reinstall notes in
+  `C:\Dev\IGOR_backup\deploy-machinery\`, kept out of the repo on purpose.
+
+  All four spec points built as written. Verified against a commit that imports
+  cleanly and hangs before `bot.start`: both pre-restart gates passed correctly,
+  the gateway missed its 90s window, the deploy rolled back and IGOR was healthy
+  7 seconds later.
+
+  Three bugs the failure test found that reading would not have:
+  - `compileall` reported syntax failures on valid files, because `__pycache__`
+    was root-owned and it could not write `.pyc`. A gate that blocks good deploys
+    gets switched off, so it now compiles in memory and cannot fail on permissions.
+  - The import gate was a multi-line `import a, b,` - itself a syntax error.
+  - **The rollback alert did not send.** The webhook file, copied from Windows,
+    had a UTF-8 BOM and a trailing CR, both of which survive `$(cat)` and corrupt
+    the URL. The script now strips them, and `--test-alert` exercises the alert
+    path without breaking IGOR to trigger one.
+
+  The third is the important one: rollback worked while the message saying so was
+  silently lost. That is the same failure the backup script had, on the same kind
+  of path, found the same way.
 
   Protects every deploy including manual ones. Today a bad push is compile-checked
   by nothing and reverted by nothing; the only net is main._smoke_test refusing to

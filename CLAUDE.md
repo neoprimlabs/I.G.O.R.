@@ -57,14 +57,27 @@ Current host IP is in `STATE.md`.
    itself - so it told the user it used keyword routing days after the model router
    shipped. A stale ARCHITECTURE.md is worse than none, because IGOR quotes it.
 3. Commit and push (heredoc for multi-line messages).
-4. Deploy and verify in one shot:
+4. Deploy through the gate. **Do not `git pull && systemctl restart` by hand** - that
+   path has no health check and nothing that reverts a bad change:
 ```
-ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.80.181.77 "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"
+ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.80.181.77 "sudo /usr/local/lib/igor-deploy/deploy.sh"
 ```
-5. Expected: `active`. On anything else: `sudo journalctl -u igor -n 30 --no-pager`.
+5. Expected last line: `=== deploy OK: <sha> healthy ===`, exit 0. The script pulls,
+   syntax-checks, imports every module, restarts, and waits up to 90s for the
+   Discord gateway to connect. On failure it resets to the previous commit,
+   restarts, and alerts the webhook. Full log: `/var/log/igor-deploy.log`.
+   - A gate failure before the restart means **IGOR never went down** and the repo
+     is already back on the previous commit. Fix and push again.
+   - A rollback means the bad commit is still on `origin/master`. Revert it there
+     or the next deploy pulls it straight back.
+   - `--dry-run` runs both gates and stops before restarting. `--test-alert` checks
+     the webhook path without touching IGOR.
 6. Ask the user for a Discord test after changes to routing, react.py, or the bot.
-7. After restarting `igor`, confirm `igor-watchdog` is also active. It was enabled
-   but never started after the 2026-08 migration, leaving safety Layer 2 down.
+   The gate proves IGOR connected, not that it answers well.
+7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
+   `/opt/igor` so `write_file` cannot reach it. Edit it from the copy in
+   `C:\Dev\IGOR_backup\deploy-machinery\` and scp it up. **Never move it into the
+   repo** - S.1's whole premise is that IGOR cannot reach what judges IGOR.
 
 Server memory files are edited with `sudo -u igor` (tee/sed), never as root, never via git.
 IGOR sometimes commits on the server itself; if pull reports divergence, prefer
