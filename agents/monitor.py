@@ -360,9 +360,12 @@ def _attach_sources(text: str, results: list[dict]) -> str:
 
     out = _SOURCE_INDEX_RE.sub(_swap, text)
 
-    for line in out.splitlines():
-        if line.strip().startswith("-") and "http" not in line:
-            logger.warning("Digest bullet came back with no usable source: %s", line.strip()[:90])
+    # Checked per bullet, not per line: the model often puts "Source:" on its own
+    # line, and a per-line check called every healthy bullet a failure. A warning
+    # that fires every morning is one nobody reads on the morning it is real.
+    for block in re.split(r"\n(?=\s*-\s)", out):
+        if block.strip().startswith("-") and "http" not in block:
+            logger.warning("Digest bullet came back with no usable source: %s", block.strip()[:90])
     return out
 
 

@@ -63,5 +63,29 @@ multi = _attach_sources(
 )
 check("all three bullets carry distinct URLs", multi.count("http") == 3, multi)
 
+# The live model puts "Source:" on its own line. A per-line check called every
+# healthy bullet a failure, which is how a real warning gets ignored.
+import io
+import logging
+from contextlib import redirect_stderr
+
+buf = io.StringIO()
+handler = logging.StreamHandler(buf)
+logging.getLogger("agents.monitor").addHandler(handler)
+
+healthy = _attach_sources(
+    "- OpenAI pauses its Astra update over safety fears. \nSource: [1]\n"
+    "- Meta discloses a model incident. \nSource: [2]",
+    RESULTS,
+)
+check("source on its own line still resolves", healthy.count("http") == 2, healthy)
+check("healthy multi-line bullets log nothing", "no usable source" not in buf.getvalue(),
+      repr(buf.getvalue()))
+
+buf.truncate(0), buf.seek(0)
+_attach_sources("- A bullet the model gave no source for at all.", RESULTS)
+check("a genuinely sourceless bullet still warns", "no usable source" in buf.getvalue(),
+      repr(buf.getvalue()))
+
 print(f"\n  {_passed} passed, {_failed} failed")
 sys.exit(1 if _failed else 0)
