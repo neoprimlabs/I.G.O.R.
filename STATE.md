@@ -24,6 +24,17 @@ Last updated: **2026-08-10**
 
 ## Next action
 
+**Pick up here.** Two checks that need the user, then V.1:
+
+1. **Does A.2 actually work?** `memory/corrections.md` has never been created. Ask
+   the user to send IGOR a corrective Discord message ("no, that's wrong - X is
+   actually Y"), then check whether the file appears. If it does not, fix the
+   detection in `orchestrator._looks_like_correction` before anything else, because
+   V.1 consumes that corpus and there is currently no corpus.
+2. **One ordinary Discord message**, to confirm Direct still reads well after
+   `call_claude` moved to `llm.complete` on 2026-08-10.
+3. Then **V.1**, the improvement loop with sign-off buckets.
+
 Restoration finished 2026-08-03. Everything since is forward work and bug fixes
 found by using the system.
 
@@ -186,6 +197,18 @@ effort and that being the root cause of two days of bugs. At n=4 the empty respo
 did not reappear and unset looked nothing like high. Both claims were wrong, and
 they had already been written into ARCHITECTURE.md, STATE.md and a commit message
 before the second sample. Sample before writing it down as fact.
+
+**A gate that blocks good work gets switched off.** S.1's syntax gate used
+`compileall`, which writes `.pyc` and so failed with PermissionError on valid files
+when `__pycache__` was root-owned - reporting a syntax error that did not exist. It
+now compiles in memory. A check must only fail for the reason it claims.
+
+**The alert is part of the safety system, not decoration.** S.1's rollback worked on
+the first try and the Discord message saying so was silently dropped: the webhook
+file, copied from Windows, carried a UTF-8 BOM and a trailing CR, both of which
+survive `$(cat)` and corrupt the URL. Identical in shape to the backup script's bug.
+Any alert path needs a way to be fired on demand - `--test-alert` here,
+`-TestAlert` there.
 
 **A rule written as prose gets re-derived wrong at every new call site.** CLAUDE.md
 documented Groq's `finish_reason` behaviour and react.py implemented it correctly,
