@@ -21,6 +21,23 @@ _MAX_LOOP_ITERATIONS = 100
 # both calls came back empty, exactly as documented.
 _MIN_REASONING_BUDGET = 1024
 
+# gpt-oss defaults to reasoning_effort HIGH, which was never set here and is wrong
+# for both calls in this pipeline. Measured against the live API on 2026-08-10 with
+# these exact prompts:
+#
+#   PLAN     low 44 tokens, valid query | medium 494, valid | high 1024, EMPTY (length)
+#   DISTILL  low 379 tokens, 5 findings all sourced | medium 1440, 5 sourced | high 1882, ZERO
+#
+# Not a speed-for-quality trade: high effort produced worse output at 5x to 23x the
+# tokens. Both calls have a tight output contract - one line, or bullets that must
+# each end in a URL - and long reasoning drifts off the contract before answering.
+# This is the real cause behind the empty-content floor below, and behind PLAN
+# silently falling back to searching the raw question.
+#
+# Do NOT copy this to React without measuring. Deciding which tool to call is the
+# case where reasoning earns its tokens, and it runs on a different model.
+_REASONING_EFFORT = "low"
+
 # Distillation writes 3-5 findings with URLs and reasoning, so it needs more room
 # than the planner's one-line query. At 1024 roughly half of live calls came back
 # empty and paid for a retry at 2048 anyway - cheaper to ask for it up front.
@@ -92,6 +109,7 @@ async def _call(system: str, user: str, max_tokens: int) -> str:
         user,
         max_tokens=max_tokens,
         label="Research",
+        reasoning_effort=_REASONING_EFFORT,
     )
 
 

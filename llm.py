@@ -23,7 +23,7 @@ dispatch and tool_use_failed retries, and it is already correct.
 """
 
 import logging
-from typing import Union
+from typing import Optional, Union
 
 import openai
 
@@ -44,12 +44,18 @@ async def complete(
     max_tokens: int,
     cap: int = _CAP,
     label: str = "",
+    reasoning_effort: Optional[str] = None,
 ) -> str:
     messages = [{"role": "system", "content": system}]
     if isinstance(user, str):
         messages.append({"role": "user", "content": user})
     else:
         messages.extend(user)
+
+    # Only sent when a caller asks for it. gpt-oss-20b and gpt-oss-120b accept
+    # low/medium/high and default to HIGH; the llama models do not take the
+    # parameter at all, so it must not appear in their requests.
+    extra = {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
 
     who = label or model
     budget = max_tokens
@@ -59,6 +65,7 @@ async def complete(
             model=model,
             messages=messages,
             max_tokens=budget,
+            **extra,
         )
         choice = response.choices[0]
         content = (choice.message.content or "").strip()

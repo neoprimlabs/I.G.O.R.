@@ -130,6 +130,11 @@ back. A caller already at the cap makes one request, not two.
 Routed through it: `orchestrator.call_claude` (so Direct, ConfigEdit and the critic
 are covered), Monitor's three synthesis calls, Evaluator, and ResearchLoop's `_call`.
 
+It also carries `reasoning_effort`, sent only when a caller sets it. **gpt-oss-20b
+and gpt-oss-120b accept low/medium/high and default to high**; the llama models do
+not take the parameter at all. ResearchLoop sets `low`, measured. React does not set
+it and still runs at the default - see below.
+
 Two call sites stay out, on purpose:
 
 - **React's main loop** - its `finish_reason` handling is entangled with tool
@@ -223,6 +228,21 @@ silent failures of a reasoning model on a tight budget are handled there. The
 truncation check was missing until 2026-08-10 and two findings in a 20-iteration run
 were written to `research.md` cut mid-sentence, because a clipped response is a
 valid 200 OK.
+
+**Both calls run at `reasoning_effort` low.** gpt-oss defaults to high, which was
+never overridden and is wrong for this pipeline. Measured against the live API on
+2026-08-10 with these exact prompts:
+
+| | low | medium | high (the old default) |
+|---|---|---|---|
+| PLAN | 44 tokens, valid query | 494, valid | 1024, **empty**, `length` |
+| DISTILL | 379 tokens, 5 findings, 5 sourced | 1440, 5 sourced | 1882, **zero findings** |
+
+Not a speed-for-quality trade - high produced worse output at 5x to 23x the tokens.
+Both calls have a tight output contract (one line; bullets that must each end in a
+URL) and long reasoning drifts off the contract before answering. This is the root
+cause behind `_MIN_REASONING_BUDGET`, behind the empty-content retries, and behind
+PLAN silently falling back to searching the raw question when it returned nothing.
 
 Gathering and synthesis are deliberately in separate contexts. The previous design
 handed one ReAct loop a batch of searches plus a write instruction, and ReAct

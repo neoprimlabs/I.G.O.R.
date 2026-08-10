@@ -46,6 +46,7 @@ class _FakeClient:
         self._responses = list(responses)
         self.budgets: list[int] = []
         self.messages: list[list] = []
+        self.kwargs: list[dict] = []
         outer = self
 
         class _Completions:
@@ -53,6 +54,7 @@ class _FakeClient:
             async def create(**kwargs):
                 outer.budgets.append(kwargs["max_tokens"])
                 outer.messages.append(kwargs["messages"])
+                outer.kwargs.append(kwargs)
                 return outer._responses[len(outer.budgets) - 1]
 
         class _Chat:
@@ -104,6 +106,26 @@ async def test_behaviour() -> None:
     shape = [(m["role"], m["content"]) for m in client.messages[0]]
     _check("a message list is prepended with system and kept in order",
            shape == [("system", "SYS"), ("user", "A"), ("assistant", "B")], f"got {shape}")
+
+    # The llama models do not accept reasoning_effort, so it must be absent from
+    # their requests rather than sent as None.
+    client = _FakeClient([_response("ok", "stop")])
+    await llm.complete(client, "llama", "SYS", "USR", max_tokens=100)
+    _check("reasoning_effort is omitted when unset", "reasoning_effort" not in client.kwargs[0],
+           f"got {client.kwargs[0]}")
+
+    client = _FakeClient([_response("ok", "stop")])
+    await llm.complete(client, "gpt-oss", "SYS", "USR", max_tokens=100, reasoning_effort="low")
+    _check("reasoning_effort is passed through when set",
+           client.kwargs[0].get("reasoning_effort") == "low", f"got {client.kwargs[0]}")
+
+    # It must survive the retry too, or the second attempt silently runs at the
+    # gpt-oss default of high - which is what the setting exists to avoid.
+    client = _FakeClient([_response("", "stop"), _response("recovered", "stop")])
+    await llm.complete(client, "gpt-oss", "SYS", "USR", max_tokens=100, reasoning_effort="low")
+    _check("reasoning_effort survives the retry",
+           all(k.get("reasoning_effort") == "low" for k in client.kwargs),
+           f"got {client.kwargs}")
 
     # Callers handle rate limits differently on purpose. The wrapper must not
     # swallow anything: the orchestrator sleeps and notifies, the evaluator fails
