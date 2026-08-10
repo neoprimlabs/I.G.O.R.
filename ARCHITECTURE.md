@@ -130,10 +130,11 @@ back. A caller already at the cap makes one request, not two.
 Routed through it: `orchestrator.call_claude` (so Direct, ConfigEdit and the critic
 are covered), Monitor's three synthesis calls, Evaluator, and ResearchLoop's `_call`.
 
-It also carries `reasoning_effort`, sent only when a caller sets it. **gpt-oss-20b
-and gpt-oss-120b accept low/medium/high and default to high**; the llama models do
-not take the parameter at all. ResearchLoop sets `low`, measured. React does not set
-it and still runs at the default - see below.
+It also carries `reasoning_effort`, sent only when a caller sets it. gpt-oss-20b and
+gpt-oss-120b accept low/medium/high; the llama models do not take the parameter at
+all. Groq's docs say gpt-oss defaults to high, but measured, unset behaves nothing
+like high - treat the documented default as unconfirmed. ResearchLoop sets `low`,
+measured. React does not set it.
 
 Two call sites stay out, on purpose:
 
@@ -229,20 +230,25 @@ truncation check was missing until 2026-08-10 and two findings in a 20-iteration
 were written to `research.md` cut mid-sentence, because a clipped response is a
 valid 200 OK.
 
-**Both calls run at `reasoning_effort` low.** gpt-oss defaults to high, which was
-never overridden and is wrong for this pipeline. Measured against the live API on
-2026-08-10 with these exact prompts:
+**Both calls run at `reasoning_effort` low.** Measured on the live API 2026-08-10
+with these exact prompts, completion tokens:
 
-| | low | medium | high (the old default) |
+| | low | unset (previous behaviour) | high |
 |---|---|---|---|
-| PLAN | 44 tokens, valid query | 494, valid | 1024, **empty**, `length` |
-| DISTILL | 379 tokens, 5 findings, 5 sourced | 1440, 5 sourced | 1882, **zero findings** |
+| PLAN, n=4 | 42-72, median **47** | 164-441, median 355 | 937-997, median 957 |
+| DISTILL, n=3 | 418-565, median **419** | 1328-1771, median 1734 | not sampled at n>1 |
 
-Not a speed-for-quality trade - high produced worse output at 5x to 23x the tokens.
-Both calls have a tight output contract (one line; bullets that must each end in a
-URL) and long reasoning drifts off the contract before answering. This is the root
-cause behind `_MIN_REASONING_BUDGET`, behind the empty-content retries, and behind
-PLAN silently falling back to searching the raw question when it returned nothing.
+4x to 7x fewer tokens. Output held: PLAN returned a valid query 4/4 at low, and
+DISTILL returned 5 findings with all 5 sourced on every run at both settings.
+
+Two caveats, both against earlier drafts of this section. Unset does not behave like
+high, so the pipeline was never running at maximum. And a first single sample where
+high returned empty did not replicate at n=4 - variance, not a property. This is an
+efficiency win on a TPM-bound free tier, not a bug fix, and it does not explain
+`_MIN_REASONING_BUDGET` or the empty-content retries, which stay.
+
+"5 findings, 5 sourced" is a format check rather than a judgement that the findings
+are equally good. The next real run is the test that matters.
 
 Gathering and synthesis are deliberately in separate contexts. The previous design
 handed one ReAct loop a batch of searches plus a write instruction, and ReAct

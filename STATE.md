@@ -103,18 +103,20 @@ outside the repo. Test the alert path with `-TestAlert`.
 Caveat: it only runs when this machine is on. Task Scheduler catches up when the
 machine returns, so time away means late alerts rather than none.
 
-## Open: React is still at reasoning_effort high
+## Open: React has never been measured at different reasoning_effort
 
-gpt-oss defaults to high and it was never set anywhere. ResearchLoop now sets `low`
-after measurement (see ARCHITECTURE.md for the numbers - high produced empty output
-on PLAN and zero findings on DISTILL). **React on gpt-oss-120b is still at the
-default**, unmeasured and unchanged on purpose: choosing which tool to call is the
-case where reasoning plausibly earns its tokens, and it is a different model.
+ResearchLoop now sets `reasoning_effort` low after measurement: 4x to 7x fewer
+tokens with output holding (ARCHITECTURE.md has the table). **React on gpt-oss-120b
+does not set it**, deliberately - choosing which tool to call is the case where
+reasoning plausibly earns its tokens, and it is a different model.
 
 Worth measuring next, because React is where the TPM pressure actually is. The test
-has to be a real multi-step task through Discord, not a token count - the failure
-mode to watch for is it getting quietly worse at deciding, which a token count will
-not show.
+cannot be a token count. The failure mode to watch for is it getting quietly worse
+at deciding, which needs a real multi-step task through Discord.
+
+Note for whoever measures it: Groq's docs say gpt-oss defaults to high. Measured on
+gpt-oss-20b, unset behaves nothing like high. Do not trust the documented default
+without sampling it.
 
 ## Unverified on the server
 
@@ -165,11 +167,18 @@ caught by the user, not by me. See the memory note of the same name.
 attempt hand-wrote a snippet containing the word "bacteriophage" and unsurprisingly
 passed. Only the real API response exposed the real cause.
 
-**Check the defaults of anything you did not set.** Two days went into patching
-symptoms of gpt-oss running at `reasoning_effort` high - an empty-content floor, a
-doubling retry, a truncation fix - and nobody asked what the default was. It was in
-the provider docs the whole time. Before building machinery to survive a behaviour,
-check whether the behaviour is configurable.
+**Check whether a behaviour is configurable before building machinery to survive
+it.** `reasoning_effort` was never set on either gpt-oss model and never
+investigated, through an empty-content floor, a doubling retry and a truncation fix.
+Setting it low cut research tokens 4x to 7x.
+
+**One sample is not a measurement, and a provider's documented default is not a
+measurement either.** The first pass at the above ran one call per setting, saw an
+empty response at high, and produced a confident story about IGOR running at maximum
+effort and that being the root cause of two days of bugs. At n=4 the empty response
+did not reappear and unset looked nothing like high. Both claims were wrong, and
+they had already been written into ARCHITECTURE.md, STATE.md and a commit message
+before the second sample. Sample before writing it down as fact.
 
 **A rule written as prose gets re-derived wrong at every new call site.** CLAUDE.md
 documented Groq's `finish_reason` behaviour and react.py implemented it correctly,

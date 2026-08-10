@@ -21,21 +21,26 @@ _MAX_LOOP_ITERATIONS = 100
 # both calls came back empty, exactly as documented.
 _MIN_REASONING_BUDGET = 1024
 
-# gpt-oss defaults to reasoning_effort HIGH, which was never set here and is wrong
-# for both calls in this pipeline. Measured against the live API on 2026-08-10 with
-# these exact prompts:
+# gpt-oss-20b accepts reasoning_effort low/medium/high. Measured on the live API
+# 2026-08-10 with these exact prompts, completion tokens:
 #
-#   PLAN     low 44 tokens, valid query | medium 494, valid | high 1024, EMPTY (length)
-#   DISTILL  low 379 tokens, 5 findings all sourced | medium 1440, 5 sourced | high 1882, ZERO
+#   PLAN     n=4   low 42-72 (median 47)    unset 164-441 (median 355)   high 937-997
+#   DISTILL  n=3   low 418-565 (median 419) unset 1328-1771 (median 1734)
 #
-# Not a speed-for-quality trade: high effort produced worse output at 5x to 23x the
-# tokens. Both calls have a tight output contract - one line, or bullets that must
-# each end in a URL - and long reasoning drifts off the contract before answering.
-# This is the real cause behind the empty-content floor below, and behind PLAN
-# silently falling back to searching the raw question.
+# 4x to 7x fewer tokens. Output held: PLAN returned a valid query 4/4 at low, and
+# DISTILL returned 5 findings with 5 sourced on every single run at both settings.
+#
+# Two things this is NOT. Groq's docs say gpt-oss defaults to high; measured, unset
+# behaves nothing like high, so IGOR was not running at maximum. And a first
+# single sample where high returned empty did not replicate at n=4 - that was
+# variance, not a property. This is an efficiency win on a TPM-bound free tier,
+# not a bug fix.
+#
+# The quality check is also weaker than it looks: 5 sourced findings is a format
+# check, not a judgement that the findings are as good. Watch the next real run.
 #
 # Do NOT copy this to React without measuring. Deciding which tool to call is the
-# case where reasoning earns its tokens, and it runs on a different model.
+# case where reasoning plausibly earns its tokens, and it runs on a different model.
 _REASONING_EFFORT = "low"
 
 # Distillation writes 3-5 findings with URLs and reasoning, so it needs more room
