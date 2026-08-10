@@ -80,10 +80,19 @@ def _get_client() -> openai.AsyncOpenAI:
 async def _call(system: str, user: str, max_tokens: int) -> str:
     """One isolated model call. Nothing persists between calls.
 
-    Retries once at double budget on empty content: the research model is a
-    reasoning model, so max_tokens covers hidden reasoning plus output and a tight
-    cap returns an empty 200 rather than an error. RateLimitError propagates to the
-    loop, which stops and reports.
+    The research model is a reasoning model: max_tokens covers hidden reasoning plus
+    output. That fails in two directions and BOTH need catching.
+
+    Empty content with a 200 OK means reasoning consumed the whole budget.
+
+    Non-empty content with finish_reason "length" means it reasoned for most of the
+    budget and got cut mid-sentence. This one is worse, because the response looks
+    valid - two findings in the 2026-08-10 run were written to research.md ending in
+    "without" and "(https://news.usni.org/". Checking only for empty content misses
+    it entirely.
+
+    Retries once at double budget for either, then returns whatever it has: a partial
+    finding beats none. RateLimitError propagates to the loop, which stops and reports.
     """
     client = _get_client()
     budget = max_tokens
@@ -96,14 +105,22 @@ async def _call(system: str, user: str, max_tokens: int) -> str:
             ],
             max_tokens=budget,
         )
-        content = (response.choices[0].message.content or "").strip()
-        if content:
+        choice = response.choices[0]
+        content = (choice.message.content or "").strip()
+        truncated = choice.finish_reason == "length"
+        if content and not truncated:
             return content
-        if attempt == 0:
-            # Cap must stay above _DISTILL_BUDGET or the retry repeats the first
-            # attempt at the same budget and buys nothing.
-            budget = min(budget * 2, 4096)
-            logger.warning("Research call returned empty content, retrying at %d tokens", budget)
+        if attempt == 1:
+            if truncated and content:
+                logger.warning("Research call still truncated at %d tokens, keeping the partial", budget)
+            return content
+        logger.warning(
+            "Research call %s at %d tokens, retrying at double",
+            "was truncated" if truncated else "returned empty content", budget,
+        )
+        # Cap must stay above _DISTILL_BUDGET or the retry repeats the first
+        # attempt at the same budget and buys nothing.
+        budget = min(budget * 2, 4096)
     return ""
 
 

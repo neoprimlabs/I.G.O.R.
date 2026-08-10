@@ -190,6 +190,13 @@ tool, with a wider allowlist.
    enter another context
 4. **APPEND** - code, not a model, writes to `research.md`
 
+Every model call goes through `_call`, which handles both failure modes of a
+reasoning model on a tight budget. Empty content, and non-empty content with
+`finish_reason` `length`, each retry once at double budget (max 4096), then return
+whatever came back - a partial finding beats none. The truncation check was missing
+until 2026-08-10 and two findings in a 20-iteration run were written to
+`research.md` cut mid-sentence, because a clipped response is a valid 200 OK.
+
 Gathering and synthesis are deliberately in separate contexts. The previous design
 handed one ReAct loop a batch of searches plus a write instruction, and ReAct
 appends every tool result to a single growing history, so raw material and
