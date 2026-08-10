@@ -157,5 +157,8 @@ class IgorBot(discord.Client):
 
 
 async def run_bot() -> None:
+    # TEMPORARY - S.1 rollback+alert verification. Reverted immediately.
+    import asyncio as _a
+    await _a.sleep(3600)
     bot = IgorBot()
     await bot.start(config.DISCORD_BOT_TOKEN)
