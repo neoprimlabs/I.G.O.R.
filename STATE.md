@@ -198,6 +198,13 @@ did not reappear and unset looked nothing like high. Both claims were wrong, and
 they had already been written into ARCHITECTURE.md, STATE.md and a commit message
 before the second sample. Sample before writing it down as fact.
 
+**A model can break a working feature with no commit on our side.** The digest lost
+every link on 2026-08-10 with prompt, code and input unchanged: llama-3.1-8b simply
+stopped copying URLs and wrote publication names. Reproducible, undetectable in
+advance, not ours to fix. Anything a model is asked to reproduce *verbatim* - a URL,
+an ID, a path, a number - should be carried in code and keyed by the smallest token
+the model can supply. Ask it to choose, never to transcribe.
+
 **A gate that blocks good work gets switched off.** S.1's syntax gate used
 `compileall`, which writes `.pyc` and so failed with PermissionError on valid files
 when `__pycache__` was root-owned - reporting a syntax error that did not exist. It
