@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Awaitable, Callable, Optional
 
 import openai
@@ -222,7 +223,9 @@ _NEWS_SNIPPET_CHARS = 1500
 _AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.
 
 Format:
-- [Topic]: One sentence. Source: [URL]
+- [Topic]: One sentence. Source: [2]
+
+End each bullet with "Source: [n]", where n is the bracketed number of the result you used. Just the number. Do not write the URL, the site name, or the article title.
 
 Rules:
 - Exactly 3 bullets - no more, no fewer
@@ -327,6 +330,42 @@ async def _fetch_weather() -> str | None:
         return None
 
 
+_SOURCE_INDEX_RE = re.compile(r"Source:\s*\[?(\d+)\]?\.?\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _attach_sources(text: str, results: list[dict]) -> str:
+    """Turn the model's source index into the real URL.
+
+    The model is asked for "Source: [n]" against the numbered results it was handed,
+    and code substitutes the URL. Asking it to copy the URL itself worked until
+    2026-08-10, when llama-3.1-8b silently began writing publication names instead -
+    same prompt, same input, same code path, reproducible. Nothing verified the copy,
+    so the digest shipped with no links at all.
+
+    A URL is data. Retyping it was never the model's job; picking which result a
+    sentence came from is. One digit is the smallest thing that can be asked for and
+    the only part code cannot infer.
+    """
+    urls = [r.get("url", "") for r in results]
+
+    def _swap(m: re.Match) -> str:
+        i = int(m.group(1)) - 1
+        if not 0 <= i < len(urls):
+            logger.warning("Digest cited result %s but only %d were given", m.group(1), len(urls))
+        elif not urls[i]:
+            logger.warning("Digest cited result %s, which has no URL", m.group(1))
+        else:
+            return f"Source: {urls[i]}"
+        return ""
+
+    out = _SOURCE_INDEX_RE.sub(_swap, text)
+
+    for line in out.splitlines():
+        if line.strip().startswith("-") and "http" not in line:
+            logger.warning("Digest bullet came back with no usable source: %s", line.strip()[:90])
+    return out
+
+
 async def _fetch_and_synthesize_ai_news() -> str | None:
     if _client is None:
         return None
@@ -353,7 +392,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             return None
 
         formatted = research._format_results(unique_results)
-        return await llm.complete(
+        synthesis = await llm.complete(
             _client,
             config.MODELS["summary"],
             _AI_NEWS_SYNTHESIS_PROMPT,
@@ -361,6 +400,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             max_tokens=1536,
             label="AI news",
         )
+        return _attach_sources(synthesis, unique_results)
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
         return None
@@ -369,7 +409,9 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
 _UNREAL_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 1 bullet point covering the most relevant recent Unreal Engine news for a morning digest.
 
 Format:
-- [Topic]: One sentence. Source: [URL]
+- [Topic]: One sentence. Source: [2]
+
+End the bullet with "Source: [n]", where n is the bracketed number of the result you used. Just the number. Do not write the URL, the site name, or the article title.
 
 Rules:
 - Exactly 1 bullet - the single most relevant update
@@ -393,7 +435,7 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
             return None
 
         formatted = research._format_results(results)
-        return await llm.complete(
+        synthesis = await llm.complete(
             _client,
             config.MODELS["summary"],
             _UNREAL_NEWS_SYNTHESIS_PROMPT,
@@ -401,6 +443,7 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
             max_tokens=1024,
             label="Unreal news",
         )
+        return _attach_sources(synthesis, results)
     except Exception as e:
         logger.error("Unreal news fetch failed - %s: %s", type(e).__name__, e)
         return None
