@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-08**
+Last updated: **2026-08-10**
 
 ---
 
@@ -38,9 +38,23 @@ own sources. Build order, which is not the obvious one:
 3. **V.1 improvement loop** - batch review over a corpus that has accumulated
 4. **A.1 goals + A.3 decomposition** - together, once something consumes them
 
-Also open and worth doing: **T.1** (tests into the repo - every test written this
-week was a scratchpad throwaway) and **M.3** (settle the rule that any file stating
-verifiable facts needs an owner, after five files drifted the same way).
+**T.1 is started, not finished.** `tests/test_llm.py` is the first test in the repo,
+stdlib only, run with `python tests/test_llm.py` (use `venv/bin/python` on the
+server). It covers `llm.complete` and checks that every module's imports resolve,
+which `py_compile` cannot. Nothing else has tests yet.
+
+Also open: **M.3** (settle the rule that any file stating verifiable facts needs an
+owner, after five files drifted the same way).
+
+**Open from the 2026-08-10 research run:** ResearchLoop picks each query from the
+last 3000 characters of findings and bans its own `Next:` threads as
+"already pursued", so it wanders instead of covering the question. A 20-iteration
+run on autonomous agents spent 18 iterations on physical machines and never asked
+about software agents. The fix is a persistent outline with per-subtopic coverage
+counts, revised every few iterations - grounded in STORM, WebWeaver and
+ScaffoldAgent, which converge on selecting the next query from a global structure
+rather than from the previous finding. Not built. Do not implement ScaffoldAgent's
+UCB selector: one preprint, two months old, +2.24 on its headline metric.
 
 **Decided against, do not silently revisit: self-modification (S.2).** No proven
 method exists, and three independent research efforts all produced metric-gaming.
@@ -93,8 +107,14 @@ machine returns, so time away means late alerts rather than none.
 
 ## Unverified on the server
 
-Nothing outstanding. Everything deployed on 2026-08-08 was tested in Discord by the
-user, and the digest fix was verified against the source article.
+Deployed 2026-08-10, `tests/test_llm.py` passes on the server under the venv
+interpreter (18/18), both services active, no warnings since restart. Two paths
+have not yet executed against the live API:
+
+- **The morning digest**, which now goes through `llm.complete`. It fires on
+  schedule; the next run is the first real exercise of it.
+- **Direct's chat replies**, since `call_claude` changed. Worth one Discord message
+  to confirm, per the rule about testing anything that touches the bot path.
 
 ## Recent
 
@@ -133,3 +153,11 @@ caught by the user, not by me. See the memory note of the same name.
 **A test that confirms the fix is not a test.** Diagnosing the digest bug, the first
 attempt hand-wrote a snippet containing the word "bacteriophage" and unsurprisingly
 passed. Only the real API response exposed the real cause.
+
+**A rule written as prose gets re-derived wrong at every new call site.** CLAUDE.md
+documented Groq's `finish_reason` behaviour and react.py implemented it correctly,
+and six of eight call sites still had no handling - including the one written two
+days after reading the rule. Prose aimed at whoever writes the next call site is not
+a control. `llm.py` is the same rule as code that cannot be skipped. This is the
+same finding as "fix the class, not the instance" and "prefer a control in code to
+an instruction in a prompt"; all three are one thing.
