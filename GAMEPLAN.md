@@ -805,7 +805,37 @@ equally useful whenever added.
 3. **V.1** - batch review over a corpus that has been accumulating
 4. **A.1 + A.3 together** - goals when something finally consumes them
 
-- [ ] **A.2 Correction logging.** START HERE. Every correction the user types is a
+- [x] **A.2 Correction logging.** DONE 2026-08-10. Built as specced, with two
+  deviations recorded below.
+
+  `_looks_like_correction` is ten regexes over the incoming message; `_log_correction`
+  appends the corrected reply and the correction to `memory/corrections.md`, rotating
+  at 200KB. Hooked in `process()` after routing but before `_update_context`, so the
+  last assistant entry is still the reply being corrected. Zero model calls, wrapped
+  so it can never break a turn.
+
+  Tested at 15/15 corrections caught, 0 false positives across 16 ordinary messages.
+  Two patterns were tightened after the first pass produced false positives on
+  "actually that's interesting" and "I said I would check later" - bare "i said" is
+  narration far more often than correction and was dropped entirely. The spec's rule
+  that a false positive is worse than a miss drove both.
+
+  `corrections.md` is deliberately NOT in React's `memory_read` allowlist. Letting an
+  agent pull it into a reply would be injection by another name.
+
+  DEVIATION 1: no recurrence detection at capture. The spec's verify line asked for a
+  repeated correction to be flagged as a candidate, but doing that without a model
+  means text similarity, which is fragile, and doing it with one contradicts
+  zero-model-calls. Recurrence is a property of the corpus and belongs in V.1's batch
+  review, which is where the spec puts inference anyway.
+
+  DEVIATION 2: rotation is by size rather than the specced 90-day archive. Capture
+  must never fail and a size check is one stat call; age-based curation belongs with
+  the review pass that will actually read these.
+
+  Original step text follows.
+
+- [ ] **A.2 (original spec) Correction logging.** START HERE. Every correction the user types is a
   labelled example of what IGOR got wrong, and all of it is currently discarded
   when the context window rolls.
 

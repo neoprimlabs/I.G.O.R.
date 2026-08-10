@@ -1,6 +1,8 @@
 import asyncio
 import functools
 import logging
+import re
+from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
 import openai
@@ -46,6 +48,41 @@ _VERDICT_MAP = {
 }
 
 _ROUTER_TIMEOUT_S = 15
+
+# GAMEPLAN A.2. Every correction the user types is a labelled example of what IGOR
+# got wrong, and until now all of it was discarded when the context window rolled.
+# This logs the pair and nothing else: no model call, no inference, no injection.
+# Deciding what a correction MEANS is V.1's job, done in batch over an accumulated
+# corpus - one correction looks like noise, five of the same shape are a preference.
+#
+# Explicit markers only. A false positive is worse than a miss here: it would teach
+# IGOR a preference the user never expressed, which is how six junk skills
+# accumulated in July. "actually" and "don't" alone are far too common in ordinary
+# requests to qualify.
+_CORRECTION_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"^\s*(no|nope|nah)\b\s*[,.\-]",
+        r"\bthat'?s (not right|not correct|wrong|incorrect|not what)\b",
+        r"\bthat is (wrong|incorrect|not right)\b",
+        r"\bnot what i (meant|asked|said|wanted)\b",
+        # "i said" alone is narration far more often than correction ("I said I
+        # would check later"), so it is deliberately absent.
+        r"\bi (meant|asked for)\b",
+        r"\byou (missed|misunderstood|misread)\b",
+        r"\byou (got|had) .{0,25}\bwrong\b",
+        r"\bshould(n'?t| not) have\b",
+        r"\bactually,?\s+(no\b|that'?s (not|wrong|incorrect)|it'?s not)",
+        r"\bwrong\b[^.?!]{0,30}\b(answer|file|one|thing|agent|source)\b",
+    )
+]
+
+# Rotate rather than prune by age: capture must never fail, and a size check is one
+# stat call. Age-based curation belongs with V.1's review pass.
+_CORRECTIONS_MAX_BYTES = 200_000
+
+
+def _looks_like_correction(message: str) -> bool:
+    return any(p.search(message) for p in _CORRECTION_PATTERNS)
 
 # Storage is cheap, the per-request token budget is not, so these are separate
 # numbers. _STORE_CAP is what goes to SQLite; the rest govern what is injected.
@@ -210,6 +247,11 @@ class Orchestrator:
         # A "file:" request is always document work regardless of what it asks
         # for, so it skips the router and goes straight to the tool agent.
         destination = "React" if file_mode else await self._classify(task)
+
+        # Before _update_context runs, so the last assistant entry is still the reply
+        # being corrected rather than the one about to be written.
+        if _looks_like_correction(task):
+            self._log_correction(task, destination)
         if destination == "StopResearch":
             file_mode = True
 
@@ -429,6 +471,32 @@ class Orchestrator:
             self._context = self._context[-config.CONTEXT_WINDOW:]
         append("user", user_msg)
         append("assistant", assistant_msg)
+
+    def _log_correction(self, user_msg: str, destination: str) -> None:
+        """Append a correction and what it was correcting. Never raises.
+
+        Capture only. This file is deliberately NOT in React's memory_read allowlist:
+        letting an agent pull it into a reply would be injection by another name, and
+        the whole point is that nothing acts on it until reviewed.
+        """
+        prior = next((m for m in reversed(self._context) if m.get("role") == "assistant"), None)
+        if prior is None:
+            return
+        try:
+            path = config.MEMORY_DIR / "corrections.md"
+            if path.exists() and path.stat().st_size > _CORRECTIONS_MAX_BYTES:
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+                path.rename(config.MEMORY_DIR / f"corrections_{stamp}.md")
+            with path.open("a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+                    f"Answered by: {destination}\n\n"
+                    f"IGOR said:\n> {_cap(prior.get('content') or '', 600).replace(chr(10), chr(10) + '> ')}\n\n"
+                    f"User corrected:\n> {_cap(user_msg, 600).replace(chr(10), chr(10) + '> ')}\n"
+                )
+            logger.info("Logged a correction against %s", destination)
+        except Exception as e:
+            logger.error("Correction logging failed - %s: %s", type(e).__name__, e)
 
     def record_outbound(self, text: str) -> None:
         """Record something IGOR sent without being asked.
