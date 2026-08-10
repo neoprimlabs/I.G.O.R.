@@ -809,9 +809,16 @@ async def handle(
             messages=messages,
             max_tokens=max_tokens,
         )
+        # Deliberately not routed through llm.complete. Returning the partial is
+        # already the right behaviour here, and a retry at double budget is unsafe:
+        # _trim_to_budget fit this prompt against max_tokens, so doubling can push
+        # the request past the bucket and lose the turn entirely.
+        if final.choices[0].finish_reason == "length":
+            logger.warning("ReAct final answer was truncated at %d tokens", max_tokens)
         content = final.choices[0].message.content
         if content:
             return content
+        logger.warning("ReAct final answer came back empty - reasoning consumed the budget")
     except Exception as e:
         logger.error("ReAct final-answer call failed - %s: %s", type(e).__name__, e)
     return "I ran out of tool budget before I could finish that. Try asking something more specific."

@@ -6,6 +6,7 @@ import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import config
+import llm
 
 logger = logging.getLogger(__name__)
 
@@ -153,15 +154,14 @@ async def _check_bridgemind_videos() -> None:
 
         try:
             transcript = await loop.run_in_executor(None, _get_transcript)
-            response = await _client.chat.completions.create(
-                model=config.MODELS["summary"],
-                messages=[
-                    {"role": "system", "content": _VIDEO_SUMMARY_PROMPT},
-                    {"role": "user", "content": f"Video: {title}\n\nTranscript:\n{transcript}"},
-                ],
+            summary = await llm.complete(
+                _client,
+                config.MODELS["summary"],
+                _VIDEO_SUMMARY_PROMPT,
+                f"Video: {title}\n\nTranscript:\n{transcript}",
                 max_tokens=1024,
+                label="Video summary",
             )
-            summary = response.choices[0].message.content or ""
             await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}\n\n{summary}")
         except Exception as e:
             logger.error("BridgeMind transcript failed for %s - %s: %s", video_id, type(e).__name__, e)
@@ -353,15 +353,14 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             return None
 
         formatted = research._format_results(unique_results)
-        response = await _client.chat.completions.create(
-            model=config.MODELS["summary"],
-            messages=[
-                {"role": "system", "content": _AI_NEWS_SYNTHESIS_PROMPT},
-                {"role": "user", "content": f"Search results:\n\n{formatted}"},
-            ],
+        return await llm.complete(
+            _client,
+            config.MODELS["summary"],
+            _AI_NEWS_SYNTHESIS_PROMPT,
+            f"Search results:\n\n{formatted}",
             max_tokens=1536,
+            label="AI news",
         )
-        return response.choices[0].message.content or ""
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
         return None
@@ -394,15 +393,14 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
             return None
 
         formatted = research._format_results(results)
-        response = await _client.chat.completions.create(
-            model=config.MODELS["summary"],
-            messages=[
-                {"role": "system", "content": _UNREAL_NEWS_SYNTHESIS_PROMPT},
-                {"role": "user", "content": f"Search results:\n\n{formatted}"},
-            ],
+        return await llm.complete(
+            _client,
+            config.MODELS["summary"],
+            _UNREAL_NEWS_SYNTHESIS_PROMPT,
+            f"Search results:\n\n{formatted}",
             max_tokens=1024,
+            label="Unreal news",
         )
-        return response.choices[0].message.content or ""
     except Exception as e:
         logger.error("Unreal news fetch failed - %s: %s", type(e).__name__, e)
         return None

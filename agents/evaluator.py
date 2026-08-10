@@ -4,6 +4,7 @@ from typing import Optional
 import openai
 
 import config
+import llm
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +74,14 @@ async def evaluate(task: str, response: str) -> tuple[bool, str]:
         {"role": "user", "content": body},
     ]
     try:
-        completion = await _get_client().chat.completions.create(
-            model=config.MODELS["evaluator"],
-            messages=messages,
+        verdict = await llm.complete(
+            _get_client(),
+            config.MODELS["evaluator"],
+            messages[0]["content"],
+            messages[1:],
             max_tokens=1024,
+            label="Evaluator",
         )
-        verdict = (completion.choices[0].message.content or "").strip()
     except Exception as e:
         logger.error("Evaluator failed open - %s: %s", type(e).__name__, e)
         return True, ""

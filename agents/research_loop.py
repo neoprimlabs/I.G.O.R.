@@ -5,6 +5,7 @@ from typing import Awaitable, Callable, Optional
 import openai
 
 import config
+import llm
 
 logger = logging.getLogger(__name__)
 
@@ -80,48 +81,18 @@ def _get_client() -> openai.AsyncOpenAI:
 async def _call(system: str, user: str, max_tokens: int) -> str:
     """One isolated model call. Nothing persists between calls.
 
-    The research model is a reasoning model: max_tokens covers hidden reasoning plus
-    output. That fails in two directions and BOTH need catching.
-
-    Empty content with a 200 OK means reasoning consumed the whole budget.
-
-    Non-empty content with finish_reason "length" means it reasoned for most of the
-    budget and got cut mid-sentence. This one is worse, because the response looks
-    valid - two findings in the 2026-08-10 run were written to research.md ending in
-    "without" and "(https://news.usni.org/". Checking only for empty content misses
-    it entirely.
-
-    Retries once at double budget for either, then returns whatever it has: a partial
-    finding beats none. RateLimitError propagates to the loop, which stops and reports.
+    The research model is a reasoning model, so it hits both silent failures llm
+    handles. RateLimitError propagates to the loop, which stops and reports what it
+    has rather than losing the run.
     """
-    client = _get_client()
-    budget = max_tokens
-    for attempt in range(2):
-        response = await client.chat.completions.create(
-            model=config.MODELS["research"],
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            max_tokens=budget,
-        )
-        choice = response.choices[0]
-        content = (choice.message.content or "").strip()
-        truncated = choice.finish_reason == "length"
-        if content and not truncated:
-            return content
-        if attempt == 1:
-            if truncated and content:
-                logger.warning("Research call still truncated at %d tokens, keeping the partial", budget)
-            return content
-        logger.warning(
-            "Research call %s at %d tokens, retrying at double",
-            "was truncated" if truncated else "returned empty content", budget,
-        )
-        # Cap must stay above _DISTILL_BUDGET or the retry repeats the first
-        # attempt at the same budget and buys nothing.
-        budget = min(budget * 2, 4096)
-    return ""
+    return await llm.complete(
+        _get_client(),
+        config.MODELS["research"],
+        system,
+        user,
+        max_tokens=max_tokens,
+        label="Research",
+    )
 
 
 def _timestamp() -> str:

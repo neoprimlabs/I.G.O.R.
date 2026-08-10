@@ -119,6 +119,34 @@ A Discord DM travels this path every time:
 `agents/research.py` is an Exa search wrapper (`_run_search`, `_format_results`),
 called by React and Monitor. It is not routable and not an agent.
 
+### llm.complete - the shared text-completion wrapper
+
+`llm.py` holds the only copy of "how a Groq text completion fails". Two failures
+arrive as a 200 OK and are invisible to the caller: empty content, and non-empty
+content with `finish_reason` `length`, which reads as a complete answer but was cut
+mid-sentence. Both retry once at double budget (cap 4096), then return whatever came
+back. A caller already at the cap makes one request, not two.
+
+Routed through it: `orchestrator.call_claude` (so Direct, ConfigEdit and the critic
+are covered), Monitor's three synthesis calls, Evaluator, and ResearchLoop's `_call`.
+
+Two call sites stay out, on purpose:
+
+- **React's main loop** - its `finish_reason` handling is entangled with tool
+  dispatch and `tool_use_failed` retries, and is already correct.
+- **React's forced final answer** and **the router** - both already do the right
+  thing, and a doubled retry would be actively harmful. React trims that prompt to
+  fit `max_tokens`, so doubling could push it past the bucket and lose the turn; the
+  router reserves 10 tokens, reads one word, and fails fast to React by design.
+
+Exceptions propagate. Callers handle rate limits differently on purpose: the
+orchestrator notifies and sleeps, the evaluator fails open, Monitor drops the digest
+section, the research loop stops and reports what it has.
+
+This module exists because the knowledge lived as prose in CLAUDE.md and every new
+call site re-derived it. Six of eight had no handling at all. Tested by
+`tests/test_llm.py`.
+
 ### Direct
 
 One model call, no tool schemas at all, on `llama-3.3-70b-versatile`. It uses the
@@ -190,12 +218,11 @@ tool, with a wider allowlist.
    enter another context
 4. **APPEND** - code, not a model, writes to `research.md`
 
-Every model call goes through `_call`, which handles both failure modes of a
-reasoning model on a tight budget. Empty content, and non-empty content with
-`finish_reason` `length`, each retry once at double budget (max 4096), then return
-whatever came back - a partial finding beats none. The truncation check was missing
-until 2026-08-10 and two findings in a 20-iteration run were written to
-`research.md` cut mid-sentence, because a clipped response is a valid 200 OK.
+Every model call goes through `_call`, a thin wrapper over `llm.complete`. Both
+silent failures of a reasoning model on a tight budget are handled there. The
+truncation check was missing until 2026-08-10 and two findings in a 20-iteration run
+were written to `research.md` cut mid-sentence, because a clipped response is a
+valid 200 OK.
 
 Gathering and synthesis are deliberately in separate contexts. The previous design
 handed one ReAct loop a batch of searches plus a write instruction, and ReAct

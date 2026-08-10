@@ -8,6 +8,7 @@ from typing import Awaitable, Callable
 import openai
 
 import config
+import llm
 
 logger = logging.getLogger(__name__)
 
@@ -194,16 +195,17 @@ async def call_claude(
     max_tokens: int = 1024,
     model: str | None = None,
 ) -> str:
-    all_messages = [{"role": "system", "content": system}] + messages
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = await client.chat.completions.create(
-                model=model or config.MODELS["chat"],
-                messages=all_messages,
+            return await llm.complete(
+                client,
+                model or config.MODELS["chat"],
+                system,
+                messages,
                 max_tokens=max_tokens,
+                label="Chat",
             )
-            return response.choices[0].message.content or ""
         except openai.RateLimitError:
             if attempt < max_retries - 1:
                 wait = 30 * (2 ** attempt)
