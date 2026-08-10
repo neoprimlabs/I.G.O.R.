@@ -103,6 +103,19 @@ outside the repo. Test the alert path with `-TestAlert`.
 Caveat: it only runs when this machine is on. Task Scheduler catches up when the
 machine returns, so time away means late alerts rather than none.
 
+## Open: React is still at reasoning_effort high
+
+gpt-oss defaults to high and it was never set anywhere. ResearchLoop now sets `low`
+after measurement (see ARCHITECTURE.md for the numbers - high produced empty output
+on PLAN and zero findings on DISTILL). **React on gpt-oss-120b is still at the
+default**, unmeasured and unchanged on purpose: choosing which tool to call is the
+case where reasoning plausibly earns its tokens, and it is a different model.
+
+Worth measuring next, because React is where the TPM pressure actually is. The test
+has to be a real multi-step task through Discord, not a token count - the failure
+mode to watch for is it getting quietly worse at deciding, which a token count will
+not show.
+
 ## Unverified on the server
 
 Deployed 2026-08-10, `tests/test_llm.py` passes on the server under the venv
@@ -151,6 +164,12 @@ caught by the user, not by me. See the memory note of the same name.
 **A test that confirms the fix is not a test.** Diagnosing the digest bug, the first
 attempt hand-wrote a snippet containing the word "bacteriophage" and unsurprisingly
 passed. Only the real API response exposed the real cause.
+
+**Check the defaults of anything you did not set.** Two days went into patching
+symptoms of gpt-oss running at `reasoning_effort` high - an empty-content floor, a
+doubling retry, a truncation fix - and nobody asked what the default was. It was in
+the provider docs the whole time. Before building machinery to survive a behaviour,
+check whether the behaviour is configurable.
 
 **A rule written as prose gets re-derived wrong at every new call site.** CLAUDE.md
 documented Groq's `finish_reason` behaviour and react.py implemented it correctly,
