@@ -18,7 +18,7 @@ Last updated: **2026-08-10**
 ## Code
 
 - Local, `origin/master`, and server `/opt/igor` are all in sync. Server was
-  deployed and restarted 2026-08-02; both services verified active afterwards.
+  deployed and restarted 2026-08-10; both services verified active afterwards.
 - The server tree was copied off the rescued disk rather than cloned, but its
   `.git` tracks the same remote and pulls normally.
 
@@ -31,10 +31,8 @@ found by using the system.
 assistant.** GAMEPLAN Phase A specs the path, researched then audited against its
 own sources. Build order, which is not the obvious one:
 
-1. **A.2 correction logging** - twenty lines, zero model calls, and it starts
-   accruing value immediately. Correction data has a lead time; every day it is not
-   collected is signal lost.
-2. **S.1 health-gated deploy with rollback** - before anything runs unattended
+1. ~~**A.2 correction logging**~~ - shipped 2026-08-08 (`d4185c4`). Accruing now.
+2. **S.1 health-gated deploy with rollback** - next. Before anything runs unattended.
 3. **V.1 improvement loop** - batch review over a corpus that has accumulated
 4. **A.1 goals + A.3 decomposition** - together, once something consumes them
 
