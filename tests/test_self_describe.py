@@ -50,13 +50,17 @@ check("told never to invent a component", "NEVER name a file, module" in prompt)
 # grounding: under binary scoring a confident guess always beats "I don't know"
 # (arXiv 2509.04664). An earlier version of this prompt said "when in doubt, answer",
 # which instructed the model to fabricate.
-check("abstention is stated to be a correct answer",
-      "is a CORRECT and complete answer" in prompt)
+check("grounding is scoped to claims, not to the question",
+      "Grounding applies to your CLAIMS, not to the question" in prompt)
+check("forbidden from replying that the doc does not mention the topic",
+      "Do not reply that the document does not mention their topic" in prompt)
+check("told to reason to a conclusion, including a clear no",
+      "including a clear no and what it would actually take" in prompt)
 check("guessing is named as the failure, not silence", "Guessing is the failure." in prompt)
 check("not scored on answering", "You are not scored on answering" in prompt)
 check("the 'when in doubt, answer' instruction is gone", "When in doubt, answer" not in prompt)
 check("hands off rather than apologising when it needs the source",
-      "hands the message to an agent that has the tools" in prompt)
+      "hands the message straight to an agent that has the tools" in prompt)
 check("does not tell the user to go read it themselves",
       "do NOT tell the user to go and read it themselves" in prompt)
 
