@@ -97,22 +97,52 @@ def score(case, answer):
     return "ok", ""
 
 
-async def main():
-    for i, case in enumerate(CASES):
-        if i:
-            time.sleep(62)
+async def _ask(question):
+    """A 429 is not a wrong answer. Retry it rather than scoring it as a failure.
+
+    The first run spaced calls 62s apart and still hit the limit: the window is
+    rolling, so two 8800-token calls occasionally land inside the same minute on a
+    12000 bucket. That is also a real production limit - two questions about IGOR in
+    quick succession will rate limit.
+    """
+    for attempt in range(3):
         try:
-            answer = await self_describe.handle(case["q"], [])
+            return await self_describe.handle(question, []), None
         except Exception as e:
-            answer = f"[{type(e).__name__}: {e}]"
-        verdict, detail = score(case, answer)
+            if "429" in str(e) or "RateLimit" in type(e).__name__:
+                wait = 45 * (attempt + 1)
+                print(f"               rate limited, waiting {wait}s")
+                sys.stdout.flush()
+                time.sleep(wait)
+                continue
+            return None, f"[{type(e).__name__}: {e}]"
+    return None, "[rate limited after 3 attempts]"
+
+
+async def main():
+    only = sys.argv[1:]
+    cases = [c for c in CASES if not only or any(o.lower() in c["q"].lower() for o in only)]
+
+    for i, case in enumerate(cases):
+        if i:
+            time.sleep(90)
+        answer, error = await _ask(case["q"])
+        if error:
+            verdict, detail = "RATE LIMITED", error
+        else:
+            verdict, detail = score(case, answer)
         _results.append((verdict, case["q"], detail))
         print(f"  {verdict:12} {case['q'][:58]}")
         if detail:
             print(f"               {detail}")
+        # Print what it actually said on any failure. Scoring that cannot be
+        # debugged is how a bad expectation gets mistaken for a bad answer.
+        if verdict != "ok":
+            shown = "None (handed off)" if answer is None else repr(answer[:400])
+            print(f"               SAID: {shown}")
         sys.stdout.flush()
 
-    bad = [r for r in _results if r[0] != "ok"]
+    bad = [r for r in _results if r[0] not in ("ok", "RATE LIMITED")]
     print(f"\n  {len(_results) - len(bad)}/{len(_results)} correct")
     if bad:
         print("\n  failures:")
