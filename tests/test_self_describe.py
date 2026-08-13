@@ -54,7 +54,10 @@ check("abstention is stated to be a correct answer",
 check("guessing is named as the failure, not silence", "Guessing is the failure." in prompt)
 check("not scored on answering", "You are not scored on answering" in prompt)
 check("the 'when in doubt, answer' instruction is gone", "When in doubt, answer" not in prompt)
-check("tells the user where to go when the doc runs out", "I need to read the source" in prompt)
+check("hands off rather than apologising when it needs the source",
+      "hands the message to an agent that has the tools" in prompt)
+check("does not tell the user to go read it themselves",
+      "do NOT tell the user to go and read it themselves" in prompt)
 
 # The arithmetic that React failed. 12000 TPM bucket, 1024 max_tokens.
 prompt_tokens = len(prompt) / 4
