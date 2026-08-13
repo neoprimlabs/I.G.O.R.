@@ -27,12 +27,19 @@ Last updated: **2026-08-13**
 **Pick up here.** Confirm the SelfDescribe eval, then two checks that need the user,
 then V.1:
 
-0. **`tests/eval_self_describe.py`** is the gate on questions about IGOR. Run it on
-   the server after any change to `agents/self_describe.py`, the router prompt, or
+0. **Finish the SelfDescribe eval. It has never completed a full run.**
+   `tests/eval_self_describe.py`, 10 cases, on the server. The daily token budget ran
+   out partway through on 2026-08-13, so only 6 of 10 have ever been scored: 5 pass,
+   1 real defect found and fixed (`agents.md` mistaken for the agent list). **Four
+   cases have never been measured at all:** social media, digest schedule location,
+   router failure, and the two handoff cases. Budget resets daily; a full run costs
+   about 33000 of the 100000 tokens.
+
+   Run it after any change to `agents/self_describe.py`, the router prompt, or
    ARCHITECTURE.md's summary. It scores three failure modes separately - fabricating
    a subsystem, stonewalling on facts it holds, and answering something that needed a
    tool. Six fixes on 2026-08-13 were each declared successful off one hand-checked
-   sample, and two of those were wrong. Do not judge this agent by eye again.
+   sample, and two of those judgements were wrong. Do not judge this agent by eye.
 
 
 1. **Does A.2 actually work?** `memory/corrections.md` has never been created. Ask
@@ -100,9 +107,17 @@ coupling either.
 
    Remaining gap: a crash *after* a healthy deploy. Covered only by
    `Restart=always` and the backup script's crash-loop alert, as before.
-2. Still on Oracle Always Free, so an entitlement change can terminate the
+2. **The daily token budget is tighter than anyone realised.**
+   `llama-3.3-70b-versatile` allows **100000 tokens per DAY**, org-wide, shared by
+   Direct, ConfigEdit, the evaluator and SelfDescribe. Measured 2026-08-13 from a 429
+   body; it appears nowhere else, and the `x-ratelimit-*` headers report healthy
+   per-minute state while the daily budget is gone. At roughly 2000 tokens a chat
+   turn that is a few dozen conversations a day before ordinary chat starts failing.
+   Nothing monitors it and nothing warns before it runs out. CLAUDE.md's Groq rules
+   are corrected; the per-day limits of the other three models are still unmeasured.
+3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
-3. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
+4. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
    systemd reports active but the Discord connection has silently dropped, the
    check reports healthy while the green dot is out. Closing that needs a
    heartbeat emitted from inside the bot, gated on `is_ready()` and a finite
