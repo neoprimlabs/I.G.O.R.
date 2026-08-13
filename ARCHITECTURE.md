@@ -28,15 +28,18 @@ destinations. Any router failure falls through to React.
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`. There are no others.
 
-**Scheduling.** APScheduler, in-process. Jobs are registered *in code* in
-`monitor.setup()`. There is no scheduler config file, and no way to add a job
-without a code change and a deploy.
+**Scheduling.** APScheduler, in-process. Three jobs, all registered *in code* in
+`monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
+(Mondays 09:00), and an advocacy draft (Mondays 15:00). There is no scheduler config
+file, and no way to add or retime a job without a code change and a deploy.
 
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
 (which digest sections run), `tasks.md`, `projects.md`, `user.md`, `agents.md`,
-`watchlist.md`, `research.md`, `corrections.md`, plus `context.db` (SQLite
-conversation history). `memory_write` takes a filename from that fixed list plus
-content. It is not a key/value store and cannot create arbitrary keys.
+`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, plus `context.db`
+(SQLite conversation history). `memory_write` takes a filename from a fixed list
+plus content - it is not a key/value store. `corrections.md` and `drafts.md` are
+readable by no agent: both hold text derived from untrusted input, so pulling them
+into a tool-bearing context would be a stored injection path.
 
 **Deployment** runs through a root-owned script at
 `/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and deliberately beyond
