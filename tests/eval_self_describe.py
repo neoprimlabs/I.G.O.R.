@@ -125,7 +125,10 @@ async def main():
 
     for i, case in enumerate(cases):
         if i:
-            time.sleep(90)
+            # 3344 tokens a call against a 12000 TPM bucket. 30s keeps two calls a
+            # minute, well clear, and makes a full run about five minutes instead of
+            # fifteen - an eval nobody wants to wait for is an eval nobody runs.
+            time.sleep(30)
         answer, error = await _ask(case["q"])
         if error:
             verdict, detail = "RATE LIMITED", error
