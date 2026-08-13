@@ -18,7 +18,7 @@ _TOOL_RESULT_CAP = 4000
 # read_file caps itself below _TOOL_RESULT_CAP so its own "continue at offset N"
 # notice survives instead of being chopped off by the generic cap, which would
 # leave the model truncated with no idea there was more.
-_READ_WINDOW = 3500
+_READ_WINDOW = 3700
 
 # Groq counts prompt + max_tokens against the per-minute bucket at request time,
 # and react runs on an 8000 TPM model. Within a single handle() call every tool

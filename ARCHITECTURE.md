@@ -38,7 +38,8 @@ messages that are really tasks, and those go on to React.
 file, and no way to add or retime a job without a code change and a deploy.
 
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
-(which digest sections run), `tasks.md`, `projects.md`, `user.md`, `agents.md`,
+(which digest sections run), `agents.md` (**standing preferences only - NOT the agent
+list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
 `watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, plus `context.db`
 (SQLite conversation history). `memory_write` takes a filename from a fixed list
 plus content - it is not a key/value store. `corrections.md` and `drafts.md` are
