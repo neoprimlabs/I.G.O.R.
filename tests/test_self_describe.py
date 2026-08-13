@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, r"c:\Dev\IGOR")
 
 import config
+import orchestrator
 from agents import self_describe
 
 _passed = 0
