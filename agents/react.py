@@ -700,6 +700,72 @@ async def _execute_tool(name: str, inputs: dict) -> str:
     return f"Unknown tool: {name}"
 
 
+# Nouns that only come up when the subject is IGOR's own construction. Paired with
+# a second-person or by-name reference, they mean the answer has to be grounded.
+_SELF_WORD = r"(?:igor|your|yours|you)"
+_SYSTEM_WORD = (
+    r"(?:scheduler|schedule|scheduled|agent|agents|tool|tools|memory|model|models|"
+    r"router|routing|architecture|codebase|code|system|systems|capabilit|config|"
+    r"configuration|deploy|prompt|abilit|built|internals|pipeline)"
+)
+
+# Either order. "what tools can you use" and "your scheduled system" both have to
+# match, and requiring pronoun-before-noun missed the first one.
+_SELF_QUESTION_RE = re.compile(
+    rf"\b{_SELF_WORD}\b[^.?!]{{0,80}}?\b{_SYSTEM_WORD}"
+    rf"|\b{_SYSTEM_WORD}[^.?!]{{0,80}}?\b{_SELF_WORD}\b",
+    re.IGNORECASE,
+)
+
+_SELF_SUMMARY_CHARS = 3400
+
+
+def _self_summary() -> str:
+    """The head of ARCHITECTURE.md, which is written to be self-contained.
+
+    Read per call rather than cached, the same way memory prompt files are, so an
+    edit takes effect without a restart.
+    """
+    try:
+        return (config.BASE_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")[:_SELF_SUMMARY_CHARS]
+    except Exception as e:
+        logger.error("Could not load ARCHITECTURE.md for grounding - %s: %s", type(e).__name__, e)
+        return ""
+
+
+def _ground_if_self_referential(message: str, system_text: str) -> str:
+    """Put the truth in front of the model instead of asking it to go and find it.
+
+    Telling React to read ARCHITECTURE.md was not enough, twice. The first time it
+    read the file and got 17% of it. The second time it did not read anything at all,
+    because its own fabricated answer from the previous day was in the conversation
+    window, and repeating what you already said is cheaper than opening a file.
+
+    Fabrication is self-sustaining once it lands in context: the wrong answer becomes
+    an undetected input to the next one. The only reliable fix is for ground truth to
+    already be in the prompt, ahead of the history, saying which one wins.
+    """
+    if not _SELF_QUESTION_RE.search(message):
+        return system_text
+    summary = _self_summary()
+    if not summary:
+        return system_text
+    logger.info("Grounding a self-referential question with ARCHITECTURE.md")
+    return (
+        f"{system_text}\n\n"
+        "=== VERIFIED SYSTEM FACTS ===\n"
+        "This block is read from ARCHITECTURE.md at request time and is authoritative.\n"
+        "Earlier turns in this conversation may contain descriptions of IGOR that are "
+        "wrong, including config files, modules and safety features that have never "
+        "existed. Where this block and the conversation disagree, this block is "
+        "correct and the conversation is not. Do not describe any component that does "
+        "not appear here or that you have not read with read_file, and say plainly "
+        "when something does not exist.\n\n"
+        f"{summary}\n"
+        "=== END VERIFIED SYSTEM FACTS ==="
+    )
+
+
 async def handle(
     message: str,
     context: list[dict],
@@ -719,6 +785,7 @@ async def handle(
         system_text = f"Current date and time: {current_dt}\n\n{system_override}"
     else:
         system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
+    system_text = _ground_if_self_referential(message, system_text)
 
     import json
     messages = [{"role": "system", "content": system_text}] + context + [{"role": "user", "content": message}]
