@@ -34,13 +34,25 @@ logger = logging.getLogger(__name__)
 # the same tokens and opposite intent. A pattern over nouns matched both and hijacked
 # real task requests to an agent with no tools.
 
-# ARCHITECTURE.md is ~26KB, about 6600 tokens, and this runs on the 12000 bucket with
-# max_tokens 1024. The cap is headroom for the file growing, not a current limit.
-_MAX_DOC_CHARS = 34000
+# Only the self-contained summary is sent, not the whole file.
+#
+# Sending all of ARCHITECTURE.md cost 8539 tokens per question. llama-3.3-70b is
+# capped at 100000 tokens PER DAY, shared with Direct, ConfigEdit and the evaluator,
+# so that design allowed about eleven questions a day before locking out the rest of
+# IGOR. Measured the hard way on 2026-08-13, from the 429 body - the x-ratelimit
+# headers show per-minute state and looked healthy the whole time.
+#
+# The summary is written to be complete on its own and costs about a tenth of that.
+# Anything needing more detail declines to React, which can page the full file with
+# read_file offsets. The marker is explicit so the split cannot drift silently.
+_SUMMARY_MARKER = "<!-- END SELF SUMMARY -->"
+_MAX_DOC_CHARS = 6000
 
 _DECLINE = "NOT_ABOUT_IGOR"
 
-_SYSTEM_PROMPT = f"""You answer questions about how IGOR is built, using ONLY the ARCHITECTURE.md document below. It is verified against the source code. You have no tools and no other source of truth.
+_SYSTEM_PROMPT = f"""You answer questions about how IGOR is built, using ONLY the summary below. It is the opening section of ARCHITECTURE.md, verified against the source code. You have no tools and no other source of truth.
+
+It is a summary, not the whole document. It covers the shape of the system: the destinations, the models, the tool list, where config and memory live, how deploys work, and what does not exist. It does not cover implementation detail. When a question needs detail beyond it, that is a handoff, not something to reason your way around.
 
 FIRST, before writing anything else. If answering would need something you do not have, your entire reply is the single token {_DECLINE} and no other text:
 - the message asks you to DO something - run a search, read or write a file, fetch a URL, run code, send a message
@@ -69,18 +81,28 @@ Style:
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")
 
-=== ARCHITECTURE.md ===
+=== ARCHITECTURE.md, summary section ===
 {{document}}
-=== end of ARCHITECTURE.md ==="""
+=== end of summary ==="""
 
 
 def _load_document() -> str:
     """Read per call, so an edit to ARCHITECTURE.md takes effect without a restart."""
     try:
-        return (config.BASE_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")[:_MAX_DOC_CHARS]
+        text = (config.BASE_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")
     except Exception as e:
         logger.error("SelfDescribe could not read ARCHITECTURE.md - %s: %s", type(e).__name__, e)
         return ""
+
+    marker = text.find(_SUMMARY_MARKER)
+    if marker == -1:
+        logger.error(
+            "ARCHITECTURE.md is missing %s - falling back to the first %d chars. "
+            "Restore the marker; without it this agent silently loses its bearings.",
+            _SUMMARY_MARKER, _MAX_DOC_CHARS,
+        )
+        return text[:_MAX_DOC_CHARS]
+    return text[:marker]
 
 
 async def handle(message: str, context: list[dict]) -> Optional[str]:

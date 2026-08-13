@@ -25,8 +25,18 @@ A state file that goes stale is worse than no state file.
 The runtime is the server. There is no local run.
 
 ## Groq Platform Rules (hard-won; violating these cost days)
+- **There is a TOKENS-PER-DAY cap as well as a per-minute one, and it is the one
+  that bites.** Measured 2026-08-13 from the 429 body: `llama-3.3-70b-versatile`
+  is **100000 tokens/day**. A single agent sending a 27KB document per call spent
+  93204 of it in one afternoon and locked out Direct, ConfigEdit and the evaluator,
+  which all share that model. TPD appears ONLY in the 429 message - the
+  `x-ratelimit-*` headers report per-minute state and look perfectly healthy while
+  the daily budget is gone. Before designing anything that sends a large fixed
+  prompt on every call, divide 100000 by that prompt size and ask whether the answer
+  is a usable number of requests per day. The old note here said requests/day was a
+  non-issue and to think in tokens-per-minute; that was wrong and cost a day's budget.
 - **Rate limits are PER MODEL, independent buckets, and the limit VARIES by model**
-  (verified 2026-07-09). Requests/day is a non-issue. Think in tokens-per-minute.
+  (verified 2026-07-09). Think in tokens-per-minute AND tokens-per-day.
   Measured: llama-3.3-70b-versatile=12000, gpt-oss-120b=8000, gpt-oss-20b=8000,
   llama-3.1-8b-instant=6000. Different models = separate buckets (that is why agents
   are assigned different models). Same model for two roles = SHARED bucket. The old

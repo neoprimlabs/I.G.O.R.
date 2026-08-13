@@ -31,13 +31,22 @@ def check(name, condition, detail=""):
 print("=== the prompt it builds ===")
 
 doc = self_describe._load_document()
-check("ARCHITECTURE.md loads", len(doc) > 20000, f"got {len(doc)} chars")
+full = (config.BASE_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+check("the summary marker is present in ARCHITECTURE.md",
+      self_describe._SUMMARY_MARKER in full,
+      "without it _load_document silently falls back to a char count")
+check("the summary loads and is a summary, not the whole file",
+      2000 < len(doc) < 5000, f"got {len(doc)} of {len(full)} chars")
 
 prompt = self_describe._SYSTEM_PROMPT.format(document=doc)
 
-# The whole document must fit, unlike React's 4000-char tool result.
+# Deep sections must NOT be here. Sending the whole 27KB file cost 8539 tokens a
+# question against a 100000 token DAILY cap on llama-3.3-70b, shared with Direct,
+# ConfigEdit and the evaluator - about eleven questions a day before the rest of
+# IGOR was locked out. Detail is React's job, via read_file offsets.
 for deep in ["_trim_to_budget", "Prompt injection defence"]:
-    check(f"the document reaches the end, not just the head: {deep}", deep in prompt)
+    check(f"deep detail is left to React, not sent every call: {deep}", deep not in prompt)
 
 for denial in ["No content filter", "No `scheduler.yaml`", "run_agent()"]:
     check(f"prompt denies the fabrication: {denial}", denial in prompt)
@@ -64,10 +73,21 @@ check("hands off rather than apologising when it needs the source",
 check("does not tell the user to go read it themselves",
       "do NOT tell the user to go and read it themselves" in prompt)
 
-# The arithmetic that React failed. 12000 TPM bucket, 1024 max_tokens.
-prompt_tokens = len(prompt) / 4
-history = orchestrator._CONTEXT_BUDGET_SELF / 4
+# 3.47 chars/token is measured, not assumed: a 29616 char prompt was reported as
+# 8539 tokens by the API on 2026-08-13. The old chars/4 estimate said 7404 and hid
+# the problem entirely.
+_CHARS_PER_TOKEN = 3.47
+prompt_tokens = len(prompt) / _CHARS_PER_TOKEN
+history = orchestrator._CONTEXT_BUDGET_SELF / _CHARS_PER_TOKEN
 total = prompt_tokens + history + 1024
+
+# The check that was missing. llama-3.3-70b allows 100000 tokens per DAY across
+# Direct, ConfigEdit, the evaluator and this agent, so a fixed prompt sent on every
+# call has to leave room for all of them.
+per_day = 100000 / total
+check("leaves a usable number of questions in the daily budget", per_day >= 25,
+      f"only {per_day:.0f} questions/day at {total:.0f} tokens each")
+print(f"        {total:.0f} tokens per question, about {per_day:.0f} per 100k day")
 check("prompt + history + max_tokens fits the 12000 bucket", total < 11000,
       f"estimated {int(total)} tokens")
 print(f"        estimated {int(prompt_tokens)} prompt + {int(history)} history + 1024 out = {int(total)} of 12000")

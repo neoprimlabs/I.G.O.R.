@@ -143,7 +143,21 @@ async def main():
         sys.stdout.flush()
 
     bad = [r for r in _results if r[0] not in ("ok", "RATE LIMITED")]
-    print(f"\n  {len(_results) - len(bad)}/{len(_results)} correct")
+    limited = [r for r in _results if r[0] == "RATE LIMITED"]
+    scored = [r for r in _results if r[0] != "RATE LIMITED"]
+
+    # A run that measured nothing must never report success. The first version
+    # excluded rate-limited cases from the failure count and printed "5/5 correct"
+    # on a run where all five were 429s and not one answer was graded.
+    if limited:
+        print(f"\n  INVALID RUN: {len(limited)} of {len(_results)} cases never got an answer.")
+        print("  llama-3.3-70b is capped at 100000 tokens per DAY and this eval spends")
+        print("  ~8500 per case. Check remaining budget before trusting any score here.")
+        for _, q, _d in limited:
+            print(f"    unmeasured: {q}")
+        return 2
+
+    print(f"\n  {len(scored) - len(bad)}/{len(scored)} correct")
     if bad:
         print("\n  failures:")
         for verdict, q, detail in bad:

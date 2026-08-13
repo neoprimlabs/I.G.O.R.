@@ -63,6 +63,8 @@ Say so plainly rather than describing these as though they work:
   on. IGOR cannot deploy its own code changes.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
+<!-- END SELF SUMMARY -->
+
 ---
 
 Describes the system **as it exists today**, verified against the source on
