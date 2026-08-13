@@ -198,6 +198,20 @@ did not reappear and unset looked nothing like high. Both claims were wrong, and
 they had already been written into ARCHITECTURE.md, STATE.md and a commit message
 before the second sample. Sample before writing it down as fact.
 
+**A fabrication that reaches persisted context becomes a permanent input.** On
+2026-08-13 IGOR invented a `scheduler.yaml`, a `run_agent()` helper and a content
+filter. The cause was found and fixed - `read_file` capped a 23KB ARCHITECTURE.md at
+4000 chars with no way to page - and the next day it produced the same fabrication
+having made **zero tool calls**. Its own 5861-character invention was in the
+conversation window, and repeating what you already said is cheaper than opening a
+file. Injecting ARCHITECTURE.md into the prompt did not beat it either. Only
+deleting the two rows from `context.db` did: same code, same question, correct
+answer. Prompt-level grounding is necessary and not sufficient. **Wrong output that
+gets stored is an undetected input to every later turn** - the exact mechanism
+GAMEPLAN Phase S documents for self-improvement, arriving through plain
+confabulation instead. Anything that learns from IGOR's own history needs a way to
+retract, not just to append.
+
 **A model can break a working feature with no commit on our side.** The digest lost
 every link on 2026-08-10 with prompt, code and input unchanged: llama-3.1-8b simply
 stopped copying URLs and wrote publication names. Reproducible, undetectable in
