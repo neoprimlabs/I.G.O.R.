@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-10**
+Last updated: **2026-08-13**
 
 ---
 
@@ -17,14 +17,23 @@ Last updated: **2026-08-10**
 
 ## Code
 
-- Local, `origin/master`, and server `/opt/igor` are all in sync. Server was
-  deployed and restarted 2026-08-10; both services verified active afterwards.
+- Local, `origin/master`, and server `/opt/igor` are all in sync. Deployed through
+  the S.1 gate on 2026-08-13; gateway reconnect confirmed on every deploy.
 - The server tree was copied off the rescued disk rather than cloned, but its
   `.git` tracks the same remote and pulls normally.
 
 ## Next action
 
-**Pick up here.** Two checks that need the user, then V.1:
+**Pick up here.** Confirm the SelfDescribe eval, then two checks that need the user,
+then V.1:
+
+0. **`tests/eval_self_describe.py`** is the gate on questions about IGOR. Run it on
+   the server after any change to `agents/self_describe.py`, the router prompt, or
+   ARCHITECTURE.md's summary. It scores three failure modes separately - fabricating
+   a subsystem, stonewalling on facts it holds, and answering something that needed a
+   tool. Six fixes on 2026-08-13 were each declared successful off one hand-checked
+   sample, and two of those were wrong. Do not judge this agent by eye again.
+
 
 1. **Does A.2 actually work?** `memory/corrections.md` has never been created. Ask
    the user to send IGOR a corrective Discord message ("no, that's wrong - X is
@@ -211,6 +220,25 @@ gets stored is an undetected input to every later turn** - the exact mechanism
 GAMEPLAN Phase S documents for self-improvement, arriving through plain
 confabulation instead. Anything that learns from IGOR's own history needs a way to
 retract, not just to append.
+
+**Fix the model of the problem before fixing the problem.** Six attempts went into
+one bug on 2026-08-13 - IGOR describing a `scheduler.yaml` and a content filter that
+have never existed. The first five all assumed it fabricated because it lacked
+information, so each one supplied more: page the file, inject a summary, hand it the
+whole document. The third made it worse, pushing React past its token ceiling so it
+answered with no tools at all. The actual cause was in published work the whole time:
+hallucination is a scoring artifact, not a knowledge gap (arXiv 2509.04664). Under
+binary grading a confident guess beats abstaining, so the fix is to credit abstention,
+not to add context. Four searches would have found that before the first line of code.
+
+**Then the correction over-shot, and only a scored set caught it.** With abstention
+rewarded, SelfDescribe stopped inventing and started refusing - listing the three
+scheduled jobs and then saying the document did not mention UBI. Grounding belongs to
+claims, not to which questions may be answered. Every one of the six fixes was
+verified by eyeballing a single sample, and two of those judgements were wrong.
+`tests/eval_self_describe.py` now scores fabrication, stonewalling and missed handoff
+separately, the way `tests/test_router_verdicts.py` scores routing. **An agent whose
+failure is plausible-sounding text cannot be checked by reading one of its answers.**
 
 **A model can break a working feature with no commit on our side.** The digest lost
 every link on 2026-08-10 with prompt, code and input unchanged: llama-3.1-8b simply

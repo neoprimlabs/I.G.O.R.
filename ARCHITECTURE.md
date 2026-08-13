@@ -22,7 +22,7 @@ failure falls through to React.
 | Monitor | `MONITOR`, digest commands | llama-3.1-8b | none |
 | ConfigEdit | `CONFIG` | llama-3.3-70b | none, writes 3 files |
 | ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
-| SelfDescribe | questions about IGOR itself | llama-3.3-70b | none, reads this file |
+| SelfDescribe | `SELF` - questions about IGOR itself | llama-3.3-70b | none, reads this file |
 
 **Questions about IGOR go to SelfDescribe, not React**, which carries this whole
 document and no tools so it has room to be accurate. It returns `NOT_ABOUT_IGOR` for
