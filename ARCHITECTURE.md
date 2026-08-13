@@ -1,8 +1,7 @@
 # ARCHITECTURE.md - What IGOR Actually Is
 
-**If you are IGOR answering a question about yourself, this section is the answer.**
-It is written to fit in one `read_file` window on purpose. Everything after it is
-detail, reachable with `offset`. Describe nothing you have not actually read.
+**IGOR: this section answers questions about yourself.** It fits one `read_file`
+window on purpose; the rest is reachable with `offset`. Describe nothing unread.
 
 ## The whole system, in one page
 
@@ -12,9 +11,9 @@ root `/opt/igor`, systemd services `igor` and `igor-watchdog`. Models are Groq f
 tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
 SQLite. No database server, no web UI, no admin panel.
 
-**Routing.** Four exact-match fast paths, then one router call
-(`llama-3.1-8b-instant`, `max_tokens=10`) returning one word, mapped to five
-destinations. Any router failure falls through to React.
+**Routing.** Five exact-match or regex fast paths, then one router call
+(`llama-3.1-8b-instant`, `max_tokens=10`) returning one word. Six destinations. Any
+router failure falls through to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
@@ -23,6 +22,11 @@ destinations. Any router failure falls through to React.
 | Monitor | `MONITOR`, digest commands | llama-3.1-8b | none |
 | ConfigEdit | `CONFIG` | llama-3.3-70b | none, writes 3 files |
 | ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
+| SelfDescribe | questions about IGOR itself | llama-3.3-70b | none, reads this file |
+
+**Questions about IGOR go to SelfDescribe, not React**, which carries this whole
+document and no tools so it has room to be accurate. It returns `NOT_ABOUT_IGOR` for
+messages that are really tasks, and those go on to React.
 
 **React's 12 tools, the complete list:** `search`, `memory_read`, `search_memory`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
@@ -42,9 +46,9 @@ readable by no agent: both hold text derived from untrusted input, so pulling th
 into a tool-bearing context would be a stored injection path.
 
 **Deployment** runs through a root-owned script at
-`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and deliberately beyond
-IGOR's reach. It compile-checks, imports every module, restarts, waits for the
-Discord gateway, and resets to the previous commit on failure.
+`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach.
+It compile-checks, imports every module, restarts, waits for the gateway, and
+reverts on failure.
 
 ## What does NOT exist
 

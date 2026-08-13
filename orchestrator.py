@@ -97,6 +97,12 @@ _OLD_ENTRY_CAP = 700
 _CONTEXT_BUDGET_REACT = 8500
 _CONTEXT_BUDGET_DIRECT = 24000
 
+# SelfDescribe carries the whole of ARCHITECTURE.md, so history gets what is left of
+# the 12000 bucket, not Direct's allowance. Roughly: 26KB document = 6600 tokens,
+# system prompt 400, max_tokens 1024, leaving about 3900 tokens of history. 8000
+# chars is half of that, deliberately, because the bucket is shared with Evaluator.
+_CONTEXT_BUDGET_SELF = 8000
+
 
 def _cap(text: str, limit: int) -> str:
     if len(text) <= limit:
@@ -303,6 +309,16 @@ class Orchestrator:
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
 
+        # Questions about IGOR's own construction go to a destination with room to
+        # hold ARCHITECTURE.md. Decided in code rather than as a sixth router verdict:
+        # the router prompt took four rounds of tuning to reach 19/20 and adding a
+        # class to it risks the other five. SelfDescribe returns None if the message
+        # turns out to be a task, and it falls through to React.
+        from agents import self_describe
+        if self_describe.looks_self_referential(content):
+            logger.info("Fast path: self-referential -> SelfDescribe")
+            return "SelfDescribe"
+
         # The router runs on its own mostly-idle 6000 TPM bucket and reserves 10
         # tokens, so it costs almost nothing. Called directly rather than through
         # call_claude because call_claude's rate-limit path notifies the user and
@@ -383,6 +399,13 @@ class Orchestrator:
             # more history than React. This is what makes "what did you just say"
             # answerable in chat.
             return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+
+        if destination == "SelfDescribe":
+            from agents import self_describe
+            self_result = await self_describe.handle(content, self._window(_CONTEXT_BUDGET_SELF))
+            if self_result is not None:
+                return self_result
+            logger.info("SelfDescribe declined the message, forwarding to React")
 
         if destination == "ConfigEdit":
             from agents import prod_memory
