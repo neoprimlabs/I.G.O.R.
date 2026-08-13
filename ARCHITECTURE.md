@@ -1,7 +1,65 @@
 # ARCHITECTURE.md - What IGOR Actually Is
 
+**If you are IGOR answering a question about yourself, this section is the answer.**
+It is written to fit in one `read_file` window on purpose. Everything after it is
+detail, reachable with `offset`. Describe nothing you have not actually read.
+
+## The whole system, in one page
+
+A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
+`VM.Standard.E2.1.Micro` (x86_64, Ubuntu 22.04, 1 OCPU / 956 MB RAM plus 2 GB swap),
+root `/opt/igor`, systemd services `igor` and `igor-watchdog`. Models are Groq free
+tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
+SQLite. No database server, no web UI, no admin panel.
+
+**Routing.** Four exact-match fast paths, then one router call
+(`llama-3.1-8b-instant`, `max_tokens=10`) returning one word, mapped to five
+destinations. Any router failure falls through to React.
+
+| Destination | Handles | Model | Tools |
+|---|---|---|---|
+| Direct | `CHAT` | llama-3.3-70b | none, by design |
+| React | `TASK`, router failure | gpt-oss-120b | all 12 |
+| Monitor | `MONITOR`, digest commands | llama-3.1-8b | none |
+| ConfigEdit | `CONFIG` | llama-3.3-70b | none, writes 3 files |
+| ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
+
+**React's 12 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
+`fetch_url`, `send_message`, `memory_write`. There are no others.
+
+**Scheduling.** APScheduler, in-process. Jobs are registered *in code* in
+`monitor.setup()`. There is no scheduler config file, and no way to add a job
+without a code change and a deploy.
+
+**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
+(which digest sections run), `tasks.md`, `projects.md`, `user.md`, `agents.md`,
+`watchlist.md`, `research.md`, `corrections.md`, plus `context.db` (SQLite
+conversation history). `memory_write` takes a filename from that fixed list plus
+content. It is not a key/value store and cannot create arbitrary keys.
+
+**Deployment** runs through a root-owned script at
+`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and deliberately beyond
+IGOR's reach. It compile-checks, imports every module, restarts, waits for the
+Discord gateway, and resets to the previous commit on failure.
+
+## What does NOT exist
+
+Say so plainly rather than describing these as though they work:
+
+- **No content filter, moderation pipeline, or safety classifier.** Nothing screens
+  generated text for accuracy or harm.
+- **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.**
+- **No connection to any external platform.** No posting, no email, no social or
+  publishing accounts. IGOR drafts; a human publishes.
+- **No working self-modification.** `restart_self` writes a sentinel nothing acts
+  on. IGOR cannot deploy its own code changes.
+- **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
+
+---
+
 Describes the system **as it exists today**, verified against the source on
-2026-08-03. Nothing aspirational appears here.
+2026-08-13. Nothing aspirational appears here.
 
 - `IGOR_SPEC.md` is the vision. Some of it has never been built.
 - `GAMEPLAN.md` is the plan. All of it is unbuilt by definition.
@@ -13,13 +71,12 @@ Describes the system **as it exists today**, verified against the source on
 > what it describes. IGOR reads this file to answer questions about itself, so it
 > confidently told the user it used keyword routing days after the model router
 > shipped. **Updating this file is part of the change, not a follow-up to it.**
-
----
-
-## The shape, in one sentence
-
-A model router in front of five destinations, each on its own Groq model and
-rate-limit bucket, plus a scheduler and a research pipeline alongside.
+>
+> On 2026-08-13 it failed the other way: the file was correct but 23KB, and
+> `read_file` capped at 4000 chars with no way to page, so IGOR received 17% of it
+> and invented the rest - including a content filter it has never had. Hence the
+> summary above. **Keep it under 3400 characters or IGOR stops seeing the end of
+> it.**
 
 ---
 

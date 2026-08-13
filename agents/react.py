@@ -15,6 +15,11 @@ _notify_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _MAX_ITERATIONS = 8
 _TOOL_RESULT_CAP = 4000
 
+# read_file caps itself below _TOOL_RESULT_CAP so its own "continue at offset N"
+# notice survives instead of being chopped off by the generic cap, which would
+# leave the model truncated with no idea there was more.
+_READ_WINDOW = 3500
+
 # Groq counts prompt + max_tokens against the per-minute bucket at request time,
 # and react runs on an 8000 TPM model. Within a single handle() call every tool
 # round appends up to _TOOL_RESULT_CAP chars, so long tool sessions used to cross
@@ -121,11 +126,12 @@ _TOOLS = [
     },
     {
         "name": "read_file",
-        "description": "Read a file from IGOR's codebase on the server. Use this to inspect source code before modifying it. Path is relative to IGOR's root directory.",
+        "description": "Read a file from IGOR's codebase on the server. Use this to inspect source code before modifying it. Path is relative to IGOR's root directory. Long files come back capped, with the character to resume from; pass it as offset to continue.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File path relative to IGOR root (e.g. 'agents/react.py', 'orchestrator.py')"},
+                "offset": {"type": "integer", "description": "Character position to start reading from. Omit for the start of the file. Use the offset named in a truncation notice to read the next section."},
             },
             "required": ["path"],
         },
@@ -406,7 +412,17 @@ def _safe_path(relative: str):
         return None
 
 
-async def _read_server_file(path: str) -> str:
+async def _read_server_file(path: str, offset: int = 0) -> str:
+    """Read a window of a file, and say honestly how to get the rest.
+
+    This used to return the whole file and let the generic tool-result cap chop it
+    at 4000 characters with the note "request smaller pieces" - advice read_file had
+    no parameter to honour. ARCHITECTURE.md is 23KB, so a question about how IGOR
+    works got 17% of the answer and no way to reach the rest. On 2026-08-13 React
+    re-read it four times, invented a search_code tool trying to find another route
+    in, ran out of iterations, and described a system that does not exist, including
+    a content filter IGOR has never had.
+    """
     resolved = _safe_path(path)
     if resolved is None:
         return "[access denied: path outside IGOR root]"
@@ -414,9 +430,23 @@ async def _read_server_file(path: str) -> str:
         return f"[not found: {path}]"
     try:
         content = resolved.read_text(encoding="utf-8")
-        return content[:30000] if len(content) > 30000 else content
     except Exception as e:
         return f"[read error: {type(e).__name__}: {e}]"
+
+    total = len(content)
+    start = max(0, offset)
+    if start >= total and total:
+        return f"[offset {start} is past the end of {path}, which is {total} characters]"
+
+    window = content[start:start + _READ_WINDOW]
+    end = start + len(window)
+    if end < total:
+        window += (
+            f"\n\n[{path} is {total} characters; this is {start} to {end}. "
+            f"Call read_file with offset={end} for the next section. "
+            f"Do not describe anything you have not read.]"
+        )
+    return window
 
 
 async def _search_memory_files(query: str) -> str:
@@ -599,7 +629,11 @@ async def _execute_tool(name: str, inputs: dict) -> str:
         return await _search_memory_files(inputs.get("query", ""))
 
     if name == "read_file":
-        return await _read_server_file(inputs.get("path", ""))
+        try:
+            offset = int(inputs.get("offset") or 0)
+        except (TypeError, ValueError):
+            offset = 0
+        return await _read_server_file(inputs.get("path", ""), offset)
 
     if name == "patch_file":
         return await _patch_server_file(inputs.get("path", ""), inputs.get("old_string", ""), inputs.get("new_string", ""))

@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import config
 import llm
+import sanitize
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,11 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     logger.info("Morning digest scheduled at %02d:%02d UTC", digest_hour, digest_minute)
 
     _scheduler.add_job(_check_model_update, "cron", day_of_week="mon", hour=9, minute=0, id="model_update_check")
+
+    # 15:00 UTC keeps it clear of the 13:00 digest, and it runs on the chat model's
+    # 12000 bucket rather than the digest's 6000, so the two cannot contend.
+    _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=15, minute=0, id="advocacy_draft")
+    logger.info("Advocacy draft scheduled Mondays at 15:00 UTC (%s)", _ADVOCACY["topic"])
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
@@ -450,6 +456,95 @@ async def _fetch_and_synthesize_unreal_news() -> str | None:
     except Exception as e:
         logger.error("Unreal news fetch failed - %s: %s", type(e).__name__, e)
         return None
+
+
+# Topic and stance live here, in code, because that is genuinely how scheduled work
+# is configured - jobs are registered in monitor.setup(), and changing one is a code
+# change and a deploy. IGOR once told the user this was editable from a scheduler.yaml
+# that has never existed. Changing the topic means editing this block.
+_ADVOCACY = {
+    "topic": "Universal Basic Income",
+    "query": "universal basic income pilot results study poverty",
+    "stance": (
+        "Basic needs are going unmet in the United States, and a guaranteed income "
+        "floor is a serious policy response to that, not a fringe idea."
+    ),
+}
+
+_ADVOCACY_DRAFT_PROMPT = """You draft a short advocacy post for a human to review, edit, and publish under their own name.
+
+Write ONE post of roughly 150 words that:
+- opens with the specific finding or event in the results, not a generalisation
+- makes the case for the position below in plain language a non-specialist can follow
+- ends with one concrete call to action
+- ends with a final line reading "Source: [n]", where n is the bracketed number of the result you drew on
+
+Position: {stance}
+
+Rules:
+- Every factual claim, number, place, date and study in the post must come from the results in front of you. If it is not there, do not write it.
+- Do not invent studies, statistics, pilot outcomes, or quotes. Do not round a number up. A weaker post that is true beats a stronger one that is not, because a human is going to put their name on this.
+- Argue for the position, but let the sourced facts carry the argument.
+- If the results do not support a post worth publishing, reply with exactly: NOTHING WORTH DRAFTING
+- Do not write the URL or the publication name anywhere. Just the number.
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+
+def _append_draft(text: str) -> None:
+    """Keep a dated record of every draft on disk.
+
+    Deliberately NOT added to react's memory_read allowlist, for the same reason
+    corrections.md is not: this file holds model output derived from web search
+    results, and letting an agent pull it back into a tool-bearing context is a
+    stored injection path. The user reads drafts in Discord or in the synced file.
+    """
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    path = config.MEMORY_DIR / "drafts.md"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n## {_ADVOCACY['topic']} - {stamp}\n\n{text}\n")
+
+
+async def _weekly_advocacy_draft() -> None:
+    if _send_fn is None or _client is None:
+        return
+    try:
+        from datetime import datetime, timedelta
+        from agents import research
+        cutoff = (datetime.utcnow() - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        results = await research._run_search(_ADVOCACY["query"], max_results=5,
+                                             start_published_date=cutoff, use_summary=True)
+        if not results:
+            logger.info("Advocacy draft: no recent results for %s", _ADVOCACY["topic"])
+            return
+
+        formatted = research._format_results(results)
+        draft = await llm.complete(
+            _client,
+            config.MODELS["chat"],
+            _ADVOCACY_DRAFT_PROMPT.format(stance=_ADVOCACY["stance"]),
+            f"Search results:\n\n{formatted}",
+            max_tokens=1024,
+            label="Advocacy draft",
+        )
+        if not draft or "NOTHING WORTH DRAFTING" in draft.upper():
+            logger.info("Advocacy draft: nothing worth drafting from this week's results")
+            return
+
+        draft = sanitize.clean(_attach_sources(draft, results))
+        _append_draft(draft)
+        await _send_fn(
+            f"**Draft for review - {_ADVOCACY['topic']}**\n\n{draft}\n\n"
+            "Nothing has been posted anywhere. IGOR has no publishing accounts. "
+            "Edit this however you want and post it yourself."
+        )
+    except Exception as e:
+        logger.error("Advocacy draft failed - %s: %s", type(e).__name__, e)
 
 
 def _get_digest_sections() -> list[str]:
