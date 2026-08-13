@@ -27,26 +27,7 @@ def check(name, condition, detail=""):
         print(f"  FAIL  {name}  {detail}")
 
 
-print("=== routing detection ===")
-
-# The three Discord messages that actually produced fabrications.
-for msg in [
-    "We could have you use your autonomous scheduled system to promote and inform.",
-    "How can we ustilize your autonomous scheduled system?",
-    "How can we utilize your autonomous scheduled system?",
-]:
-    check(f"routes the real failing message: {msg[:40]}...",
-          self_describe.looks_self_referential(msg))
-
-for msg in ["What agents do you have?", "what tools can you use", "how does IGOR routing work",
-            "explain your memory system", "can you change your own code"]:
-    check(f"routes: {msg[:38]}", self_describe.looks_self_referential(msg), msg)
-
-for msg in ["The world is in need of a major change.", "search for recent UBI pilot results",
-            "what is the weather tomorrow", "How do you feel about these headlines?"]:
-    check(f"leaves alone: {msg[:38]}", not self_describe.looks_self_referential(msg), msg)
-
-print("\n=== the prompt it builds ===")
+print("=== the prompt it builds ===")
 
 doc = self_describe._load_document()
 check("ARCHITECTURE.md loads", len(doc) > 20000, f"got {len(doc)} chars")
@@ -60,13 +41,24 @@ for deep in ["_trim_to_budget", "Prompt injection defence"]:
 for denial in ["No content filter", "No `scheduler.yaml`", "run_agent()"]:
     check(f"prompt denies the fabrication: {denial}", denial in prompt)
 
-check("told to decline tasks", "NOT_ABOUT_IGOR" in prompt)
+check("told to decline tool-requiring tasks", "NOT_ABOUT_IGOR" in prompt)
 check("told the document beats the conversation", "The document wins." in prompt)
-check("told never to invent a component", "NEVER describe a file, module" in prompt)
+check("told never to invent a component", "NEVER name a file, module" in prompt)
+
+# The proven mitigation for hallucination is a credited abstention path, not more
+# grounding: under binary scoring a confident guess always beats "I don't know"
+# (arXiv 2509.04664). An earlier version of this prompt said "when in doubt, answer",
+# which instructed the model to fabricate.
+check("abstention is stated to be a correct answer",
+      "is a CORRECT and complete answer" in prompt)
+check("guessing is named as the failure, not silence", "Guessing is the failure." in prompt)
+check("not scored on answering", "You are not scored on answering" in prompt)
+check("the 'when in doubt, answer' instruction is gone", "When in doubt, answer" not in prompt)
+check("tells the user where to go when the doc runs out", "I need to read the source" in prompt)
 
 # The arithmetic that React failed. 12000 TPM bucket, 1024 max_tokens.
 prompt_tokens = len(prompt) / 4
-history = 8000 / 4
+history = orchestrator._CONTEXT_BUDGET_SELF / 4
 total = prompt_tokens + history + 1024
 check("prompt + history + max_tokens fits the 12000 bucket", total < 11000,
       f"estimated {int(total)} tokens")
@@ -76,9 +68,13 @@ print("\n=== orchestrator wiring ===")
 
 import orchestrator
 src = open(config.BASE_DIR / "orchestrator.py", encoding="utf-8").read()
-check("fast path routes to SelfDescribe", 'return "SelfDescribe"' in src)
+check("the router owns the decision, via a SELF verdict", '"SELF": "SelfDescribe"' in src)
+check("the router prompt teaches the tool-naming distinction",
+      'Use your shell tool to check disk space" is TASK' in src)
+check("no regex fast path survives", "looks_self_referential" not in src)
 check("declining falls through to React", "SelfDescribe declined the message, forwarding to React" in src)
 check("uses its own context budget, not Direct's", "_CONTEXT_BUDGET_SELF" in src)
+check("history is cut to near nothing", "_CONTEXT_BUDGET_SELF = 1500" in src)
 
 react_src = open(config.BASE_DIR / "agents" / "react.py", encoding="utf-8").read()
 check("the harmful grounding injection is gone from react",

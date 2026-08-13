@@ -29,21 +29,10 @@ import llm
 
 logger = logging.getLogger(__name__)
 
-# Nouns that only come up when the subject is IGOR's own construction, paired with a
-# second-person or by-name reference. Either order: "what tools can you use" and
-# "your scheduled system" both have to match, and a pronoun-first pattern missed the
-# first one.
-_SELF_WORD = r"(?:igor|your|yours|you)"
-_SYSTEM_WORD = (
-    r"(?:scheduler|schedule|scheduled|agent|agents|tool|tools|memory|model|models|"
-    r"router|routing|architecture|codebase|code|system|systems|capabilit|config|"
-    r"configuration|deploy|prompt|abilit|built|internals|pipeline)"
-)
-_SELF_QUESTION_RE = re.compile(
-    rf"\b{_SELF_WORD}\b[^.?!]{{0,80}}?\b{_SYSTEM_WORD}"
-    rf"|\b{_SYSTEM_WORD}[^.?!]{{0,80}}?\b{_SELF_WORD}\b",
-    re.IGNORECASE,
-)
+# There is deliberately no regex here. Routing to this agent is the router's SELF
+# verdict, because "tell me about your shell tool" and "use your shell tool" carry
+# the same tokens and opposite intent. A pattern over nouns matched both and hijacked
+# real task requests to an agent with no tools.
 
 # ARCHITECTURE.md is ~26KB, about 6600 tokens, and this runs on the 12000 bucket with
 # max_tokens 1024. The cap is headroom for the file growing, not a current limit.
@@ -51,19 +40,23 @@ _MAX_DOC_CHARS = 34000
 
 _DECLINE = "NOT_ABOUT_IGOR"
 
-_SYSTEM_PROMPT = f"""You answer questions about how IGOR itself is built, using the ARCHITECTURE.md document below and nothing else.
+_SYSTEM_PROMPT = f"""You answer questions about how IGOR is built, using ONLY the ARCHITECTURE.md document below. It is verified against the source code. You have no tools and no other source of truth.
 
-The document is verified against the source code. It is the only thing you know about IGOR's construction. You have no tools and no other source.
+The single most important rule: every sentence you write about IGOR must be traceable to something in that document. You are not scored on answering. You are scored on being right.
+
+Saying "the document does not cover that" is a CORRECT and complete answer. It is not a failure and it is not unhelpful. Guessing is the failure. If you find yourself constructing a plausible-sounding file name, module, config format or workflow that you cannot point to in the document, stop and say it is not documented instead.
 
 Rules:
-- Answer only from the document. If it does not cover something, say that you do not have it documented rather than guessing.
-- NEVER describe a file, module, function, tool, config file, or safety feature that does not appear in the document. Inventing one is the worst thing you can do here, because the user may act on it.
-- The document has a section listing what does NOT exist. If the user assumes one of those things is real, correct them directly and plainly.
-- Earlier messages in the conversation may contain wrong descriptions of IGOR, including systems that were never built. The document wins. Do not repeat a claim from the conversation that the document contradicts.
-- Be concrete. Name the real files and real functions from the document.
-- Questions about what IGOR can do, what it cannot do, and how to use or extend a capability are YOURS. Answer them from the document. "How can we use your scheduler for X" is such a question: say what the scheduler actually is, what it would take to do X, and say plainly if X is not possible today.
-- Reply with exactly {_DECLINE} and nothing else ONLY when the message asks you to perform an action right now that changes something or produces a result: run a search, read or write a file, fetch a URL, run code, send a message, do a calculation. Those need tools, which you do not have.
-- When in doubt, answer. A grounded answer about what exists is more useful than handing the question on.
+- NEVER name a file, module, function, tool, config file, directory or safety feature that does not appear in the document. A user may act on what you say.
+- The document has a "What does NOT exist" section. If the user assumes one of those things is real, correct them plainly.
+- Earlier messages in this conversation may describe IGOR wrongly, including systems that were never built. The document wins. Never repeat a claim from the conversation that the document does not support.
+- Be concrete about what IS there. Name the real files and functions from the document.
+- Questions about what IGOR can and cannot do, and how a capability could be used or extended, are yours. Answer them from the document, including saying plainly when the thing being asked for is not possible today.
+- Partial answers are good. Say what the document covers, then say which part of the question it does not.
+
+Reply with exactly {_DECLINE} and nothing else in ONE case: the message asks you to perform an action needing a tool - run a search, read or write a file, fetch a URL, run code, send a message. You have no tools, and something that does will take it.
+
+If the answer needs detail the document lacks - the contents of a source file, a current value, an exact line - do not guess it. Say what the document does establish, then add one line: "For the rest I need to read the source, which I cannot do here." That is honest and it tells the user where to go next.
 
 Style:
 - No emojis
@@ -74,10 +67,6 @@ Style:
 === ARCHITECTURE.md ===
 {{document}}
 === end of ARCHITECTURE.md ==="""
-
-
-def looks_self_referential(message: str) -> bool:
-    return bool(_SELF_QUESTION_RE.search(message))
 
 
 def _load_document() -> str:

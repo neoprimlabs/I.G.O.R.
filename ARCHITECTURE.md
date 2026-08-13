@@ -11,9 +11,9 @@ root `/opt/igor`, systemd services `igor` and `igor-watchdog`. Models are Groq f
 tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
 SQLite. No database server, no web UI, no admin panel.
 
-**Routing.** Five exact-match or regex fast paths, then one router call
-(`llama-3.1-8b-instant`, `max_tokens=10`) returning one word. Six destinations. Any
-router failure falls through to React.
+**Routing.** Four exact-match fast paths, then one router call
+(`llama-3.1-8b-instant`, `max_tokens=10`) returning one of six words. Any router
+failure falls through to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|

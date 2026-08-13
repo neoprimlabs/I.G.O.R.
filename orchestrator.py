@@ -29,19 +29,22 @@ _DIGEST_COMMANDS = frozenset({
 # and CHAT explicitly claims opinion questions.
 _ROUTER_PROMPT = """Classify the user message into exactly one word from this list:
 CHAT - greetings, small talk, opinions, what you think about something, how you are doing, anything social
-TASK - requests to do work: search, write, analyze, code, read files, produce documents, calculations. Also any question whose subject is IGOR's own implementation: its models, agents, routing, tools, memory design, code, architecture or how any part of it is built or set up
-MONITOR - questions asking what the current setup is: scheduler status, schedule times, watchlist contents, digest contents, system health
+SELF - questions ABOUT how IGOR is built or what it can do: its agents, models, routing, tools, memory, scheduler, architecture, design, limits. Also asking what IGOR can or cannot do, or how one of its capabilities could be used or extended
+TASK - requests to DO work: search, write, analyze, code, read files, produce documents, calculations
+MONITOR - asking for a current value: schedule times, watchlist contents, digest contents, system health
 CONFIG - requests to CHANGE a saved setting: add or remove a digest section, change a schedule time, edit the watchlist
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-Three rules that override the above:
+Four rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
-Asking how IGOR works internally is TASK, not CHAT, even though the subject is IGOR."""
+Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR.
+Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF."""
 
 _VERDICT_MAP = {
     "CHAT": "Direct",
+    "SELF": "SelfDescribe",
     "TASK": "React",
     "MONITOR": "Monitor",
     "CONFIG": "ConfigEdit",
@@ -97,11 +100,11 @@ _OLD_ENTRY_CAP = 700
 _CONTEXT_BUDGET_REACT = 8500
 _CONTEXT_BUDGET_DIRECT = 24000
 
-# SelfDescribe carries the whole of ARCHITECTURE.md, so history gets what is left of
-# the 12000 bucket, not Direct's allowance. Roughly: 26KB document = 6600 tokens,
-# system prompt 400, max_tokens 1024, leaving about 3900 tokens of history. 8000
-# chars is half of that, deliberately, because the bucket is shared with Evaluator.
-_CONTEXT_BUDGET_SELF = 8000
+# SelfDescribe gets almost no history on purpose. At 8000 chars it answered a
+# question about disk usage with the contents of an earlier scheduler conversation:
+# the document is the ground truth here and prior turns are mostly a source of stale
+# claims to repeat. Two turns is enough to resolve "what about the other one".
+_CONTEXT_BUDGET_SELF = 1500
 
 
 def _cap(text: str, limit: int) -> str:
@@ -309,15 +312,12 @@ class Orchestrator:
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
 
-        # Questions about IGOR's own construction go to a destination with room to
-        # hold ARCHITECTURE.md. Decided in code rather than as a sixth router verdict:
-        # the router prompt took four rounds of tuning to reach 19/20 and adding a
-        # class to it risks the other five. SelfDescribe returns None if the message
-        # turns out to be a task, and it falls through to React.
-        from agents import self_describe
-        if self_describe.looks_self_referential(content):
-            logger.info("Fast path: self-referential -> SelfDescribe")
-            return "SelfDescribe"
+        # No fast path for self-referential questions. A regex over nouns cannot tell
+        # "tell me about your shell tool" from "use your shell tool" - same tokens,
+        # opposite intent - and the one deployed here hijacked ordinary task requests
+        # to a tool-less agent. Rule-based routing fails on exactly this case, which
+        # is why the SELF verdict below belongs to the router: the classification is
+        # semantic, and only a model can make it.
 
         # The router runs on its own mostly-idle 6000 TPM bucket and reserves 10
         # tokens, so it costs almost nothing. Called directly rather than through
