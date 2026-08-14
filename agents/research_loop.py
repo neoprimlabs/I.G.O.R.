@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import Awaitable, Callable, Optional
 
 import openai
@@ -73,12 +74,15 @@ Write 3 to 5 findings, each on its own line starting with "- ". Each finding:
 
 Report only what these results actually say. You are looking at a handful of results from a single query, which tells you nothing about what exists in the world beyond them. Never write that something does not exist, that nobody is doing something, that no study covers it, or that a field is missing something. If an angle is not covered here, write "these results do not cover X" - that is a statement about the results and is fine. Anything stronger is a claim you have no way to support, and it is worse than writing nothing.
 
-Skip vendor marketing, product pages, and company case studies promoting their own service. A figure a company publishes about its own product is advertising, not evidence.
+A figure a company publishes about its own product is advertising, not evidence. You may still record it, because it is often the only source of a number, but you MUST mark it: put "(vendor claim)" immediately before the URL. Never present a company's own savings, ROI or hours-saved figure as though it were independent.
+
+NEVER write a number you inferred, estimated, extrapolated or calculated from general knowledge, and saying that you inferred it does not make it acceptable. "This figure is not cited directly in the results but is inferred from common market rates" is exactly the sentence that must never appear. If the results in front of you do not state it, it does not go in the findings.
 
 Three well-sourced findings beat five padded ones. If nothing here is worth keeping, say so in one line rather than inventing findings.
 
-Then a final line, exactly:
-Next: <the single most promising thread to pursue next>
+End with one final line beginning "Next: " followed by the specific thread worth pursuing. Write the actual thread as plain text. Do not copy this instruction back, and do not use angle brackets.
+For example:
+Next: whether dental insurance verification vendors publish per-seat pricing
 
 Style:
 - No emojis
@@ -123,10 +127,40 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
+# The distill prompt used to end with an angle-bracket placeholder under the word
+# "exactly", and the model copied it verbatim in 8 of 51 iterations on 2026-08-14.
+# The prompt is fixed, but these threads are fed straight into the planner's
+# do-not-repeat list, so a junk thread there wastes budget and tells the planner not
+# to repeat something that was never a topic. Filtering in code as well, because the
+# prompt rule is what already failed.
+_PLACEHOLDER_THREAD_RE = re.compile(
+    r"^(the\s+)?(single\s+)?most[- ]promising\s+thread", re.IGNORECASE
+)
+
+
+def _clean_thread(line: str) -> str:
+    """Strip the "Next:" prefix and reject a thread that is only the placeholder."""
+    thread = line[5:].strip().strip("<>").strip()
+    if not thread:
+        return ""
+    if _PLACEHOLDER_THREAD_RE.match(thread):
+        # "the most promising thread to pursue next: pet grooming salon intake" -
+        # the model echoed the placeholder and then wrote a real thread after it.
+        # Keep the half it actually wrote; drop it if there is nothing after.
+        return thread.partition(":")[2].strip()
+    return thread
+
+
 def _extract_recent_threads(content: str, n: int = 5) -> str:
-    lines = [l.strip() for l in content.splitlines() if l.strip().startswith("Next:")]
-    recent = lines[-n:] if lines else []
-    return "\n".join(f"- {l[5:].strip()}" for l in recent) if recent else ""
+    threads = [
+        cleaned
+        for line in content.splitlines()
+        if line.strip().startswith("Next:")
+        for cleaned in [_clean_thread(line.strip())]
+        if cleaned
+    ]
+    recent = threads[-n:]
+    return "\n".join(f"- {t}" for t in recent) if recent else ""
 
 
 def _smart_truncate(content: str, max_chars: int = 6000) -> str:
@@ -134,8 +168,14 @@ def _smart_truncate(content: str, max_chars: int = 6000) -> str:
         return content
     lines = content.splitlines()
     header = "\n".join(lines[:5])
-    next_lines = [l.strip() for l in lines if l.strip().startswith("Next:")]
-    thread_block = "\n".join(f"  {l}" for l in next_lines) if next_lines else "(none)"
+    cleaned = [
+        t
+        for line in lines
+        if line.strip().startswith("Next:")
+        for t in [_clean_thread(line.strip())]
+        if t
+    ]
+    thread_block = "\n".join(f"  Next: {t}" for t in cleaned) if cleaned else "(none)"
     budget = max_chars - len(header) - len(thread_block) - 150
     recent = content[-budget:] if budget > 0 else ""
     return (
