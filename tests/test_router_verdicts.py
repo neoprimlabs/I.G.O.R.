@@ -30,6 +30,13 @@ CASES = [
 
     # Previously-fixed regressions. Opinion questions read as CONFIG once because the
     # CONFIG line ended with "preferences"; research mentions read as RESEARCH.
+    # 2026-08-14: routed to SelfDescribe. "IGOR" is the addressee, "coding agents"
+    # is the subject, and the SELF line lists both "agents" and "limits" - so the
+    # router matched surface terms on an opinion question about the wider field.
+    ("IGOR, do you think there is a ceiling to software built with coding agents?", "Direct"),
+    ("IGOR, what do you make of the OpenAI agent story?", "Direct"),
+    ("do you think AI agents will replace developers", "Direct"),
+
     ("what do you think about self hosting", "Direct"),
     ("How do you feel about these headlines from the morning digest", "Direct"),
     ("I always drop these videos to see if we can pick up on new tech", "Direct"),
