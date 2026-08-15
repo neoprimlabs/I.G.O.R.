@@ -29,18 +29,17 @@ _DIGEST_COMMANDS = frozenset({
 # and CHAT explicitly claims opinion questions.
 _ROUTER_PROMPT = """Classify the user message into exactly one word from this list:
 CHAT - greetings, small talk, opinions, what you think about something, how you are doing, anything social
-SELF - questions about how IGOR ITSELF is built or what IGOR ITSELF can do: its own agents, models, routing, tools, memory, scheduler, architecture, design, limits. Also asking what IGOR can or cannot do, or how one of IGOR's own capabilities could be used or extended
+SELF - questions ABOUT how IGOR is built or what it can do: its agents, models, routing, tools, memory, scheduler, architecture, design, limits. Also asking what IGOR can or cannot do, or how one of its capabilities could be used or extended
 TASK - requests to DO work: search, write, analyze, code, read files, produce documents, calculations
 MONITOR - asking for a current value: schedule times, watchlist contents, digest contents, system health
 CONFIG - requests to CHANGE a saved setting: add or remove a digest section, change a schedule time, edit the watchlist
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-Five rules that override the above:
-Being addressed by name does not make a message SELF. "IGOR, do you think X" is CHAT unless X is IGOR itself. SELF requires IGOR's own construction to be the subject, not merely the reader. A question about agents, models or tools IN GENERAL is CHAT; a question about IGOR's agents, models or tools is SELF.
+Four rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
-Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK.
+Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR.
 Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF."""
 
 _VERDICT_MAP = {
