@@ -26,33 +26,47 @@ The runtime is the server. There is no local run.
 
 ## Groq Platform Rules (hard-won; violating these cost days)
 - **There is a TOKENS-PER-DAY cap as well as a per-minute one, and it is the one
-  that bites.** Measured 2026-08-13 from the 429 body: `llama-3.3-70b-versatile`
-  is **100000 tokens/day**. A single agent sending a 27KB document per call spent
-  93204 of it in one afternoon and locked out Direct, ConfigEdit and the evaluator,
-  which all share that model. TPD appears ONLY in the 429 message - the
-  `x-ratelimit-*` headers report per-minute state and look perfectly healthy while
-  the daily budget is gone. Before designing anything that sends a large fixed
-  prompt on every call, divide 100000 by that prompt size and ask whether the answer
-  is a usable number of requests per day. The old note here said requests/day was a
-  non-issue and to think in tokens-per-minute; that was wrong and cost a day's budget.
-- **Rate limits are PER MODEL, independent buckets, and the limit VARIES by model**
-  (verified 2026-07-09). Think in tokens-per-minute AND tokens-per-day.
-  Measured: llama-3.3-70b-versatile=12000, gpt-oss-120b=8000, gpt-oss-20b=8000,
-  llama-3.1-8b-instant=6000. Different models = separate buckets (that is why agents
-  are assigned different models). Same model for two roles = SHARED bucket. The old
-  "8000 everywhere" assumption was wrong - do not rely on it.
+  that bites.** TPD appears ONLY in the 429 message - the `x-ratelimit-*` headers
+  report per-minute state and look perfectly healthy while the daily budget is gone.
+  A single agent sending a 27KB document per call once spent 93204 tokens in one
+  afternoon and locked out Direct, ConfigEdit and the evaluator, which shared a model.
+  **No current model's TPD is known.** The only figure ever measured, 100000/day, was
+  measured on `llama-3.3-70b-versatile` on 2026-08-13, and Groq deleted that model on
+  2026-08-17. Do not carry it forward onto gpt-oss or qwen. Before designing anything
+  that sends a large fixed prompt on every call, measure the cap from a 429 body
+  first, then divide it by that prompt size and ask whether the answer is a usable
+  number of requests per day.
+- **Rate limits are PER MODEL and independent buckets.** Different models = separate
+  buckets (that is why roles are assigned different models). Same model for two roles
+  = SHARED bucket. Re-measured 2026-08-18 after the Llama removal: every
+  general-purpose model Groq now serves is **8000 TPM** - gpt-oss-120b, gpt-oss-20b
+  and qwen3.6-27b alike. The 6000 and 12000 buckets are gone with the models that had
+  them. This currently makes "8000 everywhere" true, which it was not before; check
+  the headers rather than trusting that it stayed true.
 - **max_tokens counts against TPM at request time** (prompt + max_tokens = "requested").
   Never configure a call where prompt + max_tokens can exceed the model's limit.
   File mode: 3072. Chat: 2048. Small synthesis calls: >= 1024, never less.
-- **gpt-oss and qwen models are reasoning models: max_tokens covers hidden reasoning
-  plus output.** Caps under ~1024 silently produce EMPTY or clipped content with a
-  200 OK. Treat "empty content, no error" as a reasoning-budget symptom first.
+- **Every general-purpose model Groq still offers is a reasoning model, so max_tokens
+  covers hidden reasoning plus output.** Caps under ~1024 silently produce EMPTY or
+  clipped content with a 200 OK. Treat "empty content, no error" as a reasoning-budget
+  symptom first. There is no longer a non-reasoning model to fall back on, so any call
+  site with a small budget needs `reasoning_effort` set: gpt-oss takes low/medium/high
+  and rejects `none` with a 400, qwen takes `none`. `llm.model_params` attaches these
+  per model - add new models there, not at the call site.
+- **qwen writes its chain of thought into `message.content`** unless
+  `reasoning_format` is set, so the think text lands in Discord, memory files and any
+  parser downstream. gpt-oss keeps reasoning in a separate field and cannot leak.
+  `reasoning_format` is a Groq extension with no parameter on the openai client: pass
+  it as a keyword and you get a TypeError before the request is made, so it has to go
+  in `extra_body`. `llm.model_params` does this.
 - **finish_reason "length"** means the budget ran out (often all reasoning). react.py
   handles it (return partial or retry once with doubled budget). Follow that pattern
   in new call sites.
-- **Llama models garble tool-call syntax** under load -> Groq returns 400
+- **Models garble tool-call syntax under load** -> Groq returns 400
   `tool_use_failed`. react.py retries 3x and feeds the rejection reason back into
-  the conversation. Do not remove that machinery.
+  the conversation. First seen on the Llama models, which are gone; the machinery
+  stays because the failure is a property of constrained decoding under load, not of
+  one vendor. Do not remove it.
 - 429 storms with 20-50s backoffs are the free tier working as designed, not a bug.
   The openai client is constructed with max_retries=5 everywhere - keep it.
 

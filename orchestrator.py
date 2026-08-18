@@ -319,11 +319,19 @@ class Orchestrator:
         # is why the SELF verdict below belongs to the router: the classification is
         # semantic, and only a model can make it.
 
-        # The router runs on its own mostly-idle 6000 TPM bucket and reserves 10
-        # tokens, so it costs almost nothing. Called directly rather than through
+        # The router runs alone on its 8000 TPM bucket and reserves 10 tokens, so
+        # it costs almost nothing. Called directly rather than through
         # call_claude because call_claude's rate-limit path notifies the user and
         # sleeps 30s or more, which is the wrong behaviour for classification -
         # better to fail fast to React than to make the user wait to be routed.
+        #
+        # reasoning_effort "none" is load-bearing, not a saving. Every model Groq
+        # still offers is a reasoning model, and a 10-token budget is spent on
+        # hidden reasoning before a verdict is ever emitted: measured 2026-08-18,
+        # the same call without it returns an unterminated think tag, which
+        # _VERDICT_MAP misses, so every message routes to React and nothing logs
+        # an error. llm.model_params adds the reasoning_format that keeps that
+        # think text out of content in the first place.
         try:
             response = await asyncio.wait_for(
                 self._client.chat.completions.create(
@@ -334,6 +342,7 @@ class Orchestrator:
                     ],
                     max_tokens=10,
                     temperature=0,
+                    **llm.model_params(config.MODELS["router"], reasoning_effort="none"),
                 ),
                 timeout=_ROUTER_TIMEOUT_S,
             )

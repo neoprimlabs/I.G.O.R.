@@ -12,17 +12,17 @@ tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
 SQLite. No database server, no web UI, no admin panel.
 
 **Routing.** Four exact-match fast paths, then one router call
-(`llama-3.1-8b-instant`, `max_tokens=10`) returning one of six words. Any router
+(`qwen/qwen3.6-27b`, `max_tokens=10`) returning one of six words. Any router
 failure falls through to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
-| Direct | `CHAT` | llama-3.3-70b | none, by design |
+| Direct | `CHAT` | gpt-oss-120b | none, by design |
 | React | `TASK`, router failure | gpt-oss-120b | all 12 |
-| Monitor | `MONITOR`, digest commands | llama-3.1-8b | none |
-| ConfigEdit | `CONFIG` | llama-3.3-70b | none, writes 3 files |
+| Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
+| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files |
 | ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
-| SelfDescribe | `SELF` - questions about IGOR itself | llama-3.3-70b | none, reads this file |
+| SelfDescribe | `SELF` - questions about IGOR itself | gpt-oss-120b | none, reads this file |
 
 **Questions about IGOR go to SelfDescribe, not React**, which carries this whole
 document and no tools so it has room to be accurate. It returns `NOT_ABOUT_IGOR` for
@@ -32,10 +32,16 @@ messages that are really tasks, and those go on to React.
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`. There are no others.
 
-**Scheduling.** APScheduler, in-process. Three jobs, all registered *in code* in
+**Scheduling.** APScheduler, in-process. Four jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
-(Mondays 09:00), and an advocacy draft (Mondays 15:00). There is no scheduler config
-file, and no way to add or retime a job without a code change and a deploy.
+(daily 09:00, plus a one-off 60s after every start), and an advocacy draft
+(Mondays 15:00). There is no scheduler config file, and no way to add or retime a
+job without a code change and a deploy.
+
+The model check was weekly until 2026-08-17, when Groq removed the Llama family
+and four roles returned 404 for a day before anything reported it. The run at
+startup is the one that matters: it turns a deprecation into an alert on the next
+deploy or restart rather than whenever the cron next comes round.
 
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
 (which digest sections run), `agents.md` (**standing preferences only - NOT the agent
@@ -138,8 +144,11 @@ A Discord DM travels this path every time:
    ```
 
    Anything else goes to **one router call**: `MODELS["router"]`
-   (`llama-3.1-8b-instant`), `temperature=0`, `max_tokens=10`, 15s timeout, on a
-   mostly idle bucket. It returns one word, mapped by `_VERDICT_MAP`:
+   (`qwen/qwen3.6-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
+   `none`, 15s timeout, on a bucket it has to itself. It returns one word, mapped
+   by `_VERDICT_MAP`. The effort setting is load-bearing: every model Groq still
+   offers is a reasoning model, and without it the 10-token budget is spent on
+   hidden reasoning before any verdict is emitted.
 
    | Verdict | Destination |
    |---|---|
@@ -197,11 +206,19 @@ back. A caller already at the cap makes one request, not two.
 Routed through it: `orchestrator.call_claude` (so Direct, ConfigEdit and the critic
 are covered), Monitor's three synthesis calls, Evaluator, and ResearchLoop's `_call`.
 
-It also carries `reasoning_effort`, sent only when a caller sets it. gpt-oss-20b and
-gpt-oss-120b accept low/medium/high; the llama models do not take the parameter at
-all. Groq's docs say gpt-oss defaults to high, but measured, unset behaves nothing
-like high - treat the documented default as unconfirmed. ResearchLoop sets `low`,
-measured. React does not set it.
+It also owns `llm.model_params`, which attaches the per-model request parameters
+that fail as a 200 OK when omitted, keyed by model so no call site has to remember:
+`reasoning_format` `hidden` for qwen, `reasoning_effort` `low` for both gpt-oss
+models. An explicit caller value still wins, so ResearchLoop keeps the `low` it
+measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
+accepts `none`. Groq's docs say gpt-oss defaults to high, but measured, unset
+behaves nothing like high - treat the documented default as unconfirmed. React does
+not set it, deliberately.
+
+`reasoning_format` is a Groq extension with no parameter on the openai client, so
+`model_params` puts it in `extra_body`. Passed as a keyword it raises TypeError
+before the request is made, which the deploy gate cannot catch because it imports
+modules without calling the API.
 
 Two call sites stay out, on purpose:
 
@@ -222,7 +239,7 @@ call site re-derived it. Six of eight had no handling at all. Tested by
 
 ### Direct
 
-One model call, no tool schemas at all, on `llama-3.3-70b-versatile`. It uses the
+One model call, no tool schemas at all, on `openai/gpt-oss-120b`. It uses the
 `call_claude` passed to it, so chat gets rate-limit backoff and user notification
 that React does not have.
 
@@ -362,17 +379,26 @@ heuristic and cannot guarantee prevention; the constraint is structural instead.
 
 ## Models and rate limits
 
-`config.MODELS` is the single source of truth. Groq TPM limits are **per model**,
-independent buckets, and vary by model (verified empirically 2026-07-09):
+`config.MODELS` is the single source of truth. Groq TPM limits are **per model**
+and independent buckets. Groq removed the Llama family on 2026-08-17; every
+general-purpose model it still serves is 8000 TPM, so the 6000 and 12000 buckets
+this table used to list no longer exist (re-measured 2026-08-18):
 
 | Role | Model | Bucket |
 |---|---|---|
-| `router` | `llama-3.1-8b-instant` | 6000, shared with `summary` |
-| `chat` | `llama-3.3-70b-versatile` | 12000, shared with `evaluator` |
-| `react` | `openai/gpt-oss-120b` | 8000, sole occupant |
-| `research` | `openai/gpt-oss-20b` | 8000, sole occupant |
-| `evaluator` | `llama-3.3-70b-versatile` | shares chat's 12000 |
-| `summary` | `llama-3.1-8b-instant` | shares router's 6000 |
+| `router` | `qwen/qwen3.6-27b` | 8000, sole occupant, ~28 tokens a call |
+| `chat` | `openai/gpt-oss-120b` | 8000, shared with `react` |
+| `react` | `openai/gpt-oss-120b` | shares chat's 8000 |
+| `research` | `openai/gpt-oss-20b` | 8000, shared with `evaluator` and `summary` |
+| `evaluator` | `openai/gpt-oss-20b` | shares research's 8000 |
+| `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
+
+`chat` and `react` share a bucket deliberately: the router sends a message to one
+or the other and never both, so they alternate on the hot path instead of stacking.
+The router is alone on qwen because it is the only model that answers inside a
+10-token budget, and because it is the newest model here and so the likeliest to be
+deprecated next - a router outage falls back to React, while a chat outage reaches
+the user.
 
 `max_tokens` counts against TPM at request time: prompt plus reservation is what
 Groq bills against the bucket. Never configure a call where the sum can exceed

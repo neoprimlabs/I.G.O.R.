@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import openai
@@ -190,7 +191,19 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, id="morning_digest")
     logger.info("Morning digest scheduled at %02d:%02d UTC", digest_hour, digest_minute)
 
-    _scheduler.add_job(_check_model_update, "cron", day_of_week="mon", hour=9, minute=0, id="model_update_check")
+    # Daily, not weekly, and once on every start. Groq removed the whole Llama
+    # family on 2026-08-17 and the weekly check meant four configured roles were
+    # 404ing for a day before anything said so. The startup run is the one that
+    # matters: it turns a deprecation into an alert on the next deploy or restart
+    # rather than whenever the cron next comes round. One models.list call, no
+    # token cost, and it is the cheapest check in the system.
+    _scheduler.add_job(_check_model_update, "cron", hour=9, minute=0, id="model_update_check")
+    _scheduler.add_job(
+        _check_model_update,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=60),
+        id="model_update_startup",
+    )
 
     # 15:00 UTC keeps it clear of the 13:00 digest, and it runs on the chat model's
     # 12000 bucket rather than the digest's 6000, so the two cannot contend.

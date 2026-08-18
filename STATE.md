@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-08-13**
+Last updated: **2026-08-18**
 
 ---
 
@@ -32,8 +32,13 @@ then V.1:
    out partway through on 2026-08-13, so only 6 of 10 have ever been scored: 5 pass,
    1 real defect found and fixed (`agents.md` mistaken for the agent list). **Four
    cases have never been measured at all:** social media, digest schedule location,
-   router failure, and the two handoff cases. Budget resets daily; a full run costs
-   about 33000 of the 100000 tokens.
+   router failure, and the two handoff cases.
+
+   **Its cost is no longer known.** A full run was measured at about 33000 of
+   llama-3.3-70b's 100000 daily tokens - and that model no longer exists.
+   SelfDescribe now runs on gpt-oss-120b, for which no daily cap has been measured
+   at all. Treat the budget as unknown on the next run and watch for a 429 rather
+   than assuming headroom.
 
    Run it after any change to `agents/self_describe.py`, the router prompt, or
    ARCHITECTURE.md's summary. It scores three failure modes separately - fabricating
@@ -66,10 +71,20 @@ own sources. Build order, which is not the obvious one:
 3. **V.1 improvement loop** - next. Batch review over a corpus that has accumulated.
 4. **A.1 goals + A.3 decomposition** - together, once something consumes them
 
-**T.1 is started, not finished.** `tests/test_llm.py` is the first test in the repo,
-stdlib only, run with `python tests/test_llm.py` (use `venv/bin/python` on the
-server). It covers `llm.complete` and checks that every module's imports resolve,
-which `py_compile` cannot. Nothing else has tests yet.
+**T.1 is started, not finished.** Two tests exist, both run with `venv/bin/python`
+on the server:
+
+- `tests/test_llm.py` - stdlib only, no API. Covers `llm.complete` and checks that
+  every module's imports resolve, which `py_compile` cannot.
+- `tests/test_models_live.py` - added 2026-08-18, makes one real call per role.
+  Checks the router returns a verdict `_VERDICT_MAP` actually contains, that no
+  role returns empty content at its configured budget, that no reasoning leaks
+  into content, and that `sanitize.clean` covers the punctuation the models emit.
+  Costs about 5000 tokens, so it is not in the deploy gate. **Run it after any
+  change to `config.MODELS` or `llm.model_params`** - the gate imports modules
+  without calling the API, so all four of those failures are 200 OK to it.
+
+Nothing else has tests yet.
 
 Also open: **M.3** (settle the rule that any file stating verifiable facts needs an
 owner, after five files drifted the same way).
@@ -107,14 +122,15 @@ coupling either.
 
    Remaining gap: a crash *after* a healthy deploy. Covered only by
    `Restart=always` and the backup script's crash-loop alert, as before.
-2. **The daily token budget is tighter than anyone realised.**
-   `llama-3.3-70b-versatile` allows **100000 tokens per DAY**, org-wide, shared by
-   Direct, ConfigEdit, the evaluator and SelfDescribe. Measured 2026-08-13 from a 429
-   body; it appears nowhere else, and the `x-ratelimit-*` headers report healthy
-   per-minute state while the daily budget is gone. At roughly 2000 tokens a chat
-   turn that is a few dozen conversations a day before ordinary chat starts failing.
-   Nothing monitors it and nothing warns before it runs out. CLAUDE.md's Groq rules
-   are corrected; the per-day limits of the other three models are still unmeasured.
+2. **The daily token budget exists, bites, and is now completely unmeasured.**
+   A tokens-per-DAY cap is real and appears ONLY in the 429 body - the
+   `x-ratelimit-*` headers report healthy per-minute state while the daily budget
+   is gone. That much is established. **The one number anyone ever measured,
+   100000/day, was measured on `llama-3.3-70b-versatile` on 2026-08-13, and Groq
+   deleted that model four days later.** No per-day limit is known for any model
+   IGOR now runs on. Do not carry the old figure forward - re-measure it from a 429
+   body before planning anything around a daily budget. Nothing monitors it and
+   nothing warns before it runs out.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 4. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
@@ -173,6 +189,13 @@ have not yet executed against the live API:
 
 ## Recent
 
+- **2026-08-17:** Groq removed the entire Llama family. `llama-3.1-8b-instant` and
+  `llama-3.3-70b-versatile` returned 404 from about 13:00 UTC, taking out `router`,
+  `chat`, `evaluator` and `summary` - four of six roles. IGOR looked half-alive
+  because a router failure falls back to React, and React was on gpt-oss. The
+  morning digest's "No results available" was this, not a search failure. Roles
+  reassigned across the three general-purpose models Groq still serves, all 8000
+  TPM. See ARCHITECTURE.md for the new table.
 - **2026-07-24ish:** Oracle cut the Always Free A1 allowance from 4 OCPU/24 GB
   to 2 OCPU/12 GB and terminated the instance, which was over the new limit.
 - **2026-07-31:** Data recovered. A1 capacity was exhausted in all three Ashburn
