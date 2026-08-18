@@ -17,8 +17,10 @@ Last updated: **2026-08-18**
 
 ## Code
 
-- Local, `origin/master`, and server `/opt/igor` are all in sync. Deployed through
-  the S.1 gate on 2026-08-13; gateway reconnect confirmed on every deploy.
+- Local, `origin/master`, and server `/opt/igor` are all in sync at `2e694f9`.
+  Deployed through the S.1 gate on 2026-08-18; gateway reconnect confirmed on every
+  deploy. `tests/test_models_live.py` passes against the live API on the deployed
+  tree, and the new startup model check ran and found all six models present.
 - The server tree was copied off the rescued disk rather than cloned, but its
   `.git` tracks the same remote and pulls normally.
 
