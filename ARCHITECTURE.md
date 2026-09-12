@@ -18,7 +18,7 @@ failure falls through to React.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | gpt-oss-120b | none, by design |
-| React | `TASK`, router failure | gpt-oss-120b | all 12 |
+| React | `TASK`, router failure | gpt-oss-120b | all 13 |
 | Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
 | ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files |
 | ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
@@ -28,15 +28,22 @@ failure falls through to React.
 document and no tools so it has room to be accurate. It returns `NOT_ABOUT_IGOR` for
 messages that are really tasks, and those go on to React.
 
-**React's 12 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+**React's 13 tools, the complete list:** `search`, `memory_read`, `search_memory`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
-`fetch_url`, `send_message`, `memory_write`. There are no others.
+`fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
 
-**Scheduling.** APScheduler, in-process. Four jobs, all registered *in code* in
+**Scheduling.** APScheduler, in-process. Five jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
-(daily 09:00, plus a one-off 60s after every start), and an advocacy draft
-(Mondays 15:00). There is no scheduler config file, and no way to add or retime a
-job without a code change and a deploy.
+(daily 09:00, plus a one-off 60s after every start), an advocacy draft
+(Mondays 15:00), and a check every 60s for due scheduled messages. There is no
+scheduler config file, and no way to add or retime a job without a code change
+and a deploy.
+
+**Scheduled messages** are the one thing the user can schedule by asking. React's
+`scheduled_message` tool adds, lists or cancels one-off messages in
+`memory/scheduled.json`, local time or minutes from now, up to 30 days ahead and 20
+pending. Text is fixed when scheduled; sending costs no tokens. The user's timezone is
+`config.USER_TZ` (America/New_York), and prompts show local time.
 
 The model check was weekly until 2026-08-17, when Groq removed the Llama family
 and four roles returned 404 for a day before anything reported it. The run at
@@ -46,7 +53,7 @@ deploy or restart rather than whenever the cron next comes round.
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
 (which digest sections run), `agents.md` (**standing preferences only - NOT the agent
 list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
-`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, plus `context.db`
+`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`, plus `context.db`
 (SQLite conversation history). `memory_write` takes a filename from a fixed list
 plus content - it is not a key/value store. `corrections.md` and `drafts.md` are
 readable by no agent: both hold text derived from untrusted input, so pulling them
@@ -249,14 +256,16 @@ two-part answer: the limitation, then the specific check that would answer it.
 
 ### React
 
-System prompt is rebuilt on every call from the current UTC datetime plus
+System prompt is rebuilt on every call from the current local and UTC time
+(`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 12 tools attach unless
+`[system] + context window + user message`. All 13 tools attach unless
 `allowed_tools` narrows them.
 
-**The 12 tools:** `search`, `memory_read`, `search_memory`, `python_run`,
+**The 13 tools:** `search`, `memory_read`, `search_memory`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`.
+`send_message`, `memory_write`, `scheduled_message`. `scheduled_message` is switched
+off after a web read, like the other tools that change state (`agents/scheduled.py`).
 
 Up to 8 iterations:
 

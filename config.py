@@ -7,6 +7,11 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).parent
 
+# The user's timezone, as an IANA name so DST is handled. Every prompt shows local
+# time from this, and scheduled messages convert from it. Confirmed by the user on
+# 2026-09-12; three independent log comparisons had already put them at UTC-4.
+USER_TZ = "America/New_York"
+
 # TPM limits re-measured 2026-08-18 from the x-ratelimit headers, after Groq
 # removed the Llama family. Every general-purpose model left is 8000 TPM: the
 # 6000 and 12000 buckets this file used to describe no longer exist. Buckets are

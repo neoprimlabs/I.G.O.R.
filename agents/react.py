@@ -49,6 +49,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
+    "scheduled_message",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -207,6 +208,21 @@ _TOOLS = [
         },
     },
     {
+        "name": "scheduled_message",
+        "description": "Send the user a Discord message at a later time. add: schedule one. list: show pending. cancel: remove one by id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["add", "list", "cancel"]},
+                "content": {"type": "string", "description": "add: the exact message to send"},
+                "at": {"type": "string", "description": "add: local time, YYYY-MM-DD HH:MM"},
+                "in_minutes": {"type": "integer", "description": "add: alternative to at, minutes from now"},
+                "id": {"type": "string", "description": "cancel: id from list"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "memory_write",
         "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences.",
         "input_schema": {
@@ -239,6 +255,7 @@ When to use tools:
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - memory_write: when the user asks you to remember, add, store, or update something
+- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
@@ -689,6 +706,10 @@ async def _execute_tool(name: str, inputs: dict) -> str:
             return "Message sent."
         return "No notify function available."
 
+    if name == "scheduled_message":
+        from agents import scheduled
+        return scheduled.run_tool(inputs)
+
     if name == "memory_write":
         from agents import prod_memory
         filename = inputs.get("file", "")
@@ -712,8 +733,8 @@ async def handle(
     client = _get_client()
     use_model = model or config.MODELS["react"]
 
-    from datetime import datetime, timezone
-    current_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    import clock
+    current_dt = clock.time_line()
 
     if system_override is not None:
         system_text = f"Current date and time: {current_dt}\n\n{system_override}"

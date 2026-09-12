@@ -73,6 +73,11 @@ def _smoke_test() -> None:
         problems.append("AUTHORIZED_DISCORD_USER_ID is unset - every message would be silently dropped")
     if config.CONTEXT_WINDOW < 1:
         problems.append(f"CONTEXT_WINDOW is {config.CONTEXT_WINDOW}, must be at least 1")
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(config.USER_TZ)
+    except Exception as e:
+        problems.append(f"USER_TZ {config.USER_TZ!r} does not load ({type(e).__name__}) - every prompt's clock and every scheduled message depends on it")
 
     # These four messages all resolve on routing fast paths, which return before
     # any model call. If one ever stops matching, this makes a real API call at

@@ -64,6 +64,11 @@ CASES = [
     {"q": "What happens if the router fails?", "want": "ANSWER",
      "groups": [["react"], ["fall", "falls", "default"]]},
 
+    # 2026-09-07: asked to schedule a check-in, IGOR said it had no way to. It has one now.
+    {"q": "Can you schedule a message to me for later?", "want": "ANSWER",
+     "groups": [["scheduled_message", "scheduled message", "schedule a message"],
+                ["minute", "30 days", "local time", "eastern"]]},
+
     # Needs a tool. Must hand off rather than answer or apologise.
     {"q": "read agents/react.py and summarise what it does", "want": "HANDOFF"},
     {"q": "check how much disk space is left on the server", "want": "HANDOFF"},

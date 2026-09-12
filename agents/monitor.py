@@ -205,6 +205,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
         id="model_update_startup",
     )
 
+    # Polled rather than one date job per message: APScheduler drops a date job more
+    # than a second late, so anything due during a restart would be lost. No tokens.
+    _scheduler.add_job(_deliver_scheduled, "interval", seconds=60, id="scheduled_messages")
+
     # 15:00 UTC keeps it clear of the 13:00 digest, and it runs on the chat model's
     # 12000 bucket rather than the digest's 6000, so the two cannot contend.
     _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=15, minute=0, id="advocacy_draft")
@@ -212,6 +216,13 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
+
+
+async def _deliver_scheduled() -> None:
+    if _send_fn is None:
+        return
+    from agents import scheduled
+    await scheduled.deliver_due(_send_fn)
 
 
 async def _check_model_update() -> None:

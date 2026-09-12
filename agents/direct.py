@@ -60,9 +60,9 @@ async def handle(
     Uses the caller passed in rather than building its own client, so chat gets
     call_claude's rate-limit backoff and user notification.
     """
-    from datetime import datetime, timezone
+    import clock
 
-    current_dt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    current_dt = clock.time_line()
     system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
 
     messages = context + [{"role": "user", "content": message}]

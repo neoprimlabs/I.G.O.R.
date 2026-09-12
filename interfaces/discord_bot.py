@@ -110,27 +110,31 @@ class IgorBot(discord.Client):
             logger.error("Failed to get DM channel - %s: %s", type(e).__name__, e)
             return None
 
-    async def send_to_user(self, content: str) -> None:
+    async def send_to_user(self, content: str) -> bool:
         """Proactive send: digests, alerts, notifications, send_message.
 
         Replies to the user go through _send_chunked in on_message and are recorded
         by _update_context. Everything that arrives here was unprompted, so it is
         recorded separately - otherwise IGOR has no memory of anything it says on
         its own initiative.
+
+        Returns whether it was delivered. Scheduled messages delete an entry only
+        on True; every other caller ignores it.
         """
         content = _sanitize(content)
         for attempt in range(2):
             channel = await self._get_dm_channel()
             if channel is None:
-                return
+                return False
             try:
                 await self._send_chunked(channel, content)
                 if self._orchestrator is not None:
                     self._orchestrator.record_outbound(content)
-                return
+                return True
             except discord.HTTPException:
                 self._dm_channel = None
         logger.error("Failed to send message to user after retry")
+        return False
 
     async def send_file_to_user(self, content: str) -> None:
         content = _sanitize(content)
