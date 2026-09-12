@@ -1241,3 +1241,12 @@ merits regardless of either.
   spelunking), "drop tasks from the digest" (expect ConfigEdit once R2.3 lands;
   React fallback before that). Phase C items are independent filler and need no
   particular order.
+
+- 2026-09-12: 17d2407 scheduled messages. React scheduled_message tool, polled
+  memory/scheduled.json, config.USER_TZ = America/New_York. Design changed mid-build
+  from per-message APScheduler date jobs after measuring that 3.11.3 drops a date
+  job more than 1s late. 36 stdlib tests, three mutation-checked; live test survived
+  a gated restart and delivered. SelfDescribe eval 3/4 on four cases; the UBI
+  decline is 3/3 on both old and new ARCHITECTURE.md, so it predates this change
+  and traces to 32e7dcc's decline path. Open: misfire_grace_time on the existing
+  jobs (awaiting user), tests/test_self_grounding.py broken since 13d10ab.
