@@ -144,8 +144,16 @@ user, not made quietly.
   tools, and is told not to invent activity. Anything it sends enters `context.db`
   through `record_outbound` and becomes an input to every later turn, which is the
   2026-08-13 fabrication mechanism.
-- **Unverified:** it has never spoken. It has not run with `state: on`, and the
-  scored eval has not been run against the live model yet.
+- **Scored once, 2026-09-16, before it was ever switched on:** 5/6, and a false
+  alarm rate of 0/4 - it stayed silent in every case where silence was right,
+  including the one where the only pending item had already been raised and waved
+  off. The miss was the opposite direction: tasks outstanding and the user having
+  said "remind me what's outstanding sometime", and it said nothing. That is the
+  safe way to be wrong, and tuning it toward speaking is how the SelfDescribe
+  abstention fix overcorrected into stonewalling. **One run of six cases is a weak
+  measurement**, not a verdict.
+- **Unverified:** it has never actually spoken to the user. It has not run with
+  `state: on`, so no message has been composed from a real bundle.
 
 ## Known broken
 
