@@ -17,7 +17,7 @@ USER_TZ = "America/New_York"
 # 6000 and 12000 buckets this file used to describe no longer exist. Buckets are
 # per-model, so roles sharing a model share its budget.
 MODELS = {
-    "router": "qwen/qwen3.6-27b",        # 8000 TPM, sole occupant, ~28 tokens a call
+    "router": "qwen/qwen3.8-27b",        # 8000 TPM, sole occupant, ~28 tokens a call
     "chat": "openai/gpt-oss-120b",       # 8000 TPM bucket, shared with react
     "react": "openai/gpt-oss-120b",      # shares chat's bucket, deliberately
     "research": "openai/gpt-oss-20b",    # 8000 TPM bucket, shared with evaluator and summary

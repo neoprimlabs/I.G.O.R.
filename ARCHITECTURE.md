@@ -12,7 +12,7 @@ tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
 SQLite. No database server, no web UI, no admin panel.
 
 **Routing.** Four exact-match fast paths, then one router call
-(`qwen/qwen3.6-27b`, `max_tokens=10`) returning one of six words. Any router
+(`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
 failure falls through to React.
 
 | Destination | Handles | Model | Tools |
@@ -151,7 +151,7 @@ A Discord DM travels this path every time:
    ```
 
    Anything else goes to **one router call**: `MODELS["router"]`
-   (`qwen/qwen3.6-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
+   (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
    `none`, 15s timeout, on a bucket it has to itself. It returns one word, mapped
    by `_VERDICT_MAP`. The effort setting is load-bearing: every model Groq still
    offers is a reasoning model, and without it the 10-token budget is spent on
@@ -395,7 +395,7 @@ this table used to list no longer exist (re-measured 2026-08-18):
 
 | Role | Model | Bucket |
 |---|---|---|
-| `router` | `qwen/qwen3.6-27b` | 8000, sole occupant, ~28 tokens a call |
+| `router` | `qwen/qwen3.8-27b` | 8000, sole occupant, ~28 tokens a call |
 | `chat` | `openai/gpt-oss-120b` | 8000, shared with `react` |
 | `react` | `openai/gpt-oss-120b` | shares chat's 8000 |
 | `research` | `openai/gpt-oss-20b` | 8000, shared with `evaluator` and `summary` |

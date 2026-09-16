@@ -38,10 +38,13 @@ _CAP = 4096
 # Per-model request parameters that are wrong to omit, keyed here because every
 # one of them fails as a 200 OK rather than an error.
 #
-# qwen3.6 writes its chain of thought into message.content unless
-# reasoning_format is set. Measured 2026-08-18: an unset call returns an opening
-# think tag followed by its reasoning as the answer, so that text reaches
-# Discord, memory files and the router's verdict parser intact.
+# qwen writes its chain of thought into message.content unless reasoning_format
+# is set. Measured on 3.6, 2026-08-18: an unset call returns an opening think tag
+# followed by its reasoning as the answer, so that text reaches Discord, memory
+# files and the router's verdict parser intact. Groq replaced 3.6 with 3.8 on
+# 2026-09-15, and 3.8 did not leak in 5 of 5 unset calls at max_tokens=10 - the
+# setting stays anyway, because it costs nothing and the version after this one
+# is unmeasured until someone measures it.
 #
 # gpt-oss keeps reasoning in a separate field, so it cannot leak, but unset it
 # spends an unbounded share of max_tokens on hidden reasoning - which empties any
@@ -52,7 +55,7 @@ _CAP = 4096
 # reasoning_effort unset, because choosing a tool is the case where the reasoning
 # plausibly earns its tokens. See STATE.md.
 _MODEL_DEFAULTS: dict[str, dict[str, str]] = {
-    "qwen/qwen3.6-27b": {"reasoning_format": "hidden"},
+    "qwen/qwen3.8-27b": {"reasoning_format": "hidden"},
     "openai/gpt-oss-120b": {"reasoning_effort": "low"},
     "openai/gpt-oss-20b": {"reasoning_effort": "low"},
 }

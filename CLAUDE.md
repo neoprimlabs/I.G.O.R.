@@ -40,7 +40,7 @@ The runtime is the server. There is no local run.
   buckets (that is why roles are assigned different models). Same model for two roles
   = SHARED bucket. Re-measured 2026-08-18 after the Llama removal: every
   general-purpose model Groq now serves is **8000 TPM** - gpt-oss-120b, gpt-oss-20b
-  and qwen3.6-27b alike. The 6000 and 12000 buckets are gone with the models that had
+  and qwen3.8-27b alike. The 6000 and 12000 buckets are gone with the models that had
   them. This currently makes "8000 everywhere" true, which it was not before; check
   the headers rather than trusting that it stayed true.
 - **max_tokens counts against TPM at request time** (prompt + max_tokens = "requested").
