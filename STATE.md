@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-09-12**
+Last updated: **2026-09-16**
 
 ---
 
@@ -17,8 +17,8 @@ Last updated: **2026-09-12**
 
 ## Code
 
-- Server `/opt/igor` runs `17d2407` (scheduled messages), deployed through the S.1
-  gate on 2026-09-12, twice - the second deploy was the restart for the live test.
+- Server `/opt/igor` runs `a5c2ad3` (router on qwen3.8), deployed through the S.1
+  gate on 2026-09-16. `17d2407` before it, deployed 2026-09-12.
   `origin/master` may be ahead by documentation-only commits; those need no deploy,
   because nothing at runtime reads STATE.md or GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -28,11 +28,9 @@ Last updated: **2026-09-12**
 
 **Pick up here.** Two checks that need the user, then the SelfDescribe eval, then V.1:
 
-1. **One real Discord request for a scheduled message.** "Message me in 5 minutes
-   to check in." The live test on 2026-09-12 called `agents/scheduled.py` directly,
-   so it proved storage, restart survival and delivery - not that the model calls
-   the tool well. Expect the request to route CONFIG, get declined by ConfigEdit and
-   forwarded to React; that detour is known and accepted (see Scheduled messages).
+1. **Fix ConfigEdit overwriting the digest schedule** - Known broken 7. Asked to
+   move a check-in, it silently rewrote `schedule_config.md` instead. Restored by
+   hand on 2026-09-16; the cause is untouched and it will happen again.
 2. **Does A.2 actually work?** `memory/corrections.md` still does not exist, checked
    2026-09-12. Ask the user to send IGOR a corrective Discord message ("no, that's
    wrong - X is actually Y"), then check whether the file appears. If it does not,
@@ -105,9 +103,13 @@ marked failed for a human.
   line); ~135 tokens on every SelfDescribe call from the ARCHITECTURE summary.
 - **Live test passed:** scheduled at 02:12:44 UTC, survived a gated restart at
   02:13:08, delivered 02:17:15 on the first check after its 02:16:44 due time.
-- **Known detour:** scheduling requests route CONFIG (the router's CONFIG line says
-  "change a schedule time"), ConfigEdit declines, React handles it. One wasted call,
-  ~600-700 tokens. Left alone because a router change requires the SelfDescribe eval.
+- **Verified end to end 2026-09-15:** React called the tool itself for two requests
+  made the night before, and both were delivered from the queue - 92704e at 13:15
+  UTC and 88532e at 15:40 UTC. The queue is empty and cleans up after itself.
+- **Known detour, and it has bitten once:** scheduling requests route CONFIG (the
+  router's CONFIG line names "change a schedule time"). Usually ConfigEdit declines
+  and React handles it, costing one wasted call, ~600-700 tokens. Once it did not
+  decline - see Known broken 7.
 - **Known limitation:** a crash between sending and saving can send a message twice.
 
 ## Known broken
@@ -151,6 +153,18 @@ marked failed for a human.
    grounding moved from React to SelfDescribe: it imports
    `_ground_if_self_referential`, which no longer exists. Delete it or rewrite it
    against SelfDescribe.
+7. **A request to move a check-in can rewrite the morning digest schedule.**
+   2026-09-14: after asking for a random check-in, "Do it later.. around 11:40"
+   routed CONFIG, and ConfigEdit did **not** decline it - it wrote `time: 11:40 UTC`
+   into `memory/schedule_config.md` and replied that a restart was needed. The digest
+   kept arriving at 09:00 EDT only because that file is read at startup; the next
+   restart would have moved it to 07:40 EDT. Found and restored to 13:00 UTC on
+   2026-09-16, six days later, by reading the file - nothing reported it.
+   The class: a short follow-up carrying a bare time is not a config change, and
+   ConfigEdit has no notion of what the previous message was about. A ConfigEdit
+   guard needs no eval; a router-prompt fix needs the SelfDescribe eval rerun.
+   Worth checking at the same time: nothing warns when a config file is written, so
+   an unwanted edit is invisible until someone looks.
 
 ## Tests
 
@@ -195,6 +209,16 @@ machine returns, so time away means late alerts rather than none.
   "executed successfully". The weather section's provider returned 503 on six days
   in late August; the digest went out without that section each time.
 - **Direct's chat replies:** 33 since 2026-08-18.
+- **Scheduled messages, end to end:** two requests on 2026-09-14, scheduled by React
+  itself and both delivered on time on 2026-09-15.
+- **Router accuracy on `qwen/qwen3.8-27b`:** 23/24, three consecutive runs, the same
+  single miss each time - "We could have you use your autonomous scheduled system to
+  promote and inform." goes to Direct instead of SelfDescribe. That is one of the two
+  messages behind the 2026-08-13 fabrications, though Direct has no tools and is told
+  to say it cannot check how IGOR is built, so the likely failure is a non-answer
+  rather than an invention. **No router score was ever recorded on qwen3.6 and Groq
+  has deleted it, so this cannot be called a regression** - there is nothing left to
+  compare against. Baseline to beat from here: 23/24.
 
 ## Open: React has never been measured at different reasoning_effort
 
@@ -226,6 +250,12 @@ owner, after five files drifted the same way).
   2026-09-07 for a 2pm check-in and IGOR had no way to send one. Design changed
   mid-build from per-message APScheduler jobs to a polled file once APScheduler's
   1-second misfire drop was measured on the server.
+- **2026-09-16:** Groq replaced `qwen/qwen3.6-27b` with `qwen/qwen3.8-27b`, and the
+  router was the only role on it (`a5c2ad3`). Second model removal in a month. The
+  daily check alerted on the first morning and nothing broke in between only because
+  no message was sent in that window - a router 404 falls through to React silently.
+  Measured before switching: 3.8 returns a clean verdict at `max_tokens=10` with or
+  without `reasoning_format` (n=5 each), where 3.6 leaked an unterminated think tag.
 - **2026-08-17:** Groq removed the entire Llama family, taking out `router`, `chat`,
   `evaluator` and `summary`. Roles reassigned across the three general-purpose models
   Groq still serves, all 8000 TPM. See ARCHITECTURE.md.
