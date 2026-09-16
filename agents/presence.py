@@ -327,8 +327,11 @@ def due_triggers(now: Optional[datetime] = None,
         last = _parse(fired.get(name))
         return last is None or now - last >= _TRIGGER_COOLDOWN
 
+    # The OLDEST unanswered draft, not the newest. Keying on the newest meant the
+    # weekly advocacy draft reset this every Monday, so three drafts going back 35
+    # days would never have been raised at all.
     drafts = _drafts()
-    if drafts and now - drafts[0][1] > _DRAFT_STALE and _cooled("drafts"):
+    if drafts and now - drafts[-1][1] > _DRAFT_STALE and _cooled("drafts"):
         due.append("drafts")
 
     try:

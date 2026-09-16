@@ -247,6 +247,16 @@ def test_triggers() -> None:
     due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
     _check("a draft from yesterday is not", "drafts" not in due, str(due))
 
+    # The real drafts.md: three unanswered, oldest 35 days, newest 2 days. Keying on
+    # the newest meant the weekly advocacy draft reset the trigger forever and the
+    # 35-day-old one was never raised.
+    ancient = (AWAKE - timedelta(days=35)).strftime("%Y-%m-%d %H:%M UTC")
+    _fresh(_state(), files={"drafts.md": (
+        f"\n## Universal Basic Income - {recent}\n\nbody\n"
+        f"\n## Universal Basic Income - {ancient}\n\nbody\n")})
+    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    _check("a fresh draft does not hide an old unanswered one", "drafts" in due, str(due))
+
     _fresh(_state(last_trigger={"drafts": (AWAKE - timedelta(days=2)).isoformat()}),
            files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
     due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
