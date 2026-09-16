@@ -31,11 +31,28 @@ Last updated: **2026-09-16**
 1. **Fix ConfigEdit overwriting the digest schedule** - Known broken 7. Asked to
    move a check-in, it silently rewrote `schedule_config.md` instead. Restored by
    hand on 2026-09-16; the cause is untouched and it will happen again.
-2. **Does A.2 actually work?** `memory/corrections.md` still does not exist, checked
-   2026-09-12. Ask the user to send IGOR a corrective Discord message ("no, that's
-   wrong - X is actually Y"), then check whether the file appears. If it does not,
-   fix the detection in `orchestrator._looks_like_correction` before anything else,
-   because V.1 consumes that corpus and there is currently no corpus.
+2. **A.2 answered 2026-09-16: the machinery works, the corpus is empty because the
+   user does not correct IGOR in those words.** Measured, not guessed. The detector
+   scores 7/7 on explicit corrections with 0 false positives on ordinary messages,
+   and the writer produces a correct entry - both exercised offline, with no staged
+   message sent to IGOR. Running the detector over the real `context.db`: **73 user
+   messages from 2026-08-08 to 2026-09-14, zero matches.** Nothing was broken and
+   nothing was ever going to be captured.
+
+   What the user does instead is restate the request seconds after IGOR acts - "Will
+   you message me at some random times tomorrow?" then, 18 seconds later, "Do it
+   later.. around 11:40". Reformulation is a known implicit dissatisfaction signal
+   and a known noisy one (EMNLP 2025, arXiv 2507.23158, "A Lens to Understand Users
+   But Noisy as a Learning Signal"), so it is now captured under `Signal:
+   reformulation`, never merged with `Signal: explicit`. Capture-only as before.
+
+   **Still unverified: nothing has been captured live yet.** The next reformulation
+   in Discord creates `corrections.md`. Check it exists, then read what landed in it
+   before V.1 consumes any of it - the noise is the known risk, and the labels exist
+   so a human can weigh the two signals differently.
+
+   Do not widen `_CORRECTION_PATTERNS` to compensate. They are accurate; the problem
+   was never their precision.
 3. **The SelfDescribe eval, and one real defect it found.** Four of ten cases were
    run on gpt-oss-120b on 2026-09-12, no 429:
    - Pass: "What tools can you use?", "Where is the digest schedule configured?",

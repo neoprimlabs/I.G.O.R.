@@ -85,6 +85,44 @@ _CORRECTION_PATTERNS = [
 _CORRECTIONS_MAX_BYTES = 200_000
 
 
+# Measured 2026-09-16 over the real context.db: 73 user messages across five weeks,
+# zero matching the patterns above. The detection is accurate - 7/7 on explicit
+# corrections, no false positives - the user simply does not phrase things that way.
+# What they do instead is restate the request straight after IGOR acts:
+#
+#   "Will you message me at some random times tomorrow?"  -> IGOR picks 09:15
+#   "Do it later.. around 11:40"                          -> 18 seconds later
+#
+# Reformulation is a recognised implicit dissatisfaction signal, and a known noisy
+# one: "User Feedback in Human-LLM Dialogues: A Lens to Understand Users But Noisy
+# as a Learning Signal" (EMNLP 2025, arXiv 2507.23158) reports mixed results using
+# it for adaptation. So it is captured under its own label and never merged with
+# explicit corrections. A.2 is capture-only and nothing reads this file, so the cost
+# of a false positive is review time; the cost of capturing nothing is V.1.
+_REFORMULATION_WINDOW_S = 180
+_MIN_REFORMULATION_WORDS = 3
+_ACKNOWLEDGEMENTS = frozenset({
+    "thanks", "thank you", "ok", "okay", "cool", "nice", "perfect", "got it",
+    "sounds good", "great", "yes", "no", "sure", "done", "test confirmed",
+})
+
+
+def _looks_like_reformulation(message: str, seconds_since_last: float) -> bool:
+    """A request restated moments after IGOR answered or acted.
+
+    Deliberately not merged into _looks_like_correction: that one is high precision
+    and its matches are strong evidence. This is a weaker signal and is labelled so
+    whoever reviews the corpus can weigh it differently.
+    """
+    if seconds_since_last is None or seconds_since_last > _REFORMULATION_WINDOW_S:
+        return False
+    text = (message or "").strip()
+    stripped = text.lower().strip(".!?,")
+    if stripped in _ACKNOWLEDGEMENTS:
+        return False
+    return len(text.split()) >= _MIN_REFORMULATION_WORDS
+
+
 def _looks_like_correction(message: str) -> bool:
     return any(p.search(message) for p in _CORRECTION_PATTERNS)
 
@@ -93,8 +131,8 @@ def _looks_like_correction(message: str) -> bool:
 _STORE_CAP = 20000
 _OLD_ENTRY_CAP = 700
 
-# Per-destination context budgets, in characters. React carries 12 tool schemas
-# (~1900 tokens) on an 8000 TPM model, so it has roughly 2500 tokens of room for
+# Per-destination context budgets, in characters. React carries 13 tool schemas
+# (~2100 tokens) on an 8000 TPM model, so it has roughly 2300 tokens of room for
 # history. Direct carries no tools on a 12000 bucket and can afford far more.
 # One number cannot serve both.
 _CONTEXT_BUDGET_REACT = 8500
@@ -262,7 +300,15 @@ class Orchestrator:
         # Before _update_context runs, so the last assistant entry is still the reply
         # being corrected rather than the one about to be written.
         if _looks_like_correction(task):
-            self._log_correction(task, destination)
+            self._log_correction(task, destination, signal="explicit")
+        else:
+            # The gap to the previous stored message, which is IGOR's last reply -
+            # this runs before _update_context, so the current message is not in yet.
+            from context_store import last_timestamp
+            previous = last_timestamp()
+            gap = (datetime.now(timezone.utc) - previous).total_seconds() if previous else None
+            if gap is not None and _looks_like_reformulation(task, gap):
+                self._log_correction(task, destination, signal="reformulation")
         if destination == "StopResearch":
             file_mode = True
 
@@ -506,7 +552,7 @@ class Orchestrator:
         append("user", user_msg)
         append("assistant", assistant_msg)
 
-    def _log_correction(self, user_msg: str, destination: str) -> None:
+    def _log_correction(self, user_msg: str, destination: str, signal: str = "explicit") -> None:
         """Append a correction and what it was correcting. Never raises.
 
         Capture only. This file is deliberately NOT in React's memory_read allowlist:
@@ -524,11 +570,12 @@ class Orchestrator:
             with path.open("a", encoding="utf-8") as f:
                 f.write(
                     f"\n## {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
-                    f"Answered by: {destination}\n\n"
+                    f"Answered by: {destination}\n"
+                    f"Signal: {signal}\n\n"
                     f"IGOR said:\n> {_cap(prior.get('content') or '', 600).replace(chr(10), chr(10) + '> ')}\n\n"
                     f"User corrected:\n> {_cap(user_msg, 600).replace(chr(10), chr(10) + '> ')}\n"
                 )
-            logger.info("Logged a correction against %s", destination)
+            logger.info("Logged a %s correction against %s", signal, destination)
         except Exception as e:
             logger.error("Correction logging failed - %s: %s", type(e).__name__, e)
 
