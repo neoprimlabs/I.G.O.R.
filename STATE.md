@@ -59,16 +59,12 @@ Last updated: **2026-09-16**
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
-**Waiting on the user:**
-
-- **Turn presence on.** Deployed 2026-09-16 with `state: off` in
-  `memory/presence_config.md`. Nothing reaches the user until that says `on`. Turn it
-  on for a day, then read `journalctl -u igor | grep Presence` - every decision logs
-  its trigger and whether it spoke - before leaving it on. `tests/eval_presence.py`
-  scores the judgement itself and reports a false alarm rate; run it after any change
-  to the presence prompt.
-- Whether to set `misfire_grace_time` on the scheduler (see Known broken 5).
-  Proposed, not done, because it changes jobs they did not ask about.
+**Presence is ON as of 2026-09-16** (`state: on` in `memory/presence_config.md`).
+It had never spoken when it was switched on. Read its decisions before trusting it:
+`journalctl -u igor | grep Presence` logs every trigger and whether it spoke or
+stayed silent. Turn it off by writing `state: off` in that file, or by asking IGOR
+to. `tests/eval_presence.py` scores the judgement and reports a false alarm rate -
+run it after any change to the presence prompt.
 
 **The user's direction, set 2026-08-08: a fully autonomous, self improving
 assistant.** GAMEPLAN Phase A specs the path, researched then audited against its
@@ -183,31 +179,28 @@ user, not made quietly.
    check reports healthy while the green dot is out. Closing that needs a
    heartbeat emitted from inside the bot, gated on `is_ready()` and a finite
    `bot.latency`. Not built.
-5. **Every existing scheduled job can be silently skipped by a 1-second stall.**
-   The digest (13:00 UTC), the model check and the advocacy draft use APScheduler's
-   default `misfire_grace_time` of 1s. On 2026-09-12 the first scheduled-message
-   tick after a restart was logged "missed by 0:00:01.198" - so this box does stall
-   past a second. No digest has been missed (25 of 25 ran since 2026-08-18, none
-   missed since 2026-08-01), but a miss would mean no digest until the next day, with
-   only a WARNING line. The fix is one line -
-   `AsyncIOScheduler(job_defaults={"misfire_grace_time": 300})` in `monitor.setup()`
-   - and is waiting on the user.
+5. **FIXED 2026-09-16.** Every scheduled job used APScheduler's 1s
+   `misfire_grace_time`, so a stall longer than a second skipped a job silently. The
+   host does stall: a live tick was missed by 1.198s on 2026-09-12. Nothing had been
+   lost (25 of 25 digests since 2026-08-18), but a stall at 13:00 would have cost
+   that day's digest with only a WARNING. `monitor.setup()` now builds the scheduler
+   with `job_defaults={"misfire_grace_time": 300}`: five minutes late beats missing.
 6. **`tests/test_self_grounding.py` fails on import** and has since `13d10ab`, when
    grounding moved from React to SelfDescribe: it imports
    `_ground_if_self_referential`, which no longer exists. Delete it or rewrite it
    against SelfDescribe.
-7. **A request to move a check-in can rewrite the morning digest schedule.**
-   2026-09-14: after asking for a random check-in, "Do it later.. around 11:40"
-   routed CONFIG, and ConfigEdit did **not** decline it - it wrote `time: 11:40 UTC`
-   into `memory/schedule_config.md` and replied that a restart was needed. The digest
-   kept arriving at 09:00 EDT only because that file is read at startup; the next
-   restart would have moved it to 07:40 EDT. Found and restored to 13:00 UTC on
-   2026-09-16, six days later, by reading the file - nothing reported it.
-   The class: a short follow-up carrying a bare time is not a config change, and
-   ConfigEdit has no notion of what the previous message was about. A ConfigEdit
-   guard needs no eval; a router-prompt fix needs the SelfDescribe eval rerun.
-   Worth checking at the same time: nothing warns when a config file is written, so
-   an unwanted edit is invisible until someone looks.
+7. **FIXED 2026-09-16.** A request to move a check-in could rewrite the morning
+   digest schedule. On 2026-09-14 "Do it later.. around 11:40" routed CONFIG and
+   ConfigEdit wrote `time: 11:40 UTC` into `schedule_config.md`, undetected for six
+   days because the digest reads that file at startup. Two controls, both in code
+   (`agents/prod_memory.py`), since ConfigEdit cannot see the previous message:
+   a settings file is only written when the message names its subject
+   (`_mentions_subject`), and the reply now prints the lines that changed
+   (`_describe_change`), so a wrong write is visible on arrival rather than six days
+   later. A declined message goes to React, which is what should have happened.
+   `tests/test_config_guard.py` replays the exact Discord message.
+   Still true and not fixed here: the router sends these to CONFIG in the first
+   place. That needs a router prompt change and therefore the SelfDescribe eval.
 
 ## Tests
 

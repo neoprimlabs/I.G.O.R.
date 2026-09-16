@@ -20,7 +20,7 @@ failure falls through to React.
 | Direct | `CHAT` | gpt-oss-120b | none, by design |
 | React | `TASK`, router failure | gpt-oss-120b | all 13 |
 | Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
-| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files |
+| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files, and only when the message names the setting |
 | ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - questions about IGOR itself | gpt-oss-120b | none, reads this file |
 

@@ -185,7 +185,12 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
         api_key=config.GROQ_API_KEY,
         base_url="https://api.groq.com/openai/v1",
     )
-    _scheduler = AsyncIOScheduler()
+    # APScheduler drops a job more than misfire_grace_time late, default 1 second,
+    # with only a WARNING. Measured on this host 2026-09-12: a live tick was missed
+    # by 1.198s after a restart. Nothing has been lost yet - 25 of 25 digests ran
+    # since 2026-08-18 - but a stall at 13:00 would cost that day's digest silently.
+    # Five minutes late beats not at all for every job here.
+    _scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 300})
 
     digest_hour, digest_minute = _get_digest_schedule()
     _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, id="morning_digest")

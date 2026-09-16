@@ -161,6 +161,43 @@ def _invalid_digest_sections(content: str) -> list[str]:
     return bad
 
 
+# A settings file may only be written by a message that names what it is about.
+#
+# 2026-09-14: "Do it later.. around 11:40", a follow-up about a check-in, routed
+# CONFIG and rewrote the morning digest time. ConfigEdit cannot see the previous
+# message, so on its own that sentence is genuinely ambiguous - and the model
+# resolved it toward the only thing it can act on. This is the control that stops
+# it, in code, because a prompt rule gets re-derived wrong at the next call site.
+#
+# A false negative is cheap: the message goes to React instead, which is what should
+# have happened on 2026-09-14. A false positive rewrote a schedule for six days.
+_SUBJECT_WORDS = {
+    "schedule_config.md": ("schedule", "digest", "morning", "briefing"),
+    "digest_config.md": ("digest", "section", "weather", "forecast", "news", "task",
+                         "brief", "headline"),
+    "watchlist.md": ("watchlist", "watch", "monitor", "track"),
+}
+
+
+def _mentions_subject(message: str, filename: str) -> bool:
+    lowered = (message or "").lower()
+    return any(word in lowered for word in _SUBJECT_WORDS.get(filename, ()))
+
+
+def _describe_change(old: str, new: str) -> str:
+    """The lines that changed, so a wrong write is obvious when it arrives.
+
+    The user did see "Updated schedule_config.md" on 2026-09-14 and had no reason to
+    read it as wrong. Six days later the file still said 11:40.
+    """
+    old_lines = [line.strip() for line in (old or "").splitlines() if line.strip()]
+    new_lines = [line.strip() for line in (new or "").splitlines() if line.strip()]
+    removed = [line for line in old_lines if line not in new_lines]
+    added = [line for line in new_lines if line not in old_lines]
+    parts = [f"-{line}" for line in removed[:4]] + [f"+{line}" for line in added[:4]]
+    return "\n".join(parts)
+
+
 async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Optional[str]:
     """Apply a natural-language configuration change to one settings file."""
     current = "\n\n".join(
@@ -189,6 +226,11 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Op
 
     if not new_content:
         logger.info("ConfigEdit reply for %s had no usable file block", filename)
+        return None
+
+    if not _mentions_subject(message, filename):
+        logger.info("ConfigEdit declining %s: the message names no setting (%r)",
+                    filename, message[:60])
         return None
 
     if filename == "schedule_config.md":
@@ -222,7 +264,8 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Op
     # the digest scheduled for" has classified as CONFIG. Writing an identical file
     # in response to a question is at best noise and at worst a mangled rewrite, so
     # an unchanged result is treated as "nothing was asked for" and reported instead.
-    if new_content.strip() == (_read_config(filename) or "").strip():
+    previous = _read_config(filename) or ""
+    if new_content.strip() == previous.strip():
         logger.info("ConfigEdit produced no change to %s, treating as a question", filename)
         return (
             f"Nothing to change - {filename} already reads that way. "
@@ -250,4 +293,6 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Op
         if restart
         else " That takes effect immediately, no restart needed."
     )
-    return f"Updated {filename}.{note}"
+    changed = _describe_change(previous, new_content)
+    body = f"Updated {filename}.{note}"
+    return f"{body}\n{changed}" if changed else body
