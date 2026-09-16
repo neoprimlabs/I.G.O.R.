@@ -7,6 +7,9 @@ from interfaces.discord_bot import run_bot
 
 _MEMORY_TEMPLATES: dict[str, str] = {
     "user.md": "# User\n",
+    # Off until the user turns it on. Presence messages them unasked, so it starts
+    # silent and stays silent if this file ever goes missing.
+    "presence_config.md": "# Presence\n\nstate: off\n",
     "projects.md": "# Projects\n",
     "tasks.md": "# Tasks\n",
     "agents.md": "# Agents\n",
@@ -95,7 +98,8 @@ def _smoke_test() -> None:
     # imported lazily at call time, so nothing else catches this at startup.
     for module in ("agents.direct", "agents.react", "agents.monitor",
                    "agents.research", "agents.research_loop",
-                   "agents.prod_memory", "agents.evaluator", "context_store"):
+                   "agents.prod_memory", "agents.evaluator", "context_store",
+                   "agents.scheduled", "agents.compose", "agents.presence", "clock"):
         try:
             __import__(module)
         except Exception as e:

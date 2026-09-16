@@ -32,12 +32,12 @@ messages that are really tasks, and those go on to React.
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
 
-**Scheduling.** APScheduler, in-process. Five jobs, all registered *in code* in
+**Scheduling.** APScheduler, in-process. Six jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
 (daily 09:00, plus a one-off 60s after every start), an advocacy draft
-(Mondays 15:00), and a check every 60s for due scheduled messages. There is no
-scheduler config file, and no way to add or retime a job without a code change
-and a deploy.
+(Mondays 15:00), a check every 60s for due scheduled messages, and a presence tick
+every 10 minutes. There is no scheduler config file, and no way to add or retime a
+job without a code change and a deploy.
 
 **Scheduled messages** are the one thing the user can schedule by asking. React's
 `scheduled_message` tool adds, lists or cancels one-off messages in
@@ -58,11 +58,21 @@ deploy or restart rather than whenever the cron next comes round.
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
 (which digest sections run), `agents.md` (**standing preferences only - NOT the agent
 list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
-`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`, plus `context.db`
+`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`,
+`presence_config.md`, `presence_state.json`, plus `context.db`
 (SQLite conversation history). `memory_write` takes a filename from a fixed list
 plus content - it is not a key/value store. `corrections.md` and `drafts.md` are
 readable by no agent: both hold text derived from untrusted input, so pulling them
 into a tool-bearing context would be a stored injection path.
+
+**Presence** (`agents/presence.py`) is IGOR deciding on its own whether to say
+something, and usually deciding not to. A trigger (a conversation that ended 25-90
+minutes ago, the digest going unanswered, drafts or tasks going stale) makes it
+assemble a block of facts read from files and the database and ask the summary model
+for either SILENT or one to three sentences. Gates run in code before any model call:
+silent 03:00-10:00 local, four hours between messages, at most 2 a day and 6 decision
+calls a day, and never within 20 minutes of a live conversation. **Off unless
+`memory/presence_config.md` says `state: on`**, and off if that file is missing.
 
 **Deployment** runs through a root-owned script at
 `/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach.

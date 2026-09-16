@@ -50,6 +50,22 @@ def append(role: str, content: str) -> None:
         pass
 
 
+def last_timestamp():
+    """When the last message was stored, or None.
+
+    Presence uses this to tell a live conversation from a break. load() returns
+    roles and text only, and the difference between "eight minutes ago" and "forty
+    minutes ago" is the difference between interrupting and not.
+    """
+    from datetime import datetime, timezone
+    try:
+        with _conn() as conn:
+            row = conn.execute("SELECT ts FROM messages ORDER BY id DESC LIMIT 1").fetchone()
+        return datetime.fromtimestamp(row[0], timezone.utc) if row else None
+    except Exception:
+        return None
+
+
 def clear() -> None:
     try:
         with _conn() as conn:

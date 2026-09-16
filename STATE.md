@@ -59,8 +59,16 @@ Last updated: **2026-09-16**
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
-**Waiting on the user:** whether to set `misfire_grace_time` on the scheduler (see
-Known broken 5). Proposed, not done, because it changes jobs they did not ask about.
+**Waiting on the user:**
+
+- **Turn presence on.** Deployed 2026-09-16 with `state: off` in
+  `memory/presence_config.md`. Nothing reaches the user until that says `on`. Turn it
+  on for a day, then read `journalctl -u igor | grep Presence` - every decision logs
+  its trigger and whether it spoke - before leaving it on. `tests/eval_presence.py`
+  scores the judgement itself and reports a false alarm rate; run it after any change
+  to the presence prompt.
+- Whether to set `misfire_grace_time` on the scheduler (see Known broken 5).
+  Proposed, not done, because it changes jobs they did not ask about.
 
 **The user's direction, set 2026-08-08: a fully autonomous, self improving
 assistant.** GAMEPLAN Phase A specs the path, researched then audited against its
@@ -111,6 +119,33 @@ marked failed for a human.
   and React handles it, costing one wasted call, ~600-700 tokens. Once it did not
   decline - see Known broken 7.
 - **Known limitation:** a crash between sending and saving can send a message twice.
+
+## Presence (new, 2026-09-16, off by default)
+
+IGOR deciding unprompted whether to speak. Spec:
+`docs/superpowers/specs/2026-09-16-proactive-presence-design.md`.
+
+The research moved two decisions before any code existed. ProactiveBench (22 models)
+and ProVoice-Bench both find over-triggering is the measured failure of proactive
+agents - they help when asked but will not stay silent when nothing is needed - so
+every gate that can be decided without a model is, and the model is asked one narrow
+question. Both also find proactiveness does not track model capacity, so it runs on
+gpt-oss-20b. The user asked for "random times"; the notification literature finds
+random interruptions are judged worse than ones at a natural break, and deferring to
+an interruptible moment cut response time 49.7% across 680000 users, so timing is
+trigger-driven with randomness inside the trigger. That substitution was put to the
+user, not made quietly.
+
+- **Gates, all in code:** quiet 03:00-10:00 local, 4h between messages, 2 messages a
+  day, 6 decision calls a day, nothing within 20 minutes of a live conversation.
+- **Cost:** worst case 6 calls a day at roughly 700-1000 tokens. Every call logs its
+  trigger and verdict, so this becomes a measurement rather than staying an estimate.
+- **Grounding:** the model sees only facts read from files and the database, has no
+  tools, and is told not to invent activity. Anything it sends enters `context.db`
+  through `record_outbound` and becomes an input to every later turn, which is the
+  2026-08-13 fabrication mechanism.
+- **Unverified:** it has never spoken. It has not run with `state: on`, and the
+  scored eval has not been run against the live model yet.
 
 ## Known broken
 

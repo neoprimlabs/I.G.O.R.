@@ -54,6 +54,7 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 _ALLOWED_FILES = frozenset({
+    "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "watchlist.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
@@ -61,6 +62,7 @@ _ALLOWED_FILES = frozenset({
 })
 
 _OVERWRITABLE_FILES = frozenset({
+    "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "watchlist.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",

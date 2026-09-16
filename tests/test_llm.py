@@ -149,7 +149,7 @@ def test_imports() -> None:
     for module in ("llm", "clock", "orchestrator", "context_store", "agents.direct",
                    "agents.react", "agents.monitor", "agents.evaluator",
                    "agents.research_loop", "agents.research", "agents.prod_memory",
-                   "agents.scheduled", "agents.compose"):
+                   "agents.scheduled", "agents.compose", "agents.presence"):
         try:
             __import__(module)
             _check(f"{module} imports", True)

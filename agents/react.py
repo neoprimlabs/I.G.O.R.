@@ -94,7 +94,7 @@ _TOOLS = [
                     "enum": [
                         "tasks.md", "projects.md", "user.md", "agents.md",
                         "digest_config.md", "watchlist.md",
-                        "research.md",
+                        "research.md", "presence_config.md",
                     ],
                     "description": "The file to read",
                 }
@@ -232,7 +232,7 @@ _TOOLS = [
             "properties": {
                 "file": {
                     "type": "string",
-                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md"],
+                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md", "presence_config.md"],
                     "description": "The file to write",
                 },
                 "content": {"type": "string", "description": "Content to write"},
