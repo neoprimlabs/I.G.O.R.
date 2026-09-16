@@ -584,7 +584,25 @@ def _get_digest_sections() -> list[str]:
 
 
 def _parse_tasks(content: str) -> list[str]:
-    return [line.strip() for line in content.splitlines() if line.strip().startswith("- [ ]")]
+    """Any bullet is a task, checkbox or not.
+
+    This matched only "- [ ]" while memory_write writes plain "- " bullets, so every
+    digest reported "Open Tasks: None" with three tasks sitting in the file. The
+    writer and the reader disagreed and nothing could notice.
+    """
+    tasks = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        body = stripped[2:].strip()
+        if body[:3].lower() == "[x]":
+            continue
+        if body.startswith("[ ]"):
+            body = body[3:].strip()
+        if body:
+            tasks.append("- " + body)
+    return tasks
 
 
 def _parse_projects(content: str) -> list[str]:

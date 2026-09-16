@@ -214,9 +214,11 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "list", "cancel"]},
-                "content": {"type": "string", "description": "add: the exact message to send"},
+                "content": {"type": "string", "description": "add: the exact words to send. Use brief instead unless the user dictated the wording"},
+                "brief": {"type": "string", "description": "add: what the message is for, in a few words. The words are written when it sends, so it fits the moment"},
                 "at": {"type": "string", "description": "add: local time, YYYY-MM-DD HH:MM"},
-                "in_minutes": {"type": "integer", "description": "add: alternative to at, minutes from now"},
+                "in_minutes": {"type": "integer", "description": "add: minutes from now"},
+                "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add: let IGOR pick a varied time inside this window"},
                 "id": {"type": "string", "description": "cancel: id from list"},
             },
             "required": ["action"],

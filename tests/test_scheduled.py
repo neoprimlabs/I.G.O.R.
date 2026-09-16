@@ -91,7 +91,12 @@ def test_add() -> None:
     entries = _stored(path)
     _check("2pm Eastern in September is stored as 18:00 UTC",
            len(entries) == 1 and entries[0]["due"] == "2026-09-12T18:00:00+00:00", str(entries))
-    _check("confirmation shows the local time back", "2026-09-12 14:00 EDT" in reply, reply)
+    # The confirmation is read aloud by React, so it must sound like a person, not
+    # like a receipt. "Scheduled 64c49d for Fri 2026-09-12 14:00 EDT" is what the
+    # user saw before and specifically did not want.
+    _check("confirmation gives the time in words", "2:00 PM" in reply, reply)
+    _check("confirmation says which day", "Saturday" in reply or "tomorrow" in reply, reply)
+    _check("confirmation hides the internal id", entries[0]["id"] not in reply, reply)
 
     path = _fresh_store()
     oct30 = _utc(2026, 10, 30, 12, 0)
@@ -99,7 +104,7 @@ def test_add() -> None:
     entries = _stored(path)
     _check("2pm Eastern after the November switch is stored as 19:00 UTC",
            len(entries) == 1 and entries[0]["due"] == "2026-11-02T19:00:00+00:00", str(entries))
-    _check("confirmation says EST after the switch", "2026-11-02 14:00 EST" in reply, reply)
+    _check("confirmation still reads naturally after the switch", "2:00 PM" in reply, reply)
 
     path = _fresh_store()
     scheduled.add("Checking in.", in_minutes=90, now=NOW)
@@ -250,6 +255,117 @@ async def test_react_wiring() -> None:
     _check("React dispatches the tool", not reply.startswith("Unknown tool"), reply)
 
 
+def test_parse_tasks() -> None:
+    """Every digest since has said "Open Tasks: None" while tasks.md held three.
+
+    _parse_tasks matched only "- [ ]" checkboxes; memory_write writes plain bullets,
+    so the writer and the reader disagreed and nobody noticed.
+    """
+    from agents import monitor
+
+    content = (
+        "# Tasks\n\n"
+        "- Investigate X/Twitter fetching for the Research agent\n\n"
+        "- [ ] Test write confirmation\n"
+        "- [x] Something already finished\n\n"
+        "## Deep Research Task - Ready to Run\n"
+        "**Task:** Run a multi-hour research loop\n"
+    )
+    tasks = monitor._parse_tasks(content)
+    _check("a plain bullet is a task", any("X/Twitter" in t for t in tasks), str(tasks))
+    _check("a checkbox is still a task", any("write confirmation" in t for t in tasks), str(tasks))
+    _check("a finished task is not listed", not any("already finished" in t for t in tasks), str(tasks))
+    _check("headings and bold lines are not tasks",
+           not any("Deep Research" in t or t.startswith("**") for t in tasks), str(tasks))
+    _check("exactly the two open tasks", len(tasks) == 2, str(tasks))
+
+
+def test_window_picks_the_time() -> None:
+    """The user asked for "some random times". The model picked one number once and
+    called it random. The code picks, inside a window the model names."""
+    from agents import scheduled
+    import clock
+
+    def due_local(path):
+        from datetime import datetime
+        return datetime.fromisoformat(_stored(path)[0]["due"]).astimezone(clock.USER_TZ)
+
+    # NOW is Friday 21:14 EDT. Evening is underway, so the pick must still be future.
+    path = _fresh_store()
+    scheduled.add("x", window="evening", now=NOW)
+    picked = due_local(path)
+    _check("an evening window picks a time later this evening",
+           picked.day == 11 and picked.hour >= 21 and picked.hour < 23, str(picked))
+
+    # Morning has already gone by at 21:14, so it belongs to tomorrow.
+    path = _fresh_store()
+    scheduled.add("x", window="morning", now=NOW)
+    picked = due_local(path)
+    _check("a morning window that has passed rolls to tomorrow",
+           picked.day == 12 and 10 <= picked.hour < 12, str(picked))
+
+    # Varied, not a fixed number dressed up as a choice.
+    picks = set()
+    for _ in range(12):
+        _fresh_store()
+        scheduled.add("x", window="tomorrow", now=NOW)
+        picks.add(_stored(config.MEMORY_DIR / "scheduled.json")[0]["due"])
+    _check("repeated windows give different times", len(picks) > 1, str(sorted(picks)[:3]))
+
+    path = _fresh_store()
+    reply = scheduled.add("x", window="whenever", now=NOW)
+    _check("an unknown window is refused, not guessed",
+           reply.startswith("Not scheduled") and _stored(path) == [], reply)
+
+
+async def test_compose_at_delivery() -> None:
+    """A message written on Monday cannot know about Thursday. Entries can carry a
+    brief instead of fixed text, and the words are written when it sends."""
+    from agents import scheduled
+
+    path = _fresh_store()
+    scheduled.add(brief="check how the deploy went", in_minutes=5, now=NOW)
+    _check("a brief is stored instead of fixed text",
+           _stored(path)[0].get("brief") == "check how the deploy went"
+           and not _stored(path)[0].get("content"), str(_stored(path)))
+
+    send = _Sender()
+    seen = {}
+
+    async def _compose(brief, now=None):
+        seen["brief"] = brief
+        return "How did the deploy end up going?"
+
+    await scheduled.deliver_due(send, now=_utc(2026, 9, 12, 1, 20), compose=_compose)
+    _check("the composer is given the brief", seen.get("brief") == "check how the deploy went", str(seen))
+    _check("what sends is the composed message", send.sent == ["How did the deploy end up going?"], str(send.sent))
+
+    # Composition is a model call, and a check-in that arrives plainly beats one
+    # that vanishes because the model returned nothing.
+    path = _fresh_store()
+    scheduled.add(brief="check in about the deploy", in_minutes=5, now=NOW)
+
+    async def _empty(brief, now=None):
+        return None
+
+    send = _Sender()
+    await scheduled.deliver_due(send, now=_utc(2026, 9, 12, 1, 20), compose=_empty)
+    _check("a composer that returns nothing falls back to the brief",
+           len(send.sent) == 1 and "check in about the deploy" in send.sent[0], str(send.sent))
+    _check("and the entry is still cleared", _stored(path) == [])
+
+    path = _fresh_store()
+    scheduled.add(brief="check in", in_minutes=5, now=NOW)
+
+    async def _raises(brief, now=None):
+        raise RuntimeError("model down")
+
+    send = _Sender()
+    await scheduled.deliver_due(send, now=_utc(2026, 9, 12, 1, 20), compose=_raises)
+    _check("a composer that raises does not lose the message",
+           len(send.sent) == 1 and "check in" in send.sent[0], str(send.sent))
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -265,6 +381,11 @@ if __name__ == "__main__":
     asyncio.run(test_corrupt_store())
     print("\nreact wiring")
     asyncio.run(test_react_wiring())
+    print("\ndigest tasks")
+    test_parse_tasks()
+    print("\nwindows and composition")
+    test_window_picks_the_time()
+    asyncio.run(test_compose_at_delivery())
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

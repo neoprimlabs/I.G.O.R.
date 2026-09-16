@@ -1,8 +1,14 @@
 """Messages to the user at a later time.
 
 React's scheduled_message tool writes them to memory/scheduled.json, and a monitor
-job checks that file every minute and sends whatever is due. The text is fixed when
-the message is scheduled, so delivery costs no tokens.
+job checks that file every minute and sends whatever is due.
+
+An entry carries either content, the exact words, fixed when scheduled and free to
+deliver; or a brief, a few words about what the message is for, with the words
+written at delivery by agents/compose.py. A brief costs one small model call and can
+mention things that happened after it was scheduled, which is the difference between
+a check-in and a replayed string. If composing fails the brief is sent as plain text,
+because a check-in that arrives plainly beats one that vanishes.
 
 A polled file rather than one APScheduler job per message, because APScheduler
 3.11.3 silently drops a date job more than one second late (measured on the server,
@@ -16,8 +22,9 @@ and every addition happens here, in code.
 import json
 import logging
 import os
+import random
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import clock
@@ -30,6 +37,18 @@ _MAX_AHEAD = timedelta(days=30)
 _MAX_ATTEMPTS = 10
 _LATE_AFTER = timedelta(minutes=5)
 _AT_FORMAT = "%Y-%m-%d %H:%M"
+
+# Local hour ranges the user can name. The code picks the minute, never the model:
+# asked for "some random times", it picked one number once and called it random.
+# Interruptions at random moments also measure worse than ones at a natural break,
+# so the window stays coarse and the variation lives inside it.
+_WINDOWS = {
+    "morning": (10, 12),
+    "afternoon": (12, 17),
+    "evening": (17, 23),
+    "tomorrow": (10, 23),
+}
+_EARLIEST_AHEAD = timedelta(minutes=5)
 
 
 class _Unreadable(Exception):
@@ -68,20 +87,62 @@ def _local(due_iso: str) -> str:
     return f"{datetime.fromisoformat(due_iso).astimezone(clock.USER_TZ):%a %Y-%m-%d %H:%M %Z}"
 
 
-def add(content: str, at: Optional[str] = None, in_minutes: Optional[int] = None,
+def _pick_in_window(window: str, now: datetime) -> Optional[datetime]:
+    """A random minute inside a named window, rolled to tomorrow if it has passed."""
+    if window not in _WINDOWS:
+        return None
+    start_hour, end_hour = _WINDOWS[window]
+    local = now.astimezone(clock.USER_TZ)
+    day = local.date() + timedelta(days=1) if window == "tomorrow" else local.date()
+    for _ in range(2):
+        start = datetime.combine(day, time(start_hour), tzinfo=clock.USER_TZ)
+        end = datetime.combine(day, time(end_hour), tzinfo=clock.USER_TZ)
+        earliest = max(start, local + _EARLIEST_AHEAD)
+        minutes = int((end - earliest).total_seconds() // 60)
+        if minutes > 0:
+            return earliest + timedelta(minutes=random.randint(0, minutes - 1))
+        day = day + timedelta(days=1)
+    return None
+
+
+def _human(due: datetime, now: datetime) -> str:
+    """How a person says a time out loud. React reads this back to the user."""
+    local = due.astimezone(clock.USER_TZ)
+    today = now.astimezone(clock.USER_TZ).date()
+    clock_time = local.strftime("%I:%M %p").lstrip("0")
+    days = (local.date() - today).days
+    if days == 0:
+        day = "today"
+    elif days == 1:
+        day = "tomorrow"
+    elif days < 7:
+        day = local.strftime("%A")
+    else:
+        day = local.strftime("%A the %d").replace(" 0", " ")
+    return day + " at " + clock_time
+
+
+def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] = None,
+        window: Optional[str] = None, brief: Optional[str] = None,
         now: Optional[datetime] = None) -> str:
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
-    if not content:
-        return "Not scheduled: the message is empty."
-    if (at is None) == (in_minutes is None):
-        return "Not scheduled: give exactly one of at (local time, YYYY-MM-DD HH:MM) or in_minutes."
+    brief = (brief or "").strip()
+    if bool(content) == bool(brief):
+        return ("Not scheduled: give either content (the exact words to send) or brief "
+                "(what the message is about, written when it sends), not both.")
+    if sum(x is not None for x in (at, in_minutes, window)) != 1:
+        return "Not scheduled: give exactly one of at, in_minutes or window."
 
     if at is not None:
         try:
             due = datetime.strptime(at.strip(), _AT_FORMAT).replace(tzinfo=clock.USER_TZ)
         except ValueError:
             return f"Not scheduled: could not read {at!r}. Use local time as YYYY-MM-DD HH:MM."
+    elif window is not None:
+        due = _pick_in_window(window, now)
+        if due is None:
+            return f"Not scheduled: {window!r} is not a window. Use morning, afternoon, evening or tomorrow."
     elif isinstance(in_minutes, bool) or not isinstance(in_minutes, int) or in_minutes < 1:
         return "Not scheduled: in_minutes must be a whole number of at least 1."
     else:
@@ -102,11 +163,11 @@ def add(content: str, at: Optional[str] = None, in_minutes: Optional[int] = None
         return f"Not scheduled: {_MAX_PENDING} messages are already pending. Cancel one first."
 
     entry = {"id": secrets.token_hex(3), "due": due.isoformat(), "content": content,
-             "created": now.isoformat(), "attempts": 0}
+             "brief": brief, "created": now.isoformat(), "attempts": 0}
     entries.append(entry)
     _save(entries)
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
-    return f"Scheduled {entry['id']} for {_local(entry['due'])}."
+    return f"Okay, {_human(due, now)}."
 
 
 def list_pending() -> str:
@@ -119,7 +180,8 @@ def list_pending() -> str:
     lines = []
     for e in sorted(entries, key=lambda e: e["due"]):
         state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
-        lines.append(f"{e['id']}  {_local(e['due'])}{state}  {e['content'][:80]}")
+        summary = (e.get("content") or e.get("brief") or "")[:80]
+        lines.append(f"{e['id']}  {_local(e['due'])}{state}  {summary}")
     return "\n".join(lines)
 
 
@@ -138,7 +200,8 @@ def cancel(entry_id: str) -> str:
 
 
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
-                      now: Optional[datetime] = None) -> int:
+                      now: Optional[datetime] = None,
+                      compose: Optional[Callable] = None) -> int:
     """Send everything due. Returns how many were delivered. Never raises."""
     now = now or datetime.now(timezone.utc)
     try:
@@ -150,7 +213,20 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
 
     delivered = 0
     for entry in due:
-        text = entry["content"]
+        text = entry.get("content") or ""
+        brief = entry.get("brief") or ""
+        if brief and not text:
+            # Composition is a model call and can fail. A check-in that arrives in
+            # plain words beats one that vanishes, so the brief is the fallback.
+            writer = compose
+            if writer is None:
+                from agents.compose import compose as writer
+            try:
+                written = await writer(brief, now)
+            except Exception as e:
+                logger.error("Composing %s failed - %s: %s", entry["id"], type(e).__name__, e)
+                written = None
+            text = (written or "").strip() or brief
         if now - datetime.fromisoformat(entry["due"]) > _LATE_AFTER:
             text = f"(Scheduled for {_local(entry['due'])}, delivered late.)\n{text}"
         try:
@@ -191,12 +267,14 @@ def run_tool(inputs: dict) -> str:
     action = inputs.get("action")
     if action == "add":
         at = inputs.get("at") or None
+        window = inputs.get("window") or None
         in_minutes = inputs.get("in_minutes")
         if in_minutes in ("", None):
             in_minutes = None
         elif isinstance(in_minutes, str) and in_minutes.strip().isdigit():
             in_minutes = int(in_minutes.strip())
-        return add(inputs.get("content", ""), at=at, in_minutes=in_minutes)
+        return add(inputs.get("content", ""), at=at, in_minutes=in_minutes,
+                   window=window, brief=inputs.get("brief") or None)
     if action == "list":
         return list_pending()
     if action == "cancel":

@@ -41,9 +41,14 @@ and a deploy.
 
 **Scheduled messages** are the one thing the user can schedule by asking. React's
 `scheduled_message` tool adds, lists or cancels one-off messages in
-`memory/scheduled.json`, local time or minutes from now, up to 30 days ahead and 20
-pending. Text is fixed when scheduled; sending costs no tokens. The user's timezone is
-`config.USER_TZ` (America/New_York), and prompts show local time.
+`memory/scheduled.json`, up to 30 days ahead and 20 pending. Timing comes from `at`
+(local time), `in_minutes`, or `window` - `morning`, `afternoon`, `evening` or
+`tomorrow` - where the code picks a random minute inside the window and the model
+never picks the number. An entry holds either `content` (exact words, free to deliver)
+or `brief` (the words are written at delivery by `agents/compose.py` on the summary
+model, so the message fits the day it arrives; if that fails the brief is sent as
+plain text). The user's timezone is `config.USER_TZ` (America/New_York), and prompts
+show local time.
 
 The model check was weekly until 2026-08-17, when Groq removed the Llama family
 and four roles returned 404 for a day before anything reported it. The run at
