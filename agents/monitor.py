@@ -460,6 +460,20 @@ def _parse_exclusions(text: str) -> list[str]:
     return terms
 
 
+def _digest_exclusions() -> list[str]:
+    """Exclusion terms from digest_config.md, or none if it cannot be read.
+
+    Reads the file here rather than borrowing prod_memory._read_config: that name
+    does not exist in this module, and py_compile cannot see a missing name inside a
+    function, so the first version of this raised NameError only when the digest ran.
+    """
+    try:
+        text = (config.MEMORY_DIR / "digest_config.md").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return _parse_exclusions(text)
+
+
 def _seen_path():
     return config.MEMORY_DIR / "news_seen.json"
 
@@ -533,7 +547,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         if not results:
             return None
 
-        exclusions = _parse_exclusions(_read_config("digest_config.md") or "")
+        exclusions = _digest_exclusions()
         unique_results = _filter_news_results(results, set(_load_seen_news()), exclusions)[:5]
 
         if not unique_results:

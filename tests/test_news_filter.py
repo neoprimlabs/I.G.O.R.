@@ -109,6 +109,25 @@ def test_filter() -> None:
            len(monitor._filter_news_results([SAFETY, HOAX], set(), [])) == 2)
 
 
+def test_exclusions_are_read_from_the_file() -> None:
+    """The fetch path reads the file itself.
+
+    The first version called prod_memory._read_config by a bare name that does not
+    exist in monitor. py_compile cannot see a missing name inside a function and the
+    unit tests called _parse_exclusions directly, so the digest would have lost its
+    AI section at 13:00 with nothing but a log line. Found by running it.
+    """
+    from agents import monitor
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    _check("no config file means no exclusions, not a crash",
+           monitor._digest_exclusions() == [])
+
+    (config.MEMORY_DIR / "digest_config.md").write_text(CONFIG_TEXT, encoding="utf-8")
+    terms = monitor._digest_exclusions()
+    _check("terms are read off disk", "safety" in terms and "apple" in terms, str(terms))
+
+
 def test_seen_store() -> None:
     from agents import monitor
 
@@ -142,6 +161,8 @@ if __name__ == "__main__":
     test_parse_exclusions()
     print("\nfiltering")
     test_filter()
+    print("\nreading the file")
+    test_exclusions_are_read_from_the_file()
     print("\nthe seen store")
     test_seen_store()
 
