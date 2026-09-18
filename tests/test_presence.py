@@ -146,14 +146,14 @@ async def test_never_interrupts_a_live_conversation() -> None:
     _fresh(_state())
     model = _Model()
     out = await presence.consider("lull", now=AWAKE, ask=model,
-                                  last_message_at=AWAKE - timedelta(minutes=8))
+                                  last_user_at=AWAKE - timedelta(minutes=8))
     _check("a conversation eight minutes old is still live",
            out is None and model.asked == [], f"{out!r} asked={len(model.asked)}")
 
     _fresh(_state())
     model = _Model()
     out = await presence.consider("lull", now=AWAKE, ask=model,
-                                  last_message_at=AWAKE - timedelta(minutes=40))
+                                  last_user_at=AWAKE - timedelta(minutes=40))
     _check("forty minutes of quiet is a break, not an interruption",
            out is not None and len(model.asked) == 1, f"{out!r} asked={len(model.asked)}")
 
@@ -219,32 +219,46 @@ def test_triggers() -> None:
     from agents import presence
 
     _fresh(_state(), files={"tasks.md": "- something\n"})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(minutes=40))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(minutes=40))
     _check("a conversation that ended 40 minutes ago is a lull", "lull" in due, str(due))
 
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(minutes=5))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(minutes=5))
     _check("five minutes is not a lull", "lull" not in due, str(due))
 
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=30))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=30))
     _check("a day-old conversation is not a lull either", "lull" not in due, str(due))
+
+    # 2026-09-17, live: the digest is stored by record_outbound, so "last message"
+    # was IGOR talking to itself at 13:00. lull then fired on every tick from 13:25
+    # to 14:30 and spent three model calls on a conversation that never happened.
+    _fresh(_state(last_trigger={"lull": (AWAKE - timedelta(minutes=20)).isoformat()}),
+           files={"tasks.md": "- something\n"})
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(minutes=40))
+    _check("a lull already considered does not fire again on the next tick",
+           "lull" not in due, str(due))
+
+    _fresh(_state(last_trigger={"lull": (AWAKE - timedelta(hours=3)).isoformat()}),
+           files={"tasks.md": "- something\n"})
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(minutes=40))
+    _check("but a lull after the user speaks again does fire", "lull" in due, str(due))
 
     _fresh(_state(last_digest=(AWAKE - timedelta(hours=2)).isoformat()),
            files={"tasks.md": "- something\n"})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("two hours after the digest is a digest trigger", "digest" in due, str(due))
 
     _fresh(_state(last_digest=(AWAKE - timedelta(minutes=20)).isoformat()))
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("twenty minutes after the digest is too soon", "digest" not in due, str(due))
 
     old = (AWAKE - timedelta(days=5)).strftime("%Y-%m-%d %H:%M UTC")
     _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("a five day old draft is worth raising", "drafts" in due, str(due))
 
     recent = (AWAKE - timedelta(days=1)).strftime("%Y-%m-%d %H:%M UTC")
     _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {recent}\n\nbody\n"})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("a draft from yesterday is not", "drafts" not in due, str(due))
 
     # The real drafts.md: three unanswered, oldest 35 days, newest 2 days. Keying on
@@ -254,12 +268,12 @@ def test_triggers() -> None:
     _fresh(_state(), files={"drafts.md": (
         f"\n## Universal Basic Income - {recent}\n\nbody\n"
         f"\n## Universal Basic Income - {ancient}\n\nbody\n")})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("a fresh draft does not hide an old unanswered one", "drafts" in due, str(due))
 
     _fresh(_state(last_trigger={"drafts": (AWAKE - timedelta(days=2)).isoformat()}),
            files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
-    due = presence.due_triggers(AWAKE, last_message_at=AWAKE - timedelta(hours=6))
+    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
     _check("the same trigger does not fire twice in a week", "drafts" not in due, str(due))
 
 

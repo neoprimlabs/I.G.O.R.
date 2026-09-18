@@ -1,5 +1,7 @@
 import asyncio
+import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
@@ -417,6 +419,106 @@ def _attach_sources(text: str, results: list[dict]) -> str:
     return out
 
 
+# "artificial intelligence news" returns whatever the cycle is chewing on. Measured
+# over the six digests in context.db on 2026-09-17: five of six were dominated by
+# safety discourse - slowdown calls, a hoax claim, a rogue-agent warning. The user:
+# "I'm sick of seeing 3 headlines on ai safety every morning. They are not
+# productive." This asks for the things they can act on instead.
+_NEWS_QUERY = "new AI model releases, developer tools, and technical research results"
+
+# Long enough that a story cannot come back while it is still the same cycle, short
+# enough that the file does not grow forever or block a genuine follow-up.
+_NEWS_SEEN_DAYS = 14
+
+# Words that would match every story ever fetched, so they cannot serve as filters.
+_GENERIC_EXCLUSION_WORDS = frozenset({
+    "news", "story", "stories", "article", "articles", "coverage", "content",
+    "focused", "commentary", "calls", "about", "and", "the", "for", "with",
+    "ai", "artificial", "intelligence", "model", "models",
+})
+
+
+def _parse_exclusions(text: str) -> list[str]:
+    """Terms from digest_config.md's Exclusions section.
+
+    That section has existed since July annotated "pending code implementation", so
+    everything listed in it was silently ignored. This is the implementation.
+    """
+    terms: list[str] = []
+    in_section = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("## "):
+            in_section = stripped.lower().startswith("## exclusion")
+            continue
+        if not in_section or not stripped.startswith("- "):
+            continue
+        body = re.sub(r"\([^)]*\)", " ", stripped[2:])
+        for word in re.findall(r"[A-Za-z]+", body.lower()):
+            if len(word) > 2 and word not in _GENERIC_EXCLUSION_WORDS and word not in terms:
+                terms.append(word)
+    return terms
+
+
+def _seen_path():
+    return config.MEMORY_DIR / "news_seen.json"
+
+
+def _load_seen_news() -> dict:
+    try:
+        data = json.loads(_seen_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _remember_news(urls, now=None) -> None:
+    from datetime import datetime, timedelta, timezone as _tz
+    now = now or datetime.now(_tz.utc)
+    horizon = now - timedelta(days=_NEWS_SEEN_DAYS)
+    seen = _load_seen_news()
+    kept = {}
+    for url, stamp in seen.items():
+        try:
+            if datetime.fromisoformat(stamp) >= horizon:
+                kept[url] = stamp
+        except (TypeError, ValueError):
+            continue
+    for url in urls:
+        kept[url] = now.isoformat()
+    try:
+        path = _seen_path()
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.error("Could not write news_seen.json - %s: %s", type(e).__name__, e)
+
+
+def _filter_news_results(results, seen_urls, exclusions):
+    """Drop what was already sent, what the user excluded, and repeat domains."""
+    kept = []
+    domains: set[str] = set()
+    for r in results:
+        url = r.get("url", "")
+        if not url or url in seen_urls:
+            continue
+        # Title and summary only. Matching the full article text would drop a model
+        # release that mentions safety once in passing, which is a story the user
+        # does want.
+        haystack = " ".join(str(r.get(k, "") or "") for k in ("title", "summary")).lower()
+        if any(re.search(rf"\b{re.escape(term)}\b", haystack) for term in exclusions):
+            continue
+        parts = url.split("/")
+        domain = parts[2] if len(parts) > 2 else ""
+        if domain and domain in domains:
+            continue
+        if domain:
+            domains.add(domain)
+        kept.append(r)
+    return kept
+
+
 async def _fetch_and_synthesize_ai_news() -> str | None:
     if _client is None:
         return None
@@ -424,22 +526,20 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         from datetime import datetime, timedelta
         from agents import research
         cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        results = await research._run_search("artificial intelligence news", max_results=5,
+        # Eight, not five: dedup and exclusions need material to work with, and only
+        # the surviving five reach the model, so the token budget is unchanged.
+        results = await research._run_search(_NEWS_QUERY, max_results=8,
                                              start_published_date=cutoff, use_summary=True)
         if not results:
             return None
 
-        seen_domains: set[str] = set()
-        unique_results = []
-        for r in results:
-            url = r.get("url", "")
-            parts = url.split("/")
-            domain = parts[2] if len(parts) > 2 else ""
-            if domain and domain not in seen_domains:
-                seen_domains.add(domain)
-                unique_results.append(r)
+        exclusions = _parse_exclusions(_read_config("digest_config.md") or "")
+        unique_results = _filter_news_results(results, set(_load_seen_news()), exclusions)[:5]
 
         if not unique_results:
+            # Better a digest with no AI section than the same stories again.
+            logger.info("AI news: every result was already sent or excluded (%d fetched, "
+                        "exclusions: %s)", len(results), ", ".join(exclusions) or "none")
             return None
 
         formatted = research._format_results(unique_results)
@@ -451,6 +551,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             max_tokens=1536,
             label="AI news",
         )
+        _remember_news([r.get("url", "") for r in unique_results if r.get("url")])
         return _attach_sources(synthesis, unique_results)
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)

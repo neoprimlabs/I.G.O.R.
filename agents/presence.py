@@ -131,20 +131,26 @@ def _parse(value) -> Optional[datetime]:
         return None
 
 
-def _last_message_at() -> Optional[datetime]:
+def _last_user_at() -> Optional[datetime]:
+    """The user's last message, not IGOR's.
+
+    record_outbound stores the digest, so keying on "the last stored message" made
+    the 13:00 digest look like the end of a conversation: on 2026-09-17 lull fired on
+    every tick from 13:25 to 14:30 and spent three model calls on nobody.
+    """
     try:
         import context_store
-        return context_store.last_timestamp()
+        return context_store.last_user_timestamp()
     except Exception:
         return None
 
 
-def _blocked(state: dict, now: datetime, last_message_at: Optional[datetime]) -> Optional[str]:
+def _blocked(state: dict, now: datetime, last_user_at: Optional[datetime]) -> Optional[str]:
     """Why it must not speak, or None. No model call happens if this returns a reason."""
     local_hour = now.astimezone(clock.USER_TZ).hour
     if _QUIET_START <= local_hour < _QUIET_END:
         return "quiet hours"
-    if last_message_at is not None and now - last_message_at < _CONVERSATION_LIVE:
+    if last_user_at is not None and now - last_user_at < _CONVERSATION_LIVE:
         return "a conversation is live"
     last_sent = _parse(state.get("last_sent"))
     if last_sent is not None and now - last_sent < _MIN_GAP:
@@ -186,17 +192,17 @@ def _open_tasks() -> list[str]:
     return monitor._parse_tasks(text)
 
 
-def _facts(reason: str, now: datetime, last_message_at: Optional[datetime]) -> str:
+def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
     """Only what can be read from a file or the database. Nothing inferred."""
     lines = [
         f"Woken by: {reason}",
         f"Current time: {clock.time_line(now)}",
     ]
-    if last_message_at is not None:
-        minutes = int((now - last_message_at).total_seconds() // 60)
-        lines.append(f"Last message in the conversation: {minutes} minutes ago")
+    if last_user_at is not None:
+        minutes = int((now - last_user_at).total_seconds() // 60)
+        lines.append(f"The user last said something: {minutes} minutes ago")
     else:
-        lines.append("Last message in the conversation: unknown")
+        lines.append("The user last said something: unknown")
 
     tasks = _open_tasks()
     lines.append(f"Open tasks ({len(tasks)}):" if tasks else "Open tasks: none")
@@ -259,16 +265,16 @@ async def _ask_model(bundle: str) -> str:
 
 async def consider(reason: str, now: Optional[datetime] = None,
                    ask: Optional[Callable] = None,
-                   last_message_at: Optional[str] = None) -> Optional[str]:
+                   last_user_at: Optional[datetime] = None) -> Optional[str]:
     """The message to send, or None for silence. Never raises."""
     now = now or datetime.now(timezone.utc)
     if not is_on():
         return None
-    if last_message_at is None:
-        last_message_at = _last_message_at()
+    if last_user_at is None:
+        last_user_at = _last_user_at()
 
     state = _today(_load_state(), now)
-    blocked = _blocked(state, now, last_message_at)
+    blocked = _blocked(state, now, last_user_at)
     if blocked:
         logger.info("Presence (%s): not speaking - %s", reason, blocked)
         _save_state(state)
@@ -279,7 +285,7 @@ async def consider(reason: str, now: Optional[datetime] = None,
     _save_state(state)
 
     try:
-        reply = await (ask or _ask_model)(_facts(reason, now, last_message_at))
+        reply = await (ask or _ask_model)(_facts(reason, now, last_user_at))
     except Exception as e:
         logger.error("Presence (%s) model call failed - %s: %s", reason, type(e).__name__, e)
         return None
@@ -305,21 +311,25 @@ def note_digest(now: Optional[datetime] = None) -> None:
 
 
 def due_triggers(now: Optional[datetime] = None,
-                 last_message_at: Optional[datetime] = None) -> list[str]:
+                 last_user_at: Optional[datetime] = None) -> list[str]:
     """Reasons to consider speaking. Reasons, not schedules."""
     now = now or datetime.now(timezone.utc)
-    if last_message_at is None:
-        last_message_at = _last_message_at()
+    if last_user_at is None:
+        last_user_at = _last_user_at()
     state = _load_state()
     fired = state.get("last_trigger") or {}
     due = []
 
-    if last_message_at is not None and _LULL_MIN <= now - last_message_at <= _LULL_MAX:
-        due.append("lull")
+    # Once per lull, not once per tick. The window is an hour wide and the job runs
+    # every ten minutes, so without this it fires six times for one quiet spell.
+    if last_user_at is not None and _LULL_MIN <= now - last_user_at <= _LULL_MAX:
+        considered = _parse(fired.get("lull"))
+        if considered is None or considered < last_user_at:
+            due.append("lull")
 
     last_digest = _parse(state.get("last_digest"))
     if last_digest is not None and now - last_digest >= _AFTER_DIGEST:
-        replied = last_message_at is not None and last_message_at > last_digest
+        replied = last_user_at is not None and last_user_at > last_digest
         if not replied and (_parse(fired.get("digest")) or datetime.min.replace(tzinfo=timezone.utc)) < last_digest:
             due.append("digest")
 

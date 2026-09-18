@@ -56,7 +56,7 @@ startup is the one that matters: it turns a deprecation into an alert on the nex
 deploy or restart rather than whenever the cron next comes round.
 
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
-(which digest sections run), `agents.md` (**standing preferences only - NOT the agent
+(which digest sections run, and an Exclusions list that filters AI news by keyword), `agents.md` (**standing preferences only - NOT the agent
 list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
 `watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`,
 `presence_config.md`, `presence_state.json`, plus `context.db`

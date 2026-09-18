@@ -34,6 +34,39 @@ def load(limit: int = config.CONTEXT_WINDOW) -> list[dict]:
         return []
 
 
+def last_timestamp() -> "datetime.datetime | None":
+    """When anything was last stored, IGOR's own proactive sends included."""
+    import datetime
+    try:
+        with _conn() as conn:
+            row = conn.execute("SELECT ts FROM messages ORDER BY id DESC LIMIT 1").fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return datetime.datetime.fromtimestamp(row[0], datetime.timezone.utc)
+
+
+def last_user_timestamp() -> "datetime.datetime | None":
+    """When the USER last said something.
+
+    Distinct from last_timestamp on purpose. record_outbound stores the digest as an
+    assistant turn, so on 2026-09-17 the 13:00 digest read as "a conversation just
+    ended" and presence chased a lull for an hour. A lull is about the person.
+    """
+    import datetime
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT ts FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return datetime.datetime.fromtimestamp(row[0], datetime.timezone.utc)
+
+
 def append(role: str, content: str) -> None:
     try:
         with _conn() as conn:
