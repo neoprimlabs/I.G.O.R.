@@ -76,6 +76,46 @@ Last updated: **2026-09-16**
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
+## Presence, day one (2026-09-17)
+
+Five decisions, five silences, zero messages sent - and one real bug found by
+reading the log rather than the code.
+
+- **Fixed: `lull` was measuring IGOR, not the user.** It keyed on the last *stored*
+  message, and `record_outbound` stores the digest, so the 13:00 digest read as a
+  conversation ending. lull then fired on every tick from 13:25 to 14:30 and spent
+  three model calls on nobody. It now keys on `context_store.last_user_timestamp()`
+  and fires once per lull instead of once per tick. The daily call cap is the only
+  reason this stayed cheap while it was wrong.
+- **Not a bug: the silences.** Two of five were gated (quiet hours), three reached
+  the model and it chose SILENT. That is the designed behaviour and matches the
+  eval. Worth watching whether it is *too* quiet once lull fires honestly - the
+  drafts trigger scored SPEAK in the eval on near-identical facts and SILENT live,
+  and that gap has not been explained yet. Compare `presence._facts(...)` output
+  against the fixture in `tests/eval_presence.py` before touching the prompt.
+
+## Digest news: stop resending the same cycle (2026-09-18)
+
+The user, 2026-09-17: "I'm sick of seeing 3 headlines on ai safety every morning.
+They are not productive." Measured across the six digests in `context.db`: five of
+six were dominated by safety discourse. Three causes, all fixed:
+
+- The query was `"artificial intelligence news"`. It now asks for model releases,
+  developer tools and technical research.
+- Nothing compared results against what had already been sent. Used URLs are
+  remembered in `memory/news_seen.json` for 14 days.
+- `digest_config.md`'s Exclusions section had been annotated "pending code
+  implementation" since July and was ignored. Now implemented: keywords filter on
+  title and summary (not full text, which would drop a release that mentions safety
+  in passing), and generic words cannot become filters. Active terms: apple, ios,
+  safety, debate, slowdown, regulation.
+
+Verified by dry run against live search on 2026-09-18, with `MEMORY_DIR` pointed at
+a copy so it did not consume the day's stories: 8 fetched, a duplicate Gemini story
+dropped, and the three bullets were Gemini 3.8 Live, Figure's Helix 2.5 and Unity's
+Codex plugin. **If the section is still not useful, remove `ai_news` from
+`digest_config.md` - it takes effect on the next digest, no restart.**
+
 **Presence is ON as of 2026-09-16** (`state: on` in `memory/presence_config.md`).
 It had never spoken when it was switched on. Read its decisions before trusting it:
 `journalctl -u igor | grep Presence` logs every trigger and whether it spoke or
@@ -299,6 +339,13 @@ owner, after five files drifted the same way).
 
 ## Recent
 
+- **2026-09-18:** Digest news query, cross-day dedup and the Exclusions
+  implementation (`60d78c3`, `8606692`); presence's lull trigger corrected. One
+  NameError slipped every gate - `_read_config` does not exist in `monitor` - and
+  was caught only by dry-running the pipeline, not by py_compile, the import gate,
+  or unit tests that called the parser directly.
+- **2026-09-17:** Presence switched on. ConfigEdit subject gate and change
+  reporting (`c8e9c1d`), A.2 reformulation capture (`1399a1c`).
 - **2026-09-12:** Scheduled messages shipped (`17d2407`), after the user asked on
   2026-09-07 for a 2pm check-in and IGOR had no way to send one. Design changed
   mid-build from per-message APScheduler jobs to a polled file once APScheduler's
