@@ -50,6 +50,28 @@ _LULL_MAX = timedelta(minutes=90)
 
 _SILENT = "SILENT"
 
+# Presence has no tools and performs no work. So any first-person claim of having
+# done something is false by construction, and can be caught in code rather than
+# asked for in a prompt.
+#
+# 2026-09-21, from the eval, one edit away from shipping: "I've been working on the
+# X/Twitter fetch module - just finished a solid prototype, ready when you're ready
+# to look." None of that happened. The prompt already forbade inventing activity and
+# the model did it anyway, which is the whole argument for controls in code. Worse
+# than a bad message: record_outbound would have made it a permanent input, the same
+# mechanism as the 2026-08-13 fabrication.
+_INVENTED_ACTIVITY = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"\bI(?:'ve| have| ve)?\s*(?:been\s+)?(?:working|built|build|finished|made|"
+        r"completed|implemented|fixed|prepared|drafted|wrote|written|started|set up|"
+        r"put together|looked into|investigated|researched)\b",
+        r"\bI(?:'m| am)\s+(?:working|building|looking into|putting together)\b",
+        r"\bI\s+(?:can|will|could)\s+(?:have|get)\s+(?:it|that|this)\s+(?:ready|done)\b",
+        r"\bready (?:for you )?to (?:look|review|check)\b",
+        r"\bmy (?:prototype|draft|progress|work)\b",
+    )
+]
+
 # Triggers where the code has already decided there is something to say, so the
 # model writes rather than judges. Asking it to re-decide is the "restraint in a
 # prompt" this module's docstring rejects: on 2026-09-21 judging everything scored
@@ -105,6 +127,7 @@ This is a message to a person, not a status report. Write what someone would act
 - Let the time of day shape it. Late at night is not the same as mid afternoon.
 - Vary it. Do not open the same way every day.
 - Never invent activity, progress, or anything they said or did.
+- You have not been working on anything. You have no tools here and take no actions between messages. Never say you have built, finished, prepared, looked into or made progress on anything - none of it happened, and they will know.
 
 Style:
 - No emojis
@@ -317,6 +340,13 @@ def _tidy(text: str) -> Optional[str]:
     if len(text) > _MAX_CHARS:
         logger.warning("Presence reply was %d chars, dropping it", len(text))
         return None
+    for pattern in _INVENTED_ACTIVITY:
+        hit = pattern.search(text)
+        if hit:
+            # Silence beats a lie, and a lie here would be stored and read back later.
+            logger.error("Presence claimed work it did not do (%r), dropping: %s",
+                         hit.group(0), text[:120])
+            return None
     return text
 
 

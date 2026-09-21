@@ -135,7 +135,7 @@ async def main() -> int:
     only = [a.lower() for a in sys.argv[1:]]
     cases = [c for c in CASES if not only or any(o in c[0].lower() for o in only)]
 
-    false_alarms, misses, echoes, reports, errors = [], [], [], [], []
+    false_alarms, misses, echoes, reports, fabrications, errors = [], [], [], [], [], []
     for name, bundle, want in cases:
         reason = _reason(bundle)
         try:
@@ -156,6 +156,9 @@ async def main() -> int:
         if message and any(e in message.lower() for e in ECHOES):
             echoes.append(name)
             print("           ECHO: repeated something from the Already sent block")
+        if message and any(p.search(message) for p in presence._INVENTED_ACTIVITY):
+            fabrications.append(name)
+            print("           FABRICATION: claimed work presence never did")
         if message and reason == "checkin":
             named = [r for r in REPORTY if r in message.lower()]
             if named:
@@ -179,6 +182,7 @@ async def main() -> int:
               f"({len(misses) / len(speak_cases):.0%}) - silent with something real to say")
     print(f"  echoes:           {len(echoes)} - repeated something already sent")
     print(f"  reports:          {len(reports)} - a check-in that read as a status report")
+    print(f"  fabrications:     {len(fabrications)} - claimed work it never did")
     for name in false_alarms:
         print(f"    false alarm: {name}")
     for name in misses:
@@ -187,9 +191,11 @@ async def main() -> int:
         print(f"    echo: {name}")
     for name in reports:
         print(f"    report: {name}")
+    for name in fabrications:
+        print(f"    fabrication: {name}")
     if errors:
         print(f"  {len(errors)} cases errored and were not scored")
-    return 1 if (false_alarms or misses or echoes or reports) else 0
+    return 1 if (false_alarms or misses or echoes or reports or fabrications) else 0
 
 
 sys.exit(asyncio.run(main()))

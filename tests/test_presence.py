@@ -175,6 +175,38 @@ async def test_the_bundle_is_facts_only() -> None:
     _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
 
 
+def test_claimed_work_is_dropped() -> None:
+    """Presence has no tools and does nothing between messages, so a first-person
+    claim of having done work is false by construction.
+
+    Real output from the eval on 2026-09-21, one edit from shipping: "I've been
+    working on the X/Twitter fetch module - just finished a solid prototype, ready
+    when you're ready to look." The prompt already forbade inventing activity. It did
+    it anyway, which is why this is a gate and not a sentence in a prompt. And
+    record_outbound would have kept it as an input to every later turn.
+    """
+    from agents import presence
+
+    invented = [
+        "I've been working on the X/Twitter fetch module, just finished a prototype.",
+        "I have been looking into that engine build for you.",
+        "I finished the draft you wanted, ready to review.",
+        "I'm building the fetcher now, my progress is good.",
+        "Made some headway on the research agent - I implemented the fetch loop.",
+    ]
+    for text in invented:
+        _check(f"dropped: {text[:44]}", presence._tidy(text) is None, repr(presence._tidy(text)))
+
+    honest = [
+        "Late one. Hope the engine build is behaving.",
+        "Hope the build is going smoothly today. Shout if you hit a snag.",
+        "Quiet afternoon here. How is it going on your end?",
+        "You mentioned the deploy earlier - how did it land?",
+    ]
+    for text in honest:
+        _check(f"kept: {text[:44]}", presence._tidy(text) == text, repr(presence._tidy(text)))
+
+
 def test_the_daily_checkin() -> None:
     """What was actually asked for: "Just check in on me", and messages "at some
     random times". What shipped first was "The draft titled Universal Basic Income
