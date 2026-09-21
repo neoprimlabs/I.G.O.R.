@@ -214,6 +214,15 @@ def _drafts() -> list[tuple[str, datetime]]:
     return sorted(found, key=lambda pair: pair[1], reverse=True)
 
 
+def _drafts_fingerprint() -> str:
+    """What the drafts are, not when they were last mentioned."""
+    return "|".join(f"{title}@{when.isoformat()}" for title, when in _drafts())
+
+
+def _tasks_fingerprint() -> str:
+    return "|".join(_open_tasks())
+
+
 def _open_tasks() -> list[str]:
     try:
         text = (config.MEMORY_DIR / "tasks.md").read_text(encoding="utf-8")
@@ -349,6 +358,11 @@ async def consider(reason: str, now: Optional[datetime] = None,
 
     state["sent"] = state.get("sent", 0) + 1
     state["last_sent"] = now.isoformat()
+    # Remember what was said, not just that something was. Recorded only on a real
+    # send, so a silence or a failed call does not count as having raised it.
+    fingerprint = {"drafts": _drafts_fingerprint, "stale_task": _tasks_fingerprint}.get(reason)
+    if fingerprint is not None:
+        state.setdefault("raised", {})[reason] = fingerprint()
     _save_state(state)
     logger.info("Presence (%s): speaking - %s", reason, message[:80])
     return message
@@ -381,18 +395,29 @@ def due_triggers(now: Optional[datetime] = None,
         last = _parse(fired.get(name))
         return last is None or now - last >= _TRIGGER_COOLDOWN
 
+    # A cooldown is a timer, not a memory. With three drafts unanswered it would
+    # mention the same three every week for as long as they sat there, which is the
+    # repetition the user objected to in the digest arriving by another route. Raise
+    # something once; raise it again only when the material itself has changed.
+    raised = state.get("raised") or {}
+
+    def _unsaid(name: str, fingerprint) -> bool:
+        return raised.get(name) != fingerprint
+
     # The OLDEST unanswered draft, not the newest. Keying on the newest meant the
     # weekly advocacy draft reset this every Monday, so three drafts going back 35
     # days would never have been raised at all.
     drafts = _drafts()
-    if drafts and now - drafts[-1][1] > _DRAFT_STALE and _cooled("drafts"):
+    if (drafts and now - drafts[-1][1] > _DRAFT_STALE
+            and _cooled("drafts") and _unsaid("drafts", _drafts_fingerprint())):
         due.append("drafts")
 
     try:
         tasks_path = config.MEMORY_DIR / "tasks.md"
         if _open_tasks() and tasks_path.exists():
             changed = datetime.fromtimestamp(tasks_path.stat().st_mtime, timezone.utc)
-            if now - changed > _TASK_STALE and _cooled("stale_task"):
+            if (now - changed > _TASK_STALE and _cooled("stale_task")
+                    and _unsaid("stale_task", _tasks_fingerprint())):
                 due.append("stale_task")
     except OSError:
         pass

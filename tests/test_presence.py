@@ -69,7 +69,7 @@ def _fresh(state=None, on=True, files=None):
 
 def _state(**kw):
     base = {"day": "2026-09-16", "sent": 0, "calls": 0, "last_sent": None,
-            "last_trigger": {}, "last_digest": None}
+            "last_trigger": {}, "raised": {}, "last_digest": None}
     base.update(kw)
     return base
 
@@ -173,6 +173,60 @@ async def test_the_bundle_is_facts_only() -> None:
     _check("the bundle lists the open task", "X/Twitter" in bundle, bundle[:400])
     _check("the bundle excludes finished tasks", "done thing" not in bundle, bundle[:400])
     _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
+
+
+def test_the_same_thing_is_not_raised_twice() -> None:
+    """A 7-day cooldown is a timer, not a memory. With three drafts unanswered it
+    would mention the same three every week forever, which is the repetition the
+    user objected to in the digest arriving by another route.
+
+    Raise it once. Raise it again only when the material has actually changed.
+    """
+    from agents import presence
+
+    old = (AWAKE - timedelta(days=30)).strftime("%Y-%m-%d %H:%M UTC")
+    newer = (AWAKE - timedelta(days=5)).strftime("%Y-%m-%d %H:%M UTC")
+    long_ago = (AWAKE - timedelta(days=20)).isoformat()
+
+    drafts_file = f"\n## Universal Basic Income - {old}\n\nbody\n"
+    _fresh(_state(), files={"drafts.md": drafts_file})
+    _check("an unraised draft is due", "drafts" in presence.due_triggers(AWAKE), "")
+
+    # Raised long enough ago that the cooldown has expired, and nothing has changed.
+    _fresh(_state(last_trigger={"drafts": long_ago},
+                  raised={"drafts": presence._drafts_fingerprint()}),
+           files={"drafts.md": drafts_file})
+    _check("the same drafts are not raised again once the cooldown lapses",
+           "drafts" not in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
+
+    # A new draft arrives: that is new material, so it is worth saying.
+    _fresh(_state(last_trigger={"drafts": long_ago},
+                  raised={"drafts": presence._drafts_fingerprint()}),
+           files={"drafts.md": drafts_file})
+    old_print = presence._drafts_fingerprint()
+    (config.MEMORY_DIR / "drafts.md").write_text(
+        drafts_file + f"\n## Universal Basic Income - {newer}\n\nbody\n", encoding="utf-8")
+    _check("a fingerprint changes when a draft is added",
+           presence._drafts_fingerprint() != old_print)
+    _check("and a new draft makes it due again",
+           "drafts" in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
+
+    tasks = "- Investigate X/Twitter fetching\n"
+    _fresh(_state(last_trigger={"stale_task": long_ago},
+                  raised={"stale_task": None}), files={"tasks.md": tasks})
+    import os, time
+    stale = time.time() - 60 * 60 * 24 * 30
+    os.utime(config.MEMORY_DIR / "tasks.md", (stale, stale))
+    due_before = presence.due_triggers(AWAKE)
+    _check("an untouched task list is due once", "stale_task" in due_before, str(due_before))
+
+    _fresh(_state(last_trigger={"stale_task": long_ago}), files={"tasks.md": tasks})
+    os.utime(config.MEMORY_DIR / "tasks.md", (stale, stale))
+    state = presence._load_state()
+    state["raised"] = {"stale_task": presence._tasks_fingerprint()}
+    presence._save_state(state)
+    _check("the same task list is not raised twice",
+           "stale_task" not in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
 
 
 def test_which_prompt_each_trigger_gets() -> None:
@@ -347,6 +401,8 @@ if __name__ == "__main__":
     asyncio.run(test_never_interrupts_a_live_conversation())
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
+    print("\nnot twice for the same thing")
+    test_the_same_thing_is_not_raised_twice()
     print("\nwrite mode versus judge mode")
     test_which_prompt_each_trigger_gets()
     print("\nits own messages are not material")
