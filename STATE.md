@@ -76,23 +76,43 @@ Last updated: **2026-09-16**
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
-## Presence, day one (2026-09-17)
+## Presence, first week (2026-09-17 to 09-21)
 
-Five decisions, five silences, zero messages sent - and one real bug found by
-reading the log rather than the code.
+Working, after three fixes. The eval scores **7/7: 0 false alarms in 5 silence
+cases, 0 misses, 0 echoes.** First genuine message sent 2026-09-21 04:38.
 
-- **Fixed: `lull` was measuring IGOR, not the user.** It keyed on the last *stored*
-  message, and `record_outbound` stores the digest, so the 13:00 digest read as a
-  conversation ending. lull then fired on every tick from 13:25 to 14:30 and spent
-  three model calls on nobody. It now keys on `context_store.last_user_timestamp()`
-  and fires once per lull instead of once per tick. The daily call cap is the only
-  reason this stayed cheap while it was wrong.
-- **Not a bug: the silences.** Two of five were gated (quiet hours), three reached
-  the model and it chose SILENT. That is the designed behaviour and matches the
-  eval. Worth watching whether it is *too* quiet once lull fires honestly - the
-  drafts trigger scored SPEAK in the eval on near-identical facts and SILENT live,
-  and that gap has not been explained yet. Compare `presence._facts(...)` output
-  against the fixture in `tests/eval_presence.py` before touching the prompt.
+Three bugs, in the order they were found, all by running it rather than reading it:
+
+1. **`lull` measured IGOR, not the user.** It keyed on the last *stored* message,
+   and `record_outbound` stores the digest, so the 13:00 digest read as a
+   conversation ending: lull fired on every tick from 13:25 to 14:30 and spent three
+   model calls on nobody. Now keys on `context_store.last_user_timestamp()` and
+   fires once per lull. The daily call cap is why this stayed cheap while wrong.
+2. **It read its own messages back to the user.** On 09-18 and 09-20 it sent a
+   `qwen3.6 is no longer available` alert that had been resolved on 09-17. It was
+   not reporting anything: its own proactive sends were in the bundle as "recent
+   conversation" and it raised what was in front of it - the 2026-08-13 mechanism
+   rebuilt inside a new feature. The bundle now separates what the user said from
+   what IGOR already sent, labels the latter "do not repeat", and truncates it.
+   **The `digest` trigger is gone**: it woke presence when the only fresh material
+   was IGOR's own digest, so the only subject was the one it must not repeat.
+3. **Then it stopped speaking at all.** The eval caught it: 0 false alarms but 2
+   misses of 2, silent even about drafts 38 days old, where the same set had scored
+   5/6 before. One more prohibition on a prompt built around restraint pushed it
+   silent - the SelfDescribe abstention over-shoot again. Fixed structurally:
+   `drafts` and `stale_task` only fire once the code has established a fact, so
+   those get `_SYSTEM_WRITE` with no SILENT option. `lull` keeps `_SYSTEM_JUDGE`,
+   because only there can the code not know. Silence in write mode logs a WARNING.
+
+**Cadence is roughly weekly, not the couple-a-day the spec imagined.** `lull` needs
+the user to message first, and drafts and stale_task are on a 7-day cooldown. That
+is a material limit, not a tuning one: presence only knows `tasks.md`, `drafts.md`
+and the conversation. More frequency means giving it more real material, not more
+triggers.
+
+**Run `tests/eval_presence.py` after any change to either prompt.** It reports false
+alarm rate, miss rate and echo count - this feature has now failed in both
+directions, and one sample cannot tell them apart.
 
 ## Digest news: stop resending the same cycle (2026-09-18)
 
@@ -339,6 +359,9 @@ owner, after five files drifted the same way).
 
 ## Recent
 
+- **2026-09-21:** Presence stopped echoing its own messages, the digest trigger was
+  removed, and the judge/write split fixed a 2-of-2 miss rate (`4257e4e`, `f43587b`,
+  `349eed1`). Eval 7/7. First real proactive message sent at 04:38.
 - **2026-09-18:** Digest news query, cross-day dedup and the Exclusions
   implementation (`60d78c3`, `8606692`); presence's lull trigger corrected. One
   NameError slipped every gate - `_read_config` does not exist in `monitor` - and
