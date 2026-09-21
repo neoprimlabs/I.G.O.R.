@@ -175,6 +175,25 @@ async def test_the_bundle_is_facts_only() -> None:
     _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
 
 
+def test_which_prompt_each_trigger_gets() -> None:
+    """drafts and stale_task only fire once the code has established a fact, so the
+    model writes the message. lull is the only one where it still judges - and on
+    2026-09-21 judging everything scored 2 misses out of 2."""
+    from agents import presence
+
+    _check("a lull asks the model to judge",
+           presence._system_for("lull") is presence._SYSTEM_JUDGE)
+    for reason in ("drafts", "stale_task"):
+        _check(f"{reason} asks the model to write",
+               presence._system_for(reason) is presence._SYSTEM_WRITE)
+    _check("the write prompt does not offer silence as an option",
+           "SILENT" not in presence._SYSTEM_WRITE, presence._SYSTEM_WRITE[:120])
+    _check("the judge prompt still does", "SILENT" in presence._SYSTEM_JUDGE)
+    for prompt in (presence._SYSTEM_JUDGE, presence._SYSTEM_WRITE):
+        _check("both prompts forbid repeating what was already sent",
+               "Already sent" in prompt, prompt[:80])
+
+
 async def test_own_messages_are_not_material() -> None:
     """2026-09-18 and 09-20: presence sent the user a resolved "qwen3.6 is gone"
     alert, twice. It was not reporting anything. record_outbound stores IGOR's own
@@ -328,6 +347,8 @@ if __name__ == "__main__":
     asyncio.run(test_never_interrupts_a_live_conversation())
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
+    print("\nwrite mode versus judge mode")
+    test_which_prompt_each_trigger_gets()
     print("\nits own messages are not material")
     asyncio.run(test_own_messages_are_not_material())
     print("\nsilence and cleanup")

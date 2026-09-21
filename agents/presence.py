@@ -53,7 +53,15 @@ _TRIGGER_COOLDOWN = timedelta(days=7)
 
 _SILENT = "SILENT"
 
-_SYSTEM = """You decide whether I.G.O.R. says something to the one person it talks to, right now, without being asked.
+# Triggers the code only raises when it has already established a fact: a draft
+# unanswered for more than three days, a task untouched for a week. Asking the model
+# to re-decide whether that is worth mentioning is the "restraint in a prompt" this
+# module's docstring rejects, and on 2026-09-21 it scored 2 misses out of 2 - it
+# never spoke, even about drafts 38 days old. Here the model writes; it does not
+# judge. Only lull keeps the judgement, because there the code cannot know.
+_COMPOSE_TRIGGERS = frozenset({"drafts", "stale_task"})
+
+_SYSTEM_JUDGE = """You decide whether I.G.O.R. says something to the one person it talks to, right now, without being asked.
 
 Reply with exactly SILENT, or with the message itself.
 
@@ -77,6 +85,28 @@ Style:
 - No em dashes - use plain hyphens
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+_SYSTEM_WRITE = """You write one short Discord message from I.G.O.R. to the one person it talks to.
+
+Something of theirs has been waiting: the facts below say what. Your job is to say it, briefly and plainly. Do not decide whether it is worth saying - that has already been decided.
+
+The message:
+- One to three sentences, plain prose, like a person typing.
+- Name the specific thing and how long it has been waiting. Numbers and dates from the facts, nothing invented.
+- No preamble, no offer of help, no question about whether they are there.
+- Use ONLY the facts given. Never invent activity, progress, events, or anything the user said or did.
+- Do not quote or restate anything under "Already sent to the user" - they have read it. Refer to the underlying thing, not to the message that mentioned it.
+- Do not mention being scheduled, triggered, woken, or that you decided to message.
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+
+def _system_for(reason: str) -> str:
+    return _SYSTEM_WRITE if reason in _COMPOSE_TRIGGERS else _SYSTEM_JUDGE
 
 
 def _config_path():
@@ -259,7 +289,7 @@ def _tidy(text: str) -> Optional[str]:
     return text
 
 
-async def _ask_model(bundle: str) -> str:
+async def _ask_model(bundle: str, reason: str = "lull") -> str:
     import openai
     import llm
 
@@ -270,7 +300,7 @@ async def _ask_model(bundle: str) -> str:
     return await llm.complete(
         client,
         config.MODELS["summary"],
-        _SYSTEM,
+        _system_for(reason),
         bundle,
         max_tokens=400,
         label="Presence",
@@ -298,15 +328,22 @@ async def consider(reason: str, now: Optional[datetime] = None,
     state.setdefault("last_trigger", {})[reason] = now.isoformat()
     _save_state(state)
 
+    async def _default_ask(bundle: str) -> str:
+        return await _ask_model(bundle, reason)
+
     try:
-        reply = await (ask or _ask_model)(_facts(reason, now, last_user_at))
+        reply = await (ask or _default_ask)(_facts(reason, now, last_user_at))
     except Exception as e:
         logger.error("Presence (%s) model call failed - %s: %s", reason, type(e).__name__, e)
         return None
 
     message = _tidy(reply)
     if message is None:
-        logger.info("Presence (%s): silent", reason)
+        # In write mode nothing was being judged, so an empty answer is the model
+        # failing the task, not choosing silence. Worth seeing in the log as such.
+        level = logger.warning if reason in _COMPOSE_TRIGGERS else logger.info
+        level("Presence (%s): %s", reason,
+              "returned nothing in write mode" if reason in _COMPOSE_TRIGGERS else "silent")
         return None
 
     state["sent"] = state.get("sent", 0) + 1
