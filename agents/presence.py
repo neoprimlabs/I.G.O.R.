@@ -93,6 +93,7 @@ Something of theirs has been waiting: the facts below say what. Your job is to s
 The message:
 - One to three sentences, plain prose, like a person typing.
 - Name the specific thing and how long it has been waiting. Numbers and dates from the facts, nothing invented.
+- If several of the same kind are waiting, say how many and how far back the oldest goes. Do not single out one and leave the rest unmentioned.
 - No preamble, no offer of help, no question about whether they are there.
 - Use ONLY the facts given. Never invent activity, progress, events, or anything the user said or did.
 - Do not quote or restate anything under "Already sent to the user" - they have read it. Refer to the underlying thing, not to the message that mentioned it.
