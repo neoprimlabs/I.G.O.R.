@@ -104,11 +104,30 @@ Three bugs, in the order they were found, all by running it rather than reading 
    those get `_SYSTEM_WRITE` with no SILENT option. `lull` keeps `_SYSTEM_JUDGE`,
    because only there can the code not know. Silence in write mode logs a WARNING.
 
-**Cadence is roughly weekly, not the couple-a-day the spec imagined.** `lull` needs
-the user to message first, and drafts and stale_task are on a 7-day cooldown. That
-is a material limit, not a tuning one: presence only knows `tasks.md`, `drafts.md`
-and the conversation. More frequency means giving it more real material, not more
-triggers.
+4. **It was the wrong feature.** The first message it sent was "The draft titled
+   Universal Basic Income was sent 6 days ago". The user: *"I asked for a message.
+   Not a report I don't even know where is being saved."* They had asked twice for a
+   check-in - "Just check in on me", "message me at some random times" - and the
+   prompt I wrote explicitly forbade exactly that ("no greeting with nothing behind
+   it", "nothing checking whether they are there"). Rebuilt 2026-09-21 as a **daily
+   check-in**: the code picks a time between 11:00 and 23:00 local, fresh each day,
+   stored so it does not move on every tick. `drafts` and `stale_task` are gone -
+   each existed only to report IGOR's own bookkeeping. Pending work still reaches
+   the model in the facts block as something it may touch in passing.
+5. **It claimed work it had never done, and the eval called that a pass.** From the
+   same run: *"I've been working on the X/Twitter fetch module - just finished a
+   solid prototype, ready when you're ready to look."* None of it happened. Presence
+   has no tools. The eval only scored speak-versus-silent, echoes and report
+   language, so it could not see a lie - and `record_outbound` would have made that
+   prototype an input to every later turn. `_tidy` now drops any first-person claim
+   of having worked on, built, finished or looked into something (false by
+   construction here) and logs it at ERROR. **The prompt already forbade it and the
+   model did it anyway**, which is the whole argument for controls in code.
+
+**Cadence: one check-in a day at a varied time, plus `lull` when the user has been
+talking.** Presence still only knows `tasks.md`, `drafts.md` and the conversation,
+so the check-in is warm rather than informed. Making it *interesting* means giving
+it more real material about the user's day, not more triggers.
 
 **Run `tests/eval_presence.py` after any change to either prompt.** It reports false
 alarm rate, miss rate and echo count - this feature has now failed in both
