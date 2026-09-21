@@ -757,7 +757,6 @@ async def _morning_digest() -> None:
 
     # Presence may follow up on the digest later, so it needs to know one went out.
     from agents import presence
-    presence.note_digest()
 
     sections = _get_digest_sections()
     lines = ["**Morning Digest**", ""]

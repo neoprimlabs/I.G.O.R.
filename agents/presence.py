@@ -47,7 +47,6 @@ _MAX_CHARS = 400
 # A break, not an interruption and not an ambush hours later.
 _LULL_MIN = timedelta(minutes=25)
 _LULL_MAX = timedelta(minutes=90)
-_AFTER_DIGEST = timedelta(minutes=90)
 _DRAFT_STALE = timedelta(days=3)
 _TASK_STALE = timedelta(days=7)
 _TRIGGER_COOLDOWN = timedelta(days=7)
@@ -65,6 +64,7 @@ Do not send:
 - a status report, or a list
 - anything checking whether they are there
 - anything you cannot point to in the facts
+- anything listed under "Already sent to the user". They have read it. Repeating a digest, an alert or an earlier message back to them is never worth doing, however important it looks
 
 If you do send something:
 - One to three sentences, plain prose, like a person typing.
@@ -219,16 +219,30 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
 
     try:
         import context_store
-        recent = context_store.load(4)
+        recent = context_store.load(8)
     except Exception:
         recent = []
-    if recent:
-        lines.append("Recent conversation, oldest first:")
-        for turn in recent:
-            who = "user" if turn.get("role") == "user" else "you"
-            lines.append(f"  {who}: {(turn.get('content') or '')[:300]}")
+
+    # Split deliberately. On 2026-09-18 and 09-20 presence sent the user a resolved
+    # "qwen3.6 is gone" alert, because record_outbound had stored it and this bundle
+    # offered it back as conversation. What IGOR already said belongs here so it does
+    # not repeat itself. It does not belong here as something to raise.
+    said_by_user = [t for t in recent if t.get("role") == "user"]
+    said_by_igor = [t for t in recent if t.get("role") != "user"]
+
+    if said_by_user:
+        lines.append("What the user said, oldest first:")
+        for turn in said_by_user[-4:]:
+            lines.append(f"  user: {(turn.get('content') or '')[:300]}")
     else:
-        lines.append("Recent conversation: none stored.")
+        lines.append("What the user said: nothing stored.")
+
+    if said_by_igor:
+        lines.append("Already sent to the user unprompted. Do not repeat, re-raise, "
+                     "follow up on, or comment on any of it:")
+        for turn in said_by_igor[-4:]:
+            text = (turn.get("content") or "").replace("[sent proactively]", "").strip()
+            lines.append(f"  - {' '.join(text.split())[:110]}")
     return "\n".join(lines)
 
 
@@ -302,14 +316,6 @@ async def consider(reason: str, now: Optional[datetime] = None,
     return message
 
 
-def note_digest(now: Optional[datetime] = None) -> None:
-    """Called when the digest goes out, so presence can follow up on it."""
-    now = now or datetime.now(timezone.utc)
-    state = _load_state()
-    state["last_digest"] = now.isoformat()
-    _save_state(state)
-
-
 def due_triggers(now: Optional[datetime] = None,
                  last_user_at: Optional[datetime] = None) -> list[str]:
     """Reasons to consider speaking. Reasons, not schedules."""
@@ -327,11 +333,11 @@ def due_triggers(now: Optional[datetime] = None,
         if considered is None or considered < last_user_at:
             due.append("lull")
 
-    last_digest = _parse(state.get("last_digest"))
-    if last_digest is not None and now - last_digest >= _AFTER_DIGEST:
-        replied = last_user_at is not None and last_user_at > last_digest
-        if not replied and (_parse(fired.get("digest")) or datetime.min.replace(tzinfo=timezone.utc)) < last_digest:
-            due.append("digest")
+    # A digest trigger lived here until 2026-09-21. It woke presence 90 minutes after
+    # the digest, when the only fresh thing in context was IGOR's own digest - so the
+    # only subject available was the one subject it must not repeat. Four decisions in
+    # three days: two silences, and two echoes of an already-resolved model alert sent
+    # back to the user. A trigger whose only material is its own output has none.
 
     def _cooled(name: str) -> bool:
         last = _parse(fired.get(name))

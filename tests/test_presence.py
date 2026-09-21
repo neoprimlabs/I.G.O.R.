@@ -175,6 +175,49 @@ async def test_the_bundle_is_facts_only() -> None:
     _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
 
 
+async def test_own_messages_are_not_material() -> None:
+    """2026-09-18 and 09-20: presence sent the user a resolved "qwen3.6 is gone"
+    alert, twice. It was not reporting anything. record_outbound stores IGOR's own
+    proactive sends, the bundle handed them back under "Recent conversation", and the
+    model raised what was in front of it - the same mechanism as the 2026-08-13
+    fabrication, where stored output became an input to every later turn.
+
+    They still belong in the bundle, so it does not repeat itself. They do not belong
+    there as news.
+    """
+    from agents import presence
+    import context_store
+
+    path = _fresh(_state())
+    original_db = context_store._DB_PATH
+    try:
+        context_store._DB_PATH = path / "context.db"
+        context_store.append("user", "can you look at the router thing")
+        context_store.append(
+            "assistant",
+            "[sent proactively]\n**Model Alert**\nThe configured models qwen/qwen3.6-27b "
+            "are no longer available on Groq. " + "x" * 400)
+
+        model = _Model()
+        await presence.consider("lull", now=AWAKE, ask=model,
+                                last_user_at=AWAKE - timedelta(minutes=40))
+        bundle = model.asked[0]
+    finally:
+        # Leaving this pointed at a temp database makes every later test read
+        # timestamps from the real present and get blocked as "a conversation is live".
+        context_store._DB_PATH = original_db
+
+    _check("what the user said is still shown", "router thing" in bundle, bundle[-500:])
+    _check("what IGOR already sent is labelled as already sent",
+           "already sent" in bundle.lower(), bundle[-500:])
+    _check("the label tells the model not to repeat it",
+           "do not repeat" in bundle.lower(), bundle[-500:])
+    _check("it is truncated rather than pasted in whole",
+           "x" * 200 not in bundle, f"bundle is {len(bundle)} chars")
+    _check("the internal marker is not shown to the model",
+           "[sent proactively]" not in bundle, bundle[-400:])
+
+
 async def test_silence_and_cleanup() -> None:
     from agents import presence
 
@@ -242,14 +285,15 @@ def test_triggers() -> None:
     due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(minutes=40))
     _check("but a lull after the user speaks again does fire", "lull" in due, str(due))
 
+    # Removed 2026-09-21. It woke presence 90 minutes after the digest, when the only
+    # new material in context was IGOR's own digest - so the one thing available to
+    # talk about was the one thing it must never repeat. Four decisions in three days:
+    # two silent, two echoing a resolved qwen3.6 alert back at the user.
     _fresh(_state(last_digest=(AWAKE - timedelta(hours=2)).isoformat()),
            files={"tasks.md": "- something\n"})
     due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("two hours after the digest is a digest trigger", "digest" in due, str(due))
-
-    _fresh(_state(last_digest=(AWAKE - timedelta(minutes=20)).isoformat()))
-    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("twenty minutes after the digest is too soon", "digest" not in due, str(due))
+    _check("the digest never wakes presence to comment on itself",
+           "digest" not in due, str(due))
 
     old = (AWAKE - timedelta(days=5)).strftime("%Y-%m-%d %H:%M UTC")
     _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
@@ -284,6 +328,8 @@ if __name__ == "__main__":
     asyncio.run(test_never_interrupts_a_live_conversation())
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
+    print("\nits own messages are not material")
+    asyncio.run(test_own_messages_are_not_material())
     print("\nsilence and cleanup")
     asyncio.run(test_silence_and_cleanup())
     print("\ntriggers")
