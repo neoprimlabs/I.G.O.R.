@@ -86,26 +86,25 @@ Already sent to the user unprompted. Do not repeat, re-raise, follow up on, or c
   - **Morning Digest** **Open Tasks:** none **Weather:** Today: Overcast, 75F / 65F **AI News:** - Step5 Preview
   - **Model Alert** The configured models qwen/qwen3.6-27b are no longer available on Groq. They may have been de"""
 
-OLD_DRAFTS = """Woken by: drafts
-Current time: Thu 2026-09-17 14:20 EDT (18:20 UTC)
-The user last said something: 400 minutes ago
-Open tasks: none
-Drafts sent for review and not replied to (3):
-  Universal Basic Income - 2026-09-14 15:00 UTC - sent 3 days ago
-  Universal Basic Income - 2026-08-24 15:00 UTC - sent 24 days ago
-  Universal Basic Income - 2026-08-13 20:02 UTC - sent 35 days ago
-What the user said, oldest first:
-  user: what's the weather looking like"""
-
-STALE_TASK = """Woken by: stale_task
-Current time: Thu 2026-09-17 16:40 EDT (20:40 UTC)
-The user last said something: 900 minutes ago
+CHECKIN_LATE = """Woken by: checkin
+Current time: Mon 2026-09-21 00:40 EDT (04:40 UTC)
+The user last said something: 10017 minutes ago
 Open tasks (2):
-  - Investigate X/Twitter fetching for the Research agent
+  - Investigate and implement X/Twitter content fetching for the Research agent
   - Test write confirmation
+Drafts sent for review and not replied to (3):
+  Universal Basic Income - 2026-09-14 15:00 UTC - sent 6 days ago
+  Universal Basic Income - 2026-08-24 15:00 UTC - sent 27 days ago
+  Universal Basic Income - 2026-08-13 20:02 UTC - sent 38 days ago
+What the user said: nothing stored."""
+
+CHECKIN_AFTERNOON = """Woken by: checkin
+Current time: Tue 2026-09-22 15:10 EDT (19:10 UTC)
+The user last said something: 95 minutes ago
+Open tasks: none
 Drafts awaiting review: none
 What the user said, oldest first:
-  user: remind me what's outstanding sometime"""
+  user: going to be heads down on the engine build most of today"""
 
 CASES = [
     # Judgement cases. Silence is correct, and this is the measured failure mode.
@@ -114,13 +113,18 @@ CASES = [
     ("the one thing pending was already raised and waved off", ALREADY_SAID, "SILENT"),
     ("the user said they are mid-task and coming back", MID_WORK, "SILENT"),
     ("only its own digest and a resolved alert to talk about", ECHO_ALERT, "SILENT"),
-    # Write cases. The code established the fact; the model's job is to say it.
-    ("three drafts unanswered, the oldest 35 days", OLD_DRAFTS, "SPEAK"),
-    ("tasks outstanding and the user asked to be reminded", STALE_TASK, "SPEAK"),
+    # Check-in cases. The code decided it is time; the model writes the message.
+    ("the daily check-in, late at night with work pending", CHECKIN_LATE, "SPEAK"),
+    ("the daily check-in, afternoon after they said they were busy", CHECKIN_AFTERNOON, "SPEAK"),
 ]
 
 # Anything echoed back from the Already sent block is the 09-18 bug returning.
 ECHOES = ("morning digest", "no longer available", "qwen", "still want it")
+
+# The 09-21 failure: asked for a check-in, sent "The draft titled Universal Basic
+# Income was sent 6 days ago". A check-in that names IGOR's filing is not a message.
+REPORTY = ("draft", "task list", "tasks.md", "drafts.md", "days ago", "awaiting review",
+           "outstanding tasks", "sent on 2026")
 
 
 def _reason(bundle: str) -> str:
@@ -131,7 +135,7 @@ async def main() -> int:
     only = [a.lower() for a in sys.argv[1:]]
     cases = [c for c in CASES if not only or any(o in c[0].lower() for o in only)]
 
-    false_alarms, misses, echoes, errors = [], [], [], []
+    false_alarms, misses, echoes, reports, errors = [], [], [], [], []
     for name, bundle, want in cases:
         reason = _reason(bundle)
         try:
@@ -152,6 +156,11 @@ async def main() -> int:
         if message and any(e in message.lower() for e in ECHOES):
             echoes.append(name)
             print("           ECHO: repeated something from the Already sent block")
+        if message and reason == "checkin":
+            named = [r for r in REPORTY if r in message.lower()]
+            if named:
+                reports.append(name)
+                print(f"           REPORT: a check-in that names {named} is not a message")
         await asyncio.sleep(20)
 
     scored = len(cases) - len(errors)
@@ -169,15 +178,18 @@ async def main() -> int:
         print(f"  miss rate:        {len(misses)}/{len(speak_cases)} "
               f"({len(misses) / len(speak_cases):.0%}) - silent with something real to say")
     print(f"  echoes:           {len(echoes)} - repeated something already sent")
+    print(f"  reports:          {len(reports)} - a check-in that read as a status report")
     for name in false_alarms:
         print(f"    false alarm: {name}")
     for name in misses:
         print(f"    miss: {name}")
     for name in echoes:
         print(f"    echo: {name}")
+    for name in reports:
+        print(f"    report: {name}")
     if errors:
         print(f"  {len(errors)} cases errored and were not scored")
-    return 1 if (false_alarms or misses or echoes) else 0
+    return 1 if (false_alarms or misses or echoes or reports) else 0
 
 
 sys.exit(asyncio.run(main()))

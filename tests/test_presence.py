@@ -175,58 +175,52 @@ async def test_the_bundle_is_facts_only() -> None:
     _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
 
 
-def test_the_same_thing_is_not_raised_twice() -> None:
-    """A 7-day cooldown is a timer, not a memory. With three drafts unanswered it
-    would mention the same three every week forever, which is the repetition the
-    user objected to in the digest arriving by another route.
-
-    Raise it once. Raise it again only when the material has actually changed.
-    """
+def test_the_daily_checkin() -> None:
+    """What was actually asked for: "Just check in on me", and messages "at some
+    random times". What shipped first was "The draft titled Universal Basic Income
+    was sent 6 days ago" - a report about a file they have never seen."""
     from agents import presence
 
-    old = (AWAKE - timedelta(days=30)).strftime("%Y-%m-%d %H:%M UTC")
-    newer = (AWAKE - timedelta(days=5)).strftime("%Y-%m-%d %H:%M UTC")
-    long_ago = (AWAKE - timedelta(days=20)).isoformat()
+    morning = _utc(2026, 9, 21, 15, 0)     # 11:00 EDT, the earliest a check-in can be
+    night = _utc(2026, 9, 22, 2, 0)        # 22:00 EDT the previous evening
 
-    drafts_file = f"\n## Universal Basic Income - {old}\n\nbody\n"
-    _fresh(_state(), files={"drafts.md": drafts_file})
-    _check("an unraised draft is due", "drafts" in presence.due_triggers(AWAKE), "")
+    _fresh(_state())
+    planned = presence._checkin_time(morning, presence._load_state())
+    local = planned.astimezone(presence.clock.USER_TZ)
+    _check("a check-in is planned inside waking hours",
+           11 <= local.hour < 23, local.strftime("%H:%M"))
+    _check("and it is stored, not re-rolled on the next tick",
+           presence._checkin_time(morning, presence._load_state()) == planned, "")
 
-    # Raised long enough ago that the cooldown has expired, and nothing has changed.
-    _fresh(_state(last_trigger={"drafts": long_ago},
-                  raised={"drafts": presence._drafts_fingerprint()}),
-           files={"drafts.md": drafts_file})
-    _check("the same drafts are not raised again once the cooldown lapses",
-           "drafts" not in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
-
-    # A new draft arrives: that is new material, so it is worth saying.
-    _fresh(_state(last_trigger={"drafts": long_ago},
-                  raised={"drafts": presence._drafts_fingerprint()}),
-           files={"drafts.md": drafts_file})
-    old_print = presence._drafts_fingerprint()
-    (config.MEMORY_DIR / "drafts.md").write_text(
-        drafts_file + f"\n## Universal Basic Income - {newer}\n\nbody\n", encoding="utf-8")
-    _check("a fingerprint changes when a draft is added",
-           presence._drafts_fingerprint() != old_print)
-    _check("and a new draft makes it due again",
-           "drafts" in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
-
-    tasks = "- Investigate X/Twitter fetching\n"
-    _fresh(_state(last_trigger={"stale_task": long_ago},
-                  raised={"stale_task": None}), files={"tasks.md": tasks})
-    import os, time
-    stale = time.time() - 60 * 60 * 24 * 30
-    os.utime(config.MEMORY_DIR / "tasks.md", (stale, stale))
-    due_before = presence.due_triggers(AWAKE)
-    _check("an untouched task list is due once", "stale_task" in due_before, str(due_before))
-
-    _fresh(_state(last_trigger={"stale_task": long_ago}), files={"tasks.md": tasks})
-    os.utime(config.MEMORY_DIR / "tasks.md", (stale, stale))
+    _fresh(_state())
+    presence._checkin_time(morning, presence._load_state())
     state = presence._load_state()
-    state["raised"] = {"stale_task": presence._tasks_fingerprint()}
+    at = presence._parse(state["checkin"]["at"])
+    before = at - timedelta(minutes=5)
+    _check("not due before its time", "checkin" not in presence.due_triggers(before), "")
+    _check("due once the time arrives",
+           "checkin" in presence.due_triggers(at + timedelta(minutes=1)), "")
+
+    state["checkin"]["sent"] = True
     presence._save_state(state)
-    _check("the same task list is not raised twice",
-           "stale_task" not in presence.due_triggers(AWAKE), str(presence.due_triggers(AWAKE)))
+    _check("and not again the same day",
+           "checkin" not in presence.due_triggers(at + timedelta(hours=3)), "")
+
+    times = set()
+    for day in range(14):
+        _fresh(_state())
+        when = morning + timedelta(days=day)
+        times.add(presence._checkin_time(when, presence._load_state()).astimezone(
+            presence.clock.USER_TZ).strftime("%H:%M"))
+    _check("the time moves from day to day", len(times) > 1, str(sorted(times)[:4]))
+
+    _check("a check-in is written, never judged",
+           presence._system_for("checkin") is presence._SYSTEM_CHECKIN)
+    for banned in ("draft", "task list", "file"):
+        _check(f"the check-in prompt forbids naming a {banned}",
+               banned in presence._SYSTEM_CHECKIN.lower(), "")
+    _check("the check-in prompt does not offer silence",
+           "SILENT" not in presence._SYSTEM_CHECKIN)
 
 
 def test_which_prompt_each_trigger_gets() -> None:
@@ -237,15 +231,13 @@ def test_which_prompt_each_trigger_gets() -> None:
 
     _check("a lull asks the model to judge",
            presence._system_for("lull") is presence._SYSTEM_JUDGE)
-    for reason in ("drafts", "stale_task"):
-        _check(f"{reason} asks the model to write",
-               presence._system_for(reason) is presence._SYSTEM_WRITE)
-    _check("the write prompt does not offer silence as an option",
-           "SILENT" not in presence._SYSTEM_WRITE, presence._SYSTEM_WRITE[:120])
+    _check("a check-in asks the model to write",
+           presence._system_for("checkin") is presence._SYSTEM_CHECKIN)
+    _check("the check-in prompt does not offer silence as an option",
+           "SILENT" not in presence._SYSTEM_CHECKIN)
     _check("the judge prompt still does", "SILENT" in presence._SYSTEM_JUDGE)
-    for prompt in (presence._SYSTEM_JUDGE, presence._SYSTEM_WRITE):
-        _check("both prompts forbid repeating what was already sent",
-               "Already sent" in prompt, prompt[:80])
+    _check("the judge prompt forbids repeating what was already sent",
+           "Already sent" in presence._SYSTEM_JUDGE)
 
 
 async def test_own_messages_are_not_material() -> None:
@@ -368,30 +360,16 @@ def test_triggers() -> None:
     _check("the digest never wakes presence to comment on itself",
            "digest" not in due, str(due))
 
-    old = (AWAKE - timedelta(days=5)).strftime("%Y-%m-%d %H:%M UTC")
-    _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
+    # drafts and stale_task were triggers until 2026-09-21. Each sent a standalone
+    # report about IGOR's own bookkeeping, and the user's answer to the first one was
+    # "I asked for a message. Not a report I don't even know where is being saved."
+    # Pending work now reaches the model only as context for the daily check-in.
+    old = (AWAKE - timedelta(days=35)).strftime("%Y-%m-%d %H:%M UTC")
+    _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n",
+                            "tasks.md": "- something long forgotten\n"})
     due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("a five day old draft is worth raising", "drafts" in due, str(due))
-
-    recent = (AWAKE - timedelta(days=1)).strftime("%Y-%m-%d %H:%M UTC")
-    _fresh(_state(), files={"drafts.md": f"\n## Universal Basic Income - {recent}\n\nbody\n"})
-    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("a draft from yesterday is not", "drafts" not in due, str(due))
-
-    # The real drafts.md: three unanswered, oldest 35 days, newest 2 days. Keying on
-    # the newest meant the weekly advocacy draft reset the trigger forever and the
-    # 35-day-old one was never raised.
-    ancient = (AWAKE - timedelta(days=35)).strftime("%Y-%m-%d %H:%M UTC")
-    _fresh(_state(), files={"drafts.md": (
-        f"\n## Universal Basic Income - {recent}\n\nbody\n"
-        f"\n## Universal Basic Income - {ancient}\n\nbody\n")})
-    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("a fresh draft does not hide an old unanswered one", "drafts" in due, str(due))
-
-    _fresh(_state(last_trigger={"drafts": (AWAKE - timedelta(days=2)).isoformat()}),
-           files={"drafts.md": f"\n## Universal Basic Income - {old}\n\nbody\n"})
-    due = presence.due_triggers(AWAKE, last_user_at=AWAKE - timedelta(hours=6))
-    _check("the same trigger does not fire twice in a week", "drafts" not in due, str(due))
+    _check("an old draft does not become a message of its own", "drafts" not in due, str(due))
+    _check("nor does a stale task list", "stale_task" not in due, str(due))
 
 
 if __name__ == "__main__":
@@ -401,8 +379,6 @@ if __name__ == "__main__":
     asyncio.run(test_never_interrupts_a_live_conversation())
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
-    print("\nnot twice for the same thing")
-    test_the_same_thing_is_not_raised_twice()
     print("\nwrite mode versus judge mode")
     test_which_prompt_each_trigger_gets()
     print("\nits own messages are not material")

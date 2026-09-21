@@ -47,19 +47,27 @@ _MAX_CHARS = 400
 # A break, not an interruption and not an ambush hours later.
 _LULL_MIN = timedelta(minutes=25)
 _LULL_MAX = timedelta(minutes=90)
-_DRAFT_STALE = timedelta(days=3)
-_TASK_STALE = timedelta(days=7)
-_TRIGGER_COOLDOWN = timedelta(days=7)
 
 _SILENT = "SILENT"
 
-# Triggers the code only raises when it has already established a fact: a draft
-# unanswered for more than three days, a task untouched for a week. Asking the model
-# to re-decide whether that is worth mentioning is the "restraint in a prompt" this
-# module's docstring rejects, and on 2026-09-21 it scored 2 misses out of 2 - it
-# never spoke, even about drafts 38 days old. Here the model writes; it does not
-# judge. Only lull keeps the judgement, because there the code cannot know.
-_COMPOSE_TRIGGERS = frozenset({"drafts", "stale_task"})
+# Triggers where the code has already decided there is something to say, so the
+# model writes rather than judges. Asking it to re-decide is the "restraint in a
+# prompt" this module's docstring rejects: on 2026-09-21 judging everything scored
+# 2 misses out of 2, silent even about drafts 38 days old. lull is the only trigger
+# that still judges, because there the code genuinely cannot know.
+_COMPOSE_TRIGGERS = frozenset({"checkin"})
+
+# What the user asked for, twice, in their own words: "Just check in on me", and
+# "Will you message me at some random times tomorrow?". What they got instead was
+# "The draft titled Universal Basic Income was sent 6 days ago" - a report about a
+# file IGOR wrote and filed somewhere they have never seen. Their reply: "I asked
+# for a message. Not a report I don't even know where is being saved."
+#
+# So there is a check-in, it happens once a day at a time that moves, and it is
+# written as a message to a person. Pending work is context it may draw on, never
+# the subject. The hours are wide because they are regularly up past 3am.
+_CHECKIN_EARLIEST = 11
+_CHECKIN_LATEST = 23
 
 _SYSTEM_JUDGE = """You decide whether I.G.O.R. says something to the one person it talks to, right now, without being asked.
 
@@ -86,18 +94,17 @@ Style:
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
-_SYSTEM_WRITE = """You write one short Discord message from I.G.O.R. to the one person it talks to.
+_SYSTEM_CHECKIN = """You are I.G.O.R., writing a short check-in to the one person you talk to. They asked you to check in on them.
 
-Something of theirs has been waiting: the facts below say what. Your job is to say it, briefly and plainly. Do not decide whether it is worth saying - that has already been decided.
+This is a message to a person, not a status report. Write what someone would actually type.
 
-The message:
-- One to three sentences, plain prose, like a person typing.
-- Name the specific thing and how long it has been waiting. Numbers and dates from the facts, nothing invented.
-- If several of the same kind are waiting, say how many and how far back the oldest goes. Do not single out one and leave the rest unmentioned.
-- No preamble, no offer of help, no question about whether they are there.
-- Use ONLY the facts given. Never invent activity, progress, events, or anything the user said or did.
-- Do not quote or restate anything under "Already sent to the user" - they have read it. Refer to the underlying thing, not to the message that mentioned it.
-- Do not mention being scheduled, triggered, woken, or that you decided to message.
+- One or two sentences. Often one is enough.
+- If the facts show something specific and current, you may mention it in passing, the way a person would. It is never the point of the message.
+- Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
+- Do not ask for a status update, do not list anything, do not offer a menu of things you could do.
+- Let the time of day shape it. Late at night is not the same as mid afternoon.
+- Vary it. Do not open the same way every day.
+- Never invent activity, progress, or anything they said or did.
 
 Style:
 - No emojis
@@ -107,7 +114,7 @@ Style:
 
 
 def _system_for(reason: str) -> str:
-    return _SYSTEM_WRITE if reason in _COMPOSE_TRIGGERS else _SYSTEM_JUDGE
+    return _SYSTEM_CHECKIN if reason in _COMPOSE_TRIGGERS else _SYSTEM_JUDGE
 
 
 def _config_path():
@@ -214,13 +221,27 @@ def _drafts() -> list[tuple[str, datetime]]:
     return sorted(found, key=lambda pair: pair[1], reverse=True)
 
 
-def _drafts_fingerprint() -> str:
-    """What the drafts are, not when they were last mentioned."""
-    return "|".join(f"{title}@{when.isoformat()}" for title, when in _drafts())
+def _checkin_time(now: datetime, state: dict) -> Optional[datetime]:
+    """When today's check-in is due, or None if it already happened.
 
+    Chosen once per local day and stored, so it does not move every ten minutes when
+    the scheduler looks again.
+    """
+    local = now.astimezone(clock.USER_TZ)
+    today = local.strftime("%Y-%m-%d")
+    planned = state.get("checkin") or {}
+    if planned.get("day") == today:
+        if planned.get("sent"):
+            return None
+        return _parse(planned.get("at"))
 
-def _tasks_fingerprint() -> str:
-    return "|".join(_open_tasks())
+    import random
+    hour = random.randint(_CHECKIN_EARLIEST, _CHECKIN_LATEST - 1)
+    at = local.replace(hour=hour, minute=random.randint(0, 59), second=0, microsecond=0)
+    state["checkin"] = {"day": today, "at": at.astimezone(timezone.utc).isoformat(), "sent": False}
+    _save_state(state)
+    logger.info("Check-in planned for %s", at.strftime("%a %H:%M %Z"))
+    return at.astimezone(timezone.utc)
 
 
 def _open_tasks() -> list[str]:
@@ -358,11 +379,8 @@ async def consider(reason: str, now: Optional[datetime] = None,
 
     state["sent"] = state.get("sent", 0) + 1
     state["last_sent"] = now.isoformat()
-    # Remember what was said, not just that something was. Recorded only on a real
-    # send, so a silence or a failed call does not count as having raised it.
-    fingerprint = {"drafts": _drafts_fingerprint, "stale_task": _tasks_fingerprint}.get(reason)
-    if fingerprint is not None:
-        state.setdefault("raised", {})[reason] = fingerprint()
+    if reason == "checkin" and isinstance(state.get("checkin"), dict):
+        state["checkin"]["sent"] = True
     _save_state(state)
     logger.info("Presence (%s): speaking - %s", reason, message[:80])
     return message
@@ -378,6 +396,13 @@ def due_triggers(now: Optional[datetime] = None,
     fired = state.get("last_trigger") or {}
     due = []
 
+    # The check-in they asked for: once a day, at a time that moves. The code picks
+    # the minute, as it does everywhere else, because "some random times" produced
+    # one fixed number when the model was asked to choose.
+    checkin_at = _checkin_time(now, state)
+    if checkin_at is not None and now >= checkin_at:
+        due.append("checkin")
+
     # Once per lull, not once per tick. The window is an hour wide and the job runs
     # every ten minutes, so without this it fires six times for one quiet spell.
     if last_user_at is not None and _LULL_MIN <= now - last_user_at <= _LULL_MAX:
@@ -391,36 +416,12 @@ def due_triggers(now: Optional[datetime] = None,
     # three days: two silences, and two echoes of an already-resolved model alert sent
     # back to the user. A trigger whose only material is its own output has none.
 
-    def _cooled(name: str) -> bool:
-        last = _parse(fired.get(name))
-        return last is None or now - last >= _TRIGGER_COOLDOWN
-
-    # A cooldown is a timer, not a memory. With three drafts unanswered it would
-    # mention the same three every week for as long as they sat there, which is the
-    # repetition the user objected to in the digest arriving by another route. Raise
-    # something once; raise it again only when the material itself has changed.
-    raised = state.get("raised") or {}
-
-    def _unsaid(name: str, fingerprint) -> bool:
-        return raised.get(name) != fingerprint
-
-    # The OLDEST unanswered draft, not the newest. Keying on the newest meant the
-    # weekly advocacy draft reset this every Monday, so three drafts going back 35
-    # days would never have been raised at all.
-    drafts = _drafts()
-    if (drafts and now - drafts[-1][1] > _DRAFT_STALE
-            and _cooled("drafts") and _unsaid("drafts", _drafts_fingerprint())):
-        due.append("drafts")
-
-    try:
-        tasks_path = config.MEMORY_DIR / "tasks.md"
-        if _open_tasks() and tasks_path.exists():
-            changed = datetime.fromtimestamp(tasks_path.stat().st_mtime, timezone.utc)
-            if (now - changed > _TASK_STALE and _cooled("stale_task")
-                    and _unsaid("stale_task", _tasks_fingerprint())):
-                due.append("stale_task")
-    except OSError:
-        pass
+    # There were drafts and stale_task triggers here until 2026-09-21. Each produced
+    # a standalone report about IGOR's own bookkeeping - "The draft titled Universal
+    # Basic Income was sent 6 days ago" - about a file the user has never seen. Their
+    # words: "I asked for a message. Not a report I don't even know where is being
+    # saved." Pending work still reaches the model in the facts block, where the
+    # check-in may mention it in passing. It is not a subject of its own.
 
     return due
 
