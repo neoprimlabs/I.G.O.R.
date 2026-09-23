@@ -212,6 +212,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
         id="model_update_startup",
     )
 
+    # 14:30 UTC is 10:30 local, after the digest has landed. Fetching costs no
+    # tokens - it is HTTP against public feeds - so this is close to free.
+    _scheduler.add_job(_job_watch, "cron", hour=14, minute=30, id="job_watch")
+
     # Polled rather than one date job per message: APScheduler drops a date job more
     # than a second late, so anything due during a restart would be lost. No tokens.
     _scheduler.add_job(_deliver_scheduled, "interval", seconds=60, id="scheduled_messages")
@@ -229,6 +233,24 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
+
+
+async def _job_watch() -> None:
+    """New remote postings, if any. Silent when there are none."""
+    if _send_fn is None:
+        return
+    from agents import jobs
+    try:
+        # urllib is blocking and this is a single-core box, so it stays off the loop.
+        loop = asyncio.get_running_loop()
+        found = await loop.run_in_executor(None, jobs.collect)
+        if not found:
+            return
+        # Remember only what actually reached the user, or a failed send loses them.
+        if await _send_fn(jobs.format_for_discord(found)):
+            jobs.remember(found)
+    except Exception as e:
+        logger.error("Job watch failed - %s: %s", type(e).__name__, e)
 
 
 async def _deliver_scheduled() -> None:

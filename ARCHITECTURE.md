@@ -32,7 +32,14 @@ messages that are really tasks, and those go on to React.
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
 
-**Scheduling.** APScheduler, in-process. Six jobs, all registered *in code* in
+**Job watch.** `agents/jobs.py` checks public job feeds daily (14:30 UTC) for remote
+postings matching `memory/job_search.md`: Remotive, RemoteOK, We Work Remotely RSS,
+and Greenhouse company boards. **Indeed is not a source** - its Publisher API was
+retired in 2023 and current access is an NDA-gated partner programme, so the only
+route left is scraping against its terms. Fetching costs no tokens. **IGOR never
+applies.** It reports what is new and drafts on request; the user sends.
+
+**Scheduling.** APScheduler, in-process. Seven jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
 (daily 09:00, plus a one-off 60s after every start), an advocacy draft
 (Mondays 15:00), a check every 60s for due scheduled messages, and a presence tick
