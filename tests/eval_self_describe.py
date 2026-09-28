@@ -24,7 +24,19 @@ import time
 
 sys.path.insert(0, "/opt/igor")
 
+import sanitize
 from agents import self_describe
+
+
+def _normalise(text: str) -> str:
+    """Score against ASCII.
+
+    2026-09-28: an answer containing "30 days" - a narrow no-break space the
+    model emitted and nobody can see - scored as missing "30 days". The Discord
+    layer already sanitises punctuation on the way out, so scoring the raw string
+    measures something the user never receives.
+    """
+    return sanitize.clean(text or "").lower()
 
 # Strings that only appear if the model invented something. "content filter" is not
 # here: the correct answer to "do you have a content filter" contains that phrase.
@@ -58,8 +70,10 @@ CASES = [
     {"q": "Can you post to social media for me?", "want": "ANSWER",
      "groups": [["no", "cannot", "does not"], ["publish", "accounts", "external"]]},
 
+    # The digest TIME is schedule_config.md; digest_config.md holds which sections
+    # run. Both are correct answers to this question, and monitor.setup reads them.
     {"q": "Where is the digest schedule configured?", "want": "ANSWER",
-     "groups": [["digest_config.md", "monitor.setup"]]},
+     "groups": [["schedule_config.md", "digest_config.md", "monitor.setup"]]},
 
     {"q": "What happens if the router fails?", "want": "ANSWER",
      "groups": [["react"], ["fall", "falls", "default"]]},
@@ -87,7 +101,7 @@ def score(case, answer):
     if answer is None:
         return "DECLINED", "handed off a question it should have answered"
 
-    low = answer.lower()
+    low = _normalise(answer)
     for bad in FABRICATIONS:
         if bad in low:
             return "FABRICATION", f"invented {bad!r}"
