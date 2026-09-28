@@ -255,6 +255,7 @@ When to use tools:
 - search: current information, facts you are uncertain about, documentation, news, anything time-sensitive. For anything time-sensitive, set recency_days - without it you will get years-old articles that read as current
 - Every search result carries a Published date. Check it against the current date at the top of this prompt before calling anything recent, latest, or new. If the best sources you found are old, say how old rather than presenting them as current
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
+- Some files exist that no tool can open, on purpose: resume.md, corrections.md, drafts.md, and anything under memory/private/. If asked about one, say it is on file and that you are not able to read it. Never say it is missing or that you do not see it, and never ask the user to paste the contents - it is already stored
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - memory_write: when the user asks you to remember, add, store, or update something
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt
@@ -445,6 +446,28 @@ def _is_private(resolved) -> bool:
     return relative.name in _PRIVATE_MEMORY or "private" in relative.parts
 
 
+def _path_problem(relative: str) -> Optional[str]:
+    """Why this path cannot be used, or None. Distinguishes private from absent.
+
+    2026-09-28, asked "resume.md?" in Discord: IGOR answered "I don't see a resume.md
+    file in the current workspace" and offered to store one if the user pasted it.
+    The file exists; IGOR is blocked from reading it. Denying its existence invites
+    the user to paste a resume into the chat, which puts it in context.db and in the
+    same context as untrusted web content - the exposure the guard exists to prevent.
+    """
+    try:
+        resolved = (config.BASE_DIR / relative).resolve()
+    except Exception:
+        return "[access denied: unreadable path]"
+    if not str(resolved).startswith(str(config.BASE_DIR.resolve())):
+        return "[access denied: path outside IGOR root]"
+    if _is_private(resolved):
+        return ("[private file: it exists and no agent can read it, deliberately. Tell "
+                "the user it is on file and that you cannot open it. Do NOT say it is "
+                "missing, and never ask them to paste the contents.]")
+    return None
+
+
 def _safe_path(relative: str):
     try:
         resolved = (config.BASE_DIR / relative).resolve()
@@ -468,6 +491,9 @@ async def _read_server_file(path: str, offset: int = 0) -> str:
     in, ran out of iterations, and described a system that does not exist, including
     a content filter IGOR has never had.
     """
+    problem = _path_problem(path)
+    if problem:
+        return problem
     resolved = _safe_path(path)
     if resolved is None:
         return "[access denied: outside the IGOR root, or a private file]"
@@ -517,6 +543,9 @@ async def _search_memory_files(query: str) -> str:
 
 async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
     from pathlib import Path
+    problem = _path_problem(path)
+    if problem:
+        return problem
     resolved = _safe_path(path)
     if resolved is None:
         return "[access denied: outside the IGOR root, or a private file]"
@@ -541,6 +570,9 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
 
 async def _write_server_file(path: str, content: str) -> str:
     from pathlib import Path
+    problem = _path_problem(path)
+    if problem:
+        return problem
     resolved = _safe_path(path)
     if resolved is None:
         return "[access denied: outside the IGOR root, or a private file]"

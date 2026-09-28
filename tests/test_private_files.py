@@ -68,13 +68,28 @@ async def test_read_file() -> None:
                     "memory/private/notes.md"):
         out = await react._read_server_file(private)
         _check(f"read_file refuses {private}",
-               "access denied" in out.lower() and "912" not in out and "digest goes out" not in out,
+               "private file" in out.lower() and "912" not in out and "digest goes out" not in out,
                out[:100])
+
+    # 2026-09-28: asked "resume.md?", IGOR said "I don't see a resume.md file in the
+    # current workspace" and offered to store one if the user pasted it. The file
+    # exists. Denying it invites a paste into the chat, which is the exposure the
+    # guard exists to prevent, so the refusal has to say which of the two it is.
+    out = await react._read_server_file("memory/resume.md")
+    low = out.lower()
+    _check("the refusal says the file exists", "exists" in low, out[:120])
+    _check("and does not read as missing",
+           "not found" not in low and "no such" not in low, out[:120])
+    _check("and tells it not to ask for a paste", "paste" in low, out[:120])
+
+    out = await react._read_server_file("memory/nope.md")
+    _check("a genuinely absent file still reads as absent",
+           "not found" in out.lower() and "private" not in out.lower(), out[:100])
 
     # The traversal version of the same request.
     out = await react._read_server_file("memory/../memory/resume.md")
     _check("and refuses it by a roundabout path",
-           "access denied" in out.lower() and "912" not in out, out[:100])
+           "private file" in out.lower() and "912" not in out, out[:100])
 
     out = await react._read_server_file("memory/tasks.md")
     _check("an ordinary memory file still opens", "X/Twitter" in out, out[:80])
@@ -109,12 +124,12 @@ async def test_writes() -> None:
 
     root = _fresh()
     out = await react._write_server_file("memory/resume.md", "overwritten")
-    _check("write_file refuses a private file", "access denied" in out.lower(), out[:90])
+    _check("write_file refuses a private file", "private file" in out.lower(), out[:90])
     _check("and the file is untouched",
            "912" in (root / "memory" / "resume.md").read_text(encoding="utf-8"))
 
     out = await react._patch_server_file("memory/corrections.md", "digest", "nonsense")
-    _check("patch_file refuses one too", "access denied" in out.lower(), out[:90])
+    _check("patch_file refuses one too", "private file" in out.lower(), out[:90])
 
 
 if __name__ == "__main__":
