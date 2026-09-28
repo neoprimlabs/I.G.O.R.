@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Awaitable, Callable
 
 import config
@@ -41,6 +42,31 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
+# The rule is "private data may reach anything that cannot act on it", and for a
+# while the implementation was "private data may not reach the agent the user talks
+# to", which is a different and sillier rule. Asked "can you read it now?", IGOR said
+# no - while the same history was ranking his job postings every morning.
+#
+# Direct has no tools. No fetch_url, no shell, no file access, no memory writes. It
+# cannot carry anything outward, so it is exactly the place the resume is safe. React
+# keeps the seal, because it reads the open web and can act.
+#
+# Loaded only when the message is about it: a resume in every chat prompt is ~600
+# tokens a turn for nothing, and the fewer turns it appears in the better.
+_RESUME_WORDS = re.compile(
+    r"\b(resume|résumé|cv|work history|employment|job history|experience|"
+    r"qualification|cover letter|application)\b", re.IGNORECASE)
+
+
+def _resume_if_asked(message: str) -> str:
+    if not _RESUME_WORDS.search(message or ""):
+        return ""
+    try:
+        return (config.MEMORY_DIR / "resume.md").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def _get_system_prompt() -> str:
     path = config.MEMORY_DIR / "prompt_direct.md"
     if path.exists():
@@ -64,6 +90,10 @@ async def handle(
 
     current_dt = clock.time_line()
     system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
+
+    resume = _resume_if_asked(message)
+    if resume:
+        system_text = f"{system_text}\n\n=== The user's resume, on file ===\n{resume}"
 
     messages = context + [{"role": "user", "content": message}]
 
