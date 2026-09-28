@@ -41,7 +41,10 @@ _MAX_REPORTED = 8
 
 # Companies whose Greenhouse boards are worth watching. Kept short and editable:
 # each is one HTTP call a day, and a long list buys noise rather than coverage.
-_GREENHOUSE_BOARDS = ("anthropic", "openai", "scaleai", "surgehq", "invisibletech")
+# openai and surgehq were here until 2026-09-28 and returned 404 on every run - they
+# are not on Greenhouse under those names. A slug that 404s is two wasted calls a day
+# and a warning in the log, so it comes out rather than staying hopefully.
+_GREENHOUSE_BOARDS = ("anthropic", "scaleai", "invisibletech")
 
 _WWR_FEEDS = (
     "remote-customer-support-jobs",
