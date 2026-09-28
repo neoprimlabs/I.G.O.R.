@@ -6,90 +6,9 @@ window on purpose; the rest is reachable with `offset`. Describe nothing unread.
 ## The whole system, in one page
 
 A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
-`VM.Standard.E2.1.Micro` (x86_64, Ubuntu 22.04, 1 OCPU / 956 MB RAM plus 2 GB swap),
-root `/opt/igor`, systemd services `igor` and `igor-watchdog`. Models are Groq free
-tier through the `openai` SDK. Search is Exa. Persistence is markdown files plus
-SQLite. No database server, no web UI, no admin panel.
-
-**Routing.** Four exact-match fast paths, then one router call
-(`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
-failure falls through to React.
-
-| Destination | Handles | Model | Tools |
-|---|---|---|---|
-| Direct | `CHAT` | gpt-oss-120b | none, by design |
-| React | `TASK`, router failure | gpt-oss-120b | all 13 |
-| Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
-| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files, and only when the message names the setting |
-| ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
-| SelfDescribe | `SELF` - questions about IGOR itself | gpt-oss-120b | none, reads this file |
-
-**Questions about IGOR go to SelfDescribe, not React**, which carries this whole
-document and no tools so it has room to be accurate. It returns `NOT_ABOUT_IGOR` for
-messages that are really tasks, and those go on to React.
-
-**React's 13 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
-`fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
-
-**Job watch.** `agents/jobs.py` checks public job feeds daily (14:30 UTC) for remote
-postings matching `memory/job_search.md`: Remotive, RemoteOK, We Work Remotely RSS,
-and Greenhouse company boards. **Indeed is not a source** - its Publisher API was
-retired in 2023 and current access is an NDA-gated partner programme, so the only
-route left is scraping against its terms. Fetching costs no tokens. **IGOR never
-applies.** It reports what is new and drafts on request; the user sends.
-
-**Scheduling.** APScheduler, in-process. Seven jobs, all registered *in code* in
-`monitor.setup()`: the morning digest (13:00 UTC), a Groq model-availability check
-(daily 09:00, plus a one-off 60s after every start), an advocacy draft
-(Mondays 15:00), a check every 60s for due scheduled messages, and a presence tick
-every 10 minutes. There is no scheduler config file, and no way to add or retime a
-job without a code change and a deploy.
-
-**Scheduled messages** are the one thing the user can schedule by asking. React's
-`scheduled_message` tool adds, lists or cancels one-off messages in
-`memory/scheduled.json`, up to 30 days ahead and 20 pending. Timing comes from `at`
-(local time), `in_minutes`, or `window` - `morning`, `afternoon`, `evening` or
-`tomorrow` - where the code picks a random minute inside the window and the model
-never picks the number. An entry holds either `content` (exact words, free to deliver)
-or `brief` (the words are written at delivery by `agents/compose.py` on the summary
-model, so the message fits the day it arrives; if that fails the brief is sent as
-plain text). The user's timezone is `config.USER_TZ` (America/New_York), and prompts
-show local time.
-
-The model check was weekly until 2026-08-17, when Groq removed the Llama family
-and four roles returned 404 for a day before anything reported it. The run at
-startup is the one that matters: it turns a deprecation into an alert on the next
-deploy or restart rather than whenever the cron next comes round.
-
-**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
-(which digest sections run, and an Exclusions list that filters AI news by keyword), `agents.md` (**standing preferences only - NOT the agent
-list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
-`watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`,
-`presence_config.md`, `presence_state.json`, plus `context.db`
-(SQLite conversation history). `memory_write` takes a filename from a fixed list
-plus content - it is not a key/value store. `corrections.md`, `drafts.md`, `resume.md` and
-anything under `memory/private/` are readable by no agent: they hold text derived
-from untrusted input, or the user's work history and contact details. The guard is
-`react._is_private`, called from `_safe_path`, so `read_file`, `patch_file` and
-`write_file` all refuse them and `search_memory` skips them. Until 2026-09-27 this
-paragraph described an intention rather than a control: `memory_read` had an
-allowlist, but `search_memory` globbed every `*.md` and `read_file` accepted any
-path inside the root.
-
-**Presence** (`agents/presence.py`) is IGOR deciding on its own whether to say
-something, and usually deciding not to. A trigger (a conversation that ended 25-90
-minutes ago, the digest going unanswered, drafts or tasks going stale) makes it
-assemble a block of facts read from files and the database and ask the summary model
-for either SILENT or one to three sentences. Gates run in code before any model call:
-silent 03:00-10:00 local, four hours between messages, at most 2 a day and 6 decision
-calls a day, and never within 20 minutes of a live conversation. **Off unless
-`memory/presence_config.md` says `state: on`**, and off if that file is missing.
-
-**Deployment** runs through a root-owned script at
-`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach.
-It compile-checks, imports every module, restarts, waits for the gateway, and
-reverts on failure.
+`VM.Standard.E2.1.Micro` (1 OCPU / 956 MB), root `/opt/igor`, systemd `igor` and
+`igor-watchdog`. Models are Groq free tier via the `openai` SDK, search is Exa,
+persistence is markdown plus SQLite. No database server, no web UI, no admin panel.
 
 ## What does NOT exist
 
@@ -104,7 +23,82 @@ Say so plainly rather than describing these as though they work:
   on. IGOR cannot deploy its own code changes.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
+**React's 13 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
+`fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
+
+**Routing.** Four exact-match fast paths, then one router call
+(`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
+failure falls through to React.
+
+| Destination | Handles | Model | Tools |
+|---|---|---|---|
+| Direct | `CHAT` | gpt-oss-120b | none, by design |
+| React | `TASK`, router failure | gpt-oss-120b | all 13 |
+| Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
+| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files, only when the message names the setting |
+| ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
+| SelfDescribe | `SELF` - questions about IGOR itself | gpt-oss-120b | none, reads this file |
+
+**Questions about IGOR go to SelfDescribe, not React**, which returns
+`NOT_ABOUT_IGOR` for messages that are really tasks.
+
+**Scheduling.** APScheduler, in-process. Seven jobs, all registered *in code* in
+`monitor.setup()`: the morning digest (13:00 UTC), a Groq model check (daily 09:00
+plus once per start), an advocacy draft (Mondays 15:00), a job watch (14:30), a
+check every 60s for due scheduled messages, and a presence tick every 10 minutes.
+There is no scheduler config file: retiming a job needs a code change and a deploy.
+
+**Scheduled messages** are the one thing the user can schedule by asking:
+`scheduled_message` adds, lists or cancels entries in `memory/scheduled.json`, up to
+30 days ahead, timed by local time, minutes from now, or a named window the code
+picks a minute inside. Words are fixed when scheduled or written at delivery by
+`agents/compose.py`. Timezone is `config.USER_TZ` (America/New_York).
+
+**Presence** (`agents/presence.py`) is IGOR deciding whether to speak unprompted,
+usually deciding not to. One check-in a day at a code-picked time. Gates run in code
+before any model call: silent 03:00-10:00 local, 4h between messages, 2 a day, 6
+calls a day, never within 20 minutes of a live conversation. **Off unless
+`memory/presence_config.md` says `state: on`.**
+
+**Job watch** (`agents/jobs.py`) checks Remotive, RemoteOK, We Work Remotely and
+Greenhouse boards daily for remote postings matching `memory/job_search.md`. Indeed
+is not a source: no usable API. **IGOR never applies** - it reports and drafts; the
+user sends.
+
+**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
+(digest sections and keyword exclusions), `schedule_config.md` (digest time),
+`agents.md` (**standing preferences only - NOT the agent list above**), `tasks.md`,
+`projects.md`, `user.md`, `watchlist.md`, `research.md`, `job_search.md`, plus
+`context.db` (SQLite history). `memory_write` takes a filename from a fixed list.
+`corrections.md`, `drafts.md`, `resume.md` and anything under `memory/private/` are
+readable by no agent: `react._is_private`, called from `_safe_path`, makes
+`read_file`, `patch_file` and `write_file` refuse them and `search_memory` skip
+them.
+
+**Deployment** runs through a root-owned script at
+`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach:
+it compile-checks, imports every module, restarts, waits for the gateway, and reverts
+on failure.
+
 <!-- END SELF SUMMARY -->
+
+## History moved out of the summary
+
+Kept here because the summary has a hard size limit and IGOR reads it to describe
+itself. None of this is needed to answer "how does IGOR work".
+
+- The model check was weekly until 2026-08-17, when Groq removed the Llama family
+  and four roles returned 404 for a day before anything reported it. The run at
+  startup is what turns a deprecation into an alert on the next restart.
+- Until 2026-09-27 the private-file rule was an intention, not a control:
+  `memory_read` had an allowlist, but `search_memory` globbed every `*.md` and
+  `read_file` accepted any path inside the root, so `corrections.md` and `drafts.md`
+  were readable two ways.
+- Indeed's Publisher API was retired in 2023 and its Job Search API is closed to new
+  developers; current access is an NDA-gated partner programme. The remaining route
+  is scraping against its terms, so it is not a source.
+
 
 ---
 
@@ -125,8 +119,11 @@ Describes the system **as it exists today**, verified against the source on
 > On 2026-08-13 it failed the other way: the file was correct but 23KB, and
 > `read_file` capped at 4000 chars with no way to page, so IGOR received 17% of it
 > and invented the rest - including a content filter it has never had. Hence the
-> summary above. **Keep it under 3400 characters or IGOR stops seeing the end of
-> it.**
+> summary above. **Keep it inside one `read_file` window - 3700 characters.** The
+> old figure here was 3400, from before `read_file` could page. It can now, but on
+> 2026-08-13 React invented content rather than paging, so one window is the number
+> that actually protects it. Measured 6426 on 2026-09-27 after a week of additions;
+> trimmed the same day, with history moved below the marker.
 
 ---
 
