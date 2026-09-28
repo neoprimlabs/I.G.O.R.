@@ -247,7 +247,8 @@ async def _job_watch() -> None:
         if not found:
             return
         # Remember only what actually reached the user, or a failed send loses them.
-        if await _send_fn(jobs.format_for_discord(found)):
+        notes = await jobs.rank(found)
+        if await _send_fn(jobs.format_for_discord(found, notes)):
             jobs.remember(found)
     except Exception as e:
         logger.error("Job watch failed - %s: %s", type(e).__name__, e)
