@@ -68,9 +68,14 @@ list above, despite the name**), `tasks.md`, `projects.md`, `user.md`,
 `watchlist.md`, `research.md`, `corrections.md`, `drafts.md`, `scheduled.json`,
 `presence_config.md`, `presence_state.json`, plus `context.db`
 (SQLite conversation history). `memory_write` takes a filename from a fixed list
-plus content - it is not a key/value store. `corrections.md` and `drafts.md` are
-readable by no agent: both hold text derived from untrusted input, so pulling them
-into a tool-bearing context would be a stored injection path.
+plus content - it is not a key/value store. `corrections.md`, `drafts.md`, `resume.md` and
+anything under `memory/private/` are readable by no agent: they hold text derived
+from untrusted input, or the user's work history and contact details. The guard is
+`react._is_private`, called from `_safe_path`, so `read_file`, `patch_file` and
+`write_file` all refuse them and `search_memory` skips them. Until 2026-09-27 this
+paragraph described an intention rather than a control: `memory_read` had an
+allowlist, but `search_memory` globbed every `*.md` and `read_file` accepted any
+path inside the root.
 
 **Presence** (`agents/presence.py`) is IGOR deciding on its own whether to say
 something, and usually deciding not to. A trigger (a conversation that ended 25-90
