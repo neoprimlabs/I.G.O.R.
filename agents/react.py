@@ -421,10 +421,36 @@ def _write_sentinel(reason: str) -> None:
     logger.info("restart sentinel written: %s", reason)
 
 
+# Files no agent may open, by any route. corrections.md and drafts.md hold text
+# derived from untrusted input; resume.md holds the user's work history, address and
+# phone number. ARCHITECTURE has claimed since August that the first two were
+# "readable by no agent". That was not true until 2026-09-27: memory_read has an
+# allowlist, but search_memory globbed every *.md and read_file accepted any path
+# inside the IGOR root, which memory/ is.
+#
+# It has to be the data that is unreachable rather than the outward call that is
+# blocked: fetch_url is deliberately not quarantined after a web read, because
+# reading a search result is the ordinary research flow. Private data plus untrusted
+# web content plus an outward call is the combination this module exists to prevent.
+#
+# The check lives in _safe_path so no later call site can forget it.
+_PRIVATE_MEMORY = frozenset({"corrections.md", "drafts.md", "resume.md"})
+
+
+def _is_private(resolved) -> bool:
+    try:
+        relative = resolved.relative_to(config.MEMORY_DIR.resolve())
+    except (ValueError, OSError):
+        return False
+    return relative.name in _PRIVATE_MEMORY or "private" in relative.parts
+
+
 def _safe_path(relative: str):
     try:
         resolved = (config.BASE_DIR / relative).resolve()
         if not str(resolved).startswith(str(config.BASE_DIR.resolve())):
+            return None
+        if _is_private(resolved):
             return None
         return resolved
     except Exception:
@@ -444,7 +470,7 @@ async def _read_server_file(path: str, offset: int = 0) -> str:
     """
     resolved = _safe_path(path)
     if resolved is None:
-        return "[access denied: path outside IGOR root]"
+        return "[access denied: outside the IGOR root, or a private file]"
     if not resolved.exists():
         return f"[not found: {path}]"
     try:
@@ -472,6 +498,8 @@ async def _search_memory_files(query: str) -> str:
     results = []
     query_lower = query.lower()
     for path in sorted(config.MEMORY_DIR.glob("*.md")):
+        if _is_private(path.resolve()):
+            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
             for i, line in enumerate(lines):
@@ -491,7 +519,7 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
     from pathlib import Path
     resolved = _safe_path(path)
     if resolved is None:
-        return "[access denied: path outside IGOR root]"
+        return "[access denied: outside the IGOR root, or a private file]"
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
     if not resolved.exists():
@@ -515,7 +543,7 @@ async def _write_server_file(path: str, content: str) -> str:
     from pathlib import Path
     resolved = _safe_path(path)
     if resolved is None:
-        return "[access denied: path outside IGOR root]"
+        return "[access denied: outside the IGOR root, or a private file]"
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
     try:
