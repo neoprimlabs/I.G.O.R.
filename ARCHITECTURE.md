@@ -14,8 +14,13 @@ persistence is markdown plus SQLite. No database server, no web UI, no admin pan
 
 Say so plainly rather than describing these as though they work:
 
-- **No content filter, moderation pipeline, or safety classifier.** Nothing screens
-  generated text for accuracy or harm.
+- **No content filter, moderation pipeline, or safety classifier** over what the
+  agents generate. Nothing screens React, Direct, Monitor, ConfigEdit, ResearchLoop
+  or SelfDescribe output for accuracy or harm; `sanitize.clean` only maps typography.
+  Two honest exceptions: `presence._tidy` drops a check-in that claims work IGOR
+  never did or runs over 400 characters, and `digest_config.md` exclusions filter
+  news by keyword. The models themselves refuse things on their own - that is
+  Groq's, not IGOR's, and IGOR cannot turn it off.
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.**
 - **No connection to any external platform.** No posting, no email, no social or
   publishing accounts. IGOR drafts; a human publishes.
