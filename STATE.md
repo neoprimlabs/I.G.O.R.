@@ -133,6 +133,52 @@ it more real material about the user's day, not more triggers.
 alarm rate, miss rate and echo count - this feature has now failed in both
 directions, and one sample cannot tell them apart.
 
+## Job watch (2026-09-23 to 09-28)
+
+The user asked for IGOR to apply to remote jobs on Indeed as they appear. Neither
+half of that survived contact with the facts, and both were flagged rather than
+silently substituted.
+
+**Indeed cannot be a source.** Publisher API retired 2023, Job Search API closed to
+new developers, current access NDA-gated with six-figure minimums. Remotive,
+RemoteOK, We Work Remotely RSS and Greenhouse company boards publish openly and were
+each confirmed reachable from the server. Fetching costs no tokens.
+
+**IGOR does not apply.** A Robert Half survey of 2,000+ hiring managers (fielded
+2025-11) found 67% said AI-generated applications had slowed their hiring, and mass
+identical submissions get ATS-flagged; volume-apply response runs 2-3%. Vendor
+figures, so directional - but it is the user's name on every application. Same rule
+as advocacy posts: IGOR drafts, a human sends.
+
+**Ranking, added 09-28.** Title keywords alone returned an entry-level QA tester and
+an Anthropic research engineer in one list. One model call a day now orders the
+shortlist against `memory/private/profile.md` and says what is a stretch. Verified
+live: it ranked support and QA roles above specialised annotation work and said why.
+
+**The resume never leaves the box.** `memory/resume.md` holds contact details and
+both versions of his history; `_is_private` makes it unreachable. Ranking sends only
+the profile - skills and work history, no name, phone, email or address.
+
+**Open:** the same 2024-2026 associate job appears as K&J Comics and Games
+(Pittsburgh) on one resume and New Dimension Comics (Tarentum) on the other, with
+identical duties. One is wrong. Ask before either version goes to an employer.
+
+## Private memory files are now actually private (2026-09-27)
+
+ARCHITECTURE claimed since August that `corrections.md` and `drafts.md` were
+"readable by no agent". That was an intention, not a control: `memory_read` had an
+allowlist, but `search_memory` globbed every `*.md` and `read_file` accepted any path
+inside the IGOR root. Both were readable, two ways.
+`react._is_private`, called from `_safe_path`, now covers `corrections.md`,
+`drafts.md`, `resume.md` and everything under `memory/private/`, so `read_file`,
+`patch_file` and `write_file` refuse them and `search_memory` skips them.
+`tests/test_private_files.py` reproduced the hole before the fix and guards it now.
+
+The outward call could not be what gets blocked: `fetch_url` is deliberately outside
+the post-web quarantine, because reading a search result is the ordinary research
+flow. With job postings now arriving daily from the open web, the data had to be the
+thing made unreachable.
+
 ## Digest news: stop resending the same cycle (2026-09-18)
 
 The user, 2026-09-17: "I'm sick of seeing 3 headlines on ai safety every morning.
