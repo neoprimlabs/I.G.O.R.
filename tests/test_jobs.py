@@ -186,6 +186,49 @@ def test_seen_and_collect() -> None:
     _check("an unreadable store reads as empty", jobs._load_seen() == {})
 
 
+def test_ranking_uses_a_profile_without_contact_details() -> None:
+    """The full resume stays on the box. Only a PII-free profile is sent anywhere.
+
+    Nothing about matching needs a name, phone number or address, so the daily call
+    cannot leak them even if the prompt goes wrong.
+    """
+    import asyncio
+    from agents import jobs
+
+    path = _fresh()
+    found = [{"title": "AI Trainer", "company": "Scale Labs", "url": "https://x/1",
+              "location": "Worldwide", "source": "remotive"}]
+
+    seen = {}
+
+    async def _fake(profile, listing):
+        seen["profile"], seen["listing"] = profile, listing
+        return "1. Closest thing to the LLM evaluation work already done daily."
+
+    _check("no profile means no ranking call, not a crash",
+           asyncio.run(jobs.rank(found, ask=_fake)) == "" and not seen, str(seen))
+
+    (path / "private").mkdir()
+    (path / "private" / "profile.md").write_text(
+        "Self-taught developer. Flutter and Unreal Engine 5. Daily LLM prompting and\n"
+        "evaluation. Kitchen manager 2022-2024. No CS degree.\n", encoding="utf-8")
+
+    notes = asyncio.run(jobs.rank(found, ask=_fake))
+    _check("the profile reaches the model", "Flutter" in seen.get("profile", ""), str(seen)[:120])
+    _check("the postings are numbered for it", "1. AI Trainer" in seen.get("listing", ""),
+           seen.get("listing", ""))
+    _check("the notes come back", "LLM evaluation" in notes, notes)
+
+    for private in ("912", "barnhart", "@gmail", "export, pa"):
+        _check(f"no contact detail in what was sent: {private}",
+               private not in (seen.get("profile", "") + seen.get("listing", "")).lower())
+
+    text = jobs.format_for_discord(found, notes)
+    _check("the notes are shown with the postings", "Worth a look" in text and "LLM evaluation" in text,
+           text[:160])
+    _check("and the listing still stands without them", "Worth a look" not in jobs.format_for_discord(found))
+
+
 def test_one_bad_source_does_not_stop_the_rest() -> None:
     """Four sources, each a separate network call. One being down is normal."""
     from agents import jobs
@@ -212,6 +255,8 @@ if __name__ == "__main__":
     test_matching()
     print("\nseen store and collection")
     test_seen_and_collect()
+    print("\nranking against a profile")
+    test_ranking_uses_a_profile_without_contact_details()
     print("\na source being down")
     test_one_bad_source_does_not_stop_the_rest()
 
