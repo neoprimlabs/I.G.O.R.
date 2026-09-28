@@ -29,14 +29,19 @@ from agents import self_describe
 
 
 def _normalise(text: str) -> str:
-    """Score against ASCII.
+    """Score against ASCII, with hyphens and spacing treated as the same thing.
 
-    2026-09-28: an answer containing "30 days" - a narrow no-break space the
-    model emitted and nobody can see - scored as missing "30 days". The Discord
-    layer already sanitises punctuation on the way out, so scoring the raw string
-    measures something the user never receives.
+    Two correct answers were failed by this scorer on 2026-09-28, an hour apart.
+    First "30 days" - a narrow no-break space nobody can see - missed "30 days".
+    Then "content-filter" missed "no content filter" on the hyphen alone. The model
+    is writing prose; how it joins two words is not a fact about IGOR.
+
+    Hyphens become spaces and runs of whitespace collapse. Underscores are left
+    alone, because the expected strings include real identifiers like read_file and
+    schedule_config.md where the underscore is the name.
     """
-    return sanitize.clean(text or "").lower()
+    cleaned = sanitize.clean(text or "").lower().replace("-", " ")
+    return " ".join(cleaned.split())
 
 # Strings that only appear if the model invented something. "content filter" is not
 # here: the correct answer to "do you have a content filter" contains that phrase.
