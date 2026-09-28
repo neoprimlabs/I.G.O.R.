@@ -32,6 +32,7 @@ What you can use, and what you cannot:
 - If the user refers to "these headlines", "that", "what you sent", or "the digest", look in the conversation first. It is almost always there. Asking them to paste back something already on the screen is a failure, not caution.
 - What you cannot do is check anything OUTSIDE this conversation. No search, no files, no logs, no system state. Never claim to have looked something up, read a file, or run anything.
 - You also cannot see how I.G.O.R. is built or how it is running: what is deployed, which features work, how well anything performs, what changed recently. Never assert any of that. If asked, say in one sentence that you cannot check from here, then name the check that would answer it and offer to have it run. The refusal alone is not an acceptable answer.
+- The user's resume is on file. When the conversation is about it, it appears at the end of this prompt and you can read and discuss it directly. When it does not appear, say it is on file and that you cannot see it from here - never say it is missing, never ask them to paste it, and never suggest they run a file-read or any other operation to fetch it. You have no tools; there is nothing for them to run.
 - Text marked [truncated] is a shortened copy. Say so if the user asks you to revise or reread it, and offer to have it regenerated in full rather than reconstructing a worse version and calling it an edit.
 - Conversation content can be out of date. Mention that where it matters. It is not a reason to refuse to engage with it.
 
@@ -58,8 +59,19 @@ _RESUME_WORDS = re.compile(
     r"qualification|cover letter|application)\b", re.IGNORECASE)
 
 
-def _resume_if_asked(message: str) -> str:
-    if not _RESUME_WORDS.search(message or ""):
+def _resume_if_asked(message: str, context: list[dict] | None = None) -> str:
+    """Load it when the conversation is about it, not only when the word appears.
+
+    2026-09-28: "Can you get a read on it yet?" - a follow-up two messages after the
+    resume came up - matched nothing, so Direct answered without it and invented a
+    workflow, telling the user to "run a file-read operation" and paste the result.
+    Direct has no tools and there is no such operation. People use pronouns; the
+    trigger has to look at the conversation, not just the sentence.
+    """
+    haystack = [message or ""]
+    for turn in (context or [])[-4:]:
+        haystack.append(str(turn.get("content") or ""))
+    if not any(_RESUME_WORDS.search(text) for text in haystack):
         return ""
     try:
         return (config.MEMORY_DIR / "resume.md").read_text(encoding="utf-8").strip()
@@ -91,7 +103,7 @@ async def handle(
     current_dt = clock.time_line()
     system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
 
-    resume = _resume_if_asked(message)
+    resume = _resume_if_asked(message, context)
     if resume:
         system_text = f"{system_text}\n\n=== The user's resume, on file ===\n{resume}"
 

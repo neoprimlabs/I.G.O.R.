@@ -72,6 +72,46 @@ def test_direct_gets_it_when_asked() -> None:
                direct._resume_if_asked(message) == "", message)
 
 
+def test_follow_ups_keep_it_loaded() -> None:
+    """The real 2026-09-28 exchange. Two messages after the resume came up, "Can you
+    get a read on it yet?" matched nothing, so Direct answered without it and told
+    the user to run a file-read operation and paste the result. It has no tools."""
+    from agents import direct
+
+    _fresh()
+    talking_about_it = [
+        {"role": "user", "content": "resume.md?"},
+        {"role": "assistant", "content": "I'm aware a resume.md is stored but cannot open it."},
+    ]
+    for follow_up in ("Can you get a read on it yet?",
+                      "can you see it now",
+                      "what about that file"):
+        _check(f"a pronoun follow-up still loads it: {follow_up[:34]}",
+               "Pizzeria Davide" in direct._resume_if_asked(follow_up, talking_about_it),
+               follow_up)
+
+    unrelated = [
+        {"role": "user", "content": "what's the weather"},
+        {"role": "assistant", "content": "Rain today, 75F."},
+    ]
+    _check("an unrelated conversation does not load it",
+           direct._resume_if_asked("can you see it now", unrelated) == "")
+    _check("and neither does no context at all",
+           direct._resume_if_asked("can you see it now") == "")
+
+
+def test_direct_is_told_what_is_true() -> None:
+    """Without the resume in the prompt, Direct improvised a file-read operation and
+    asked for a paste. The prompt has to state the situation, not just withhold."""
+    from agents import direct
+
+    prompt = direct._DEFAULT_SYSTEM_PROMPT.lower()
+    _check("the prompt says the resume is on file", "resume is on file" in prompt)
+    _check("it forbids asking for a paste", "never ask them to paste" in prompt)
+    _check("it forbids inventing a fetch operation", "file-read" in prompt)
+    _check("it says not to claim the file is missing", "never say it is missing" in prompt)
+
+
 def test_a_missing_file_is_not_a_crash() -> None:
     from agents import direct
 
