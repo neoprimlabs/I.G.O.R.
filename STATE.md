@@ -163,6 +163,32 @@ the profile - skills and work history, no name, phone, email or address.
 (Pittsburgh) on one resume and New Dimension Comics (Tarentum) on the other, with
 identical duties. One is wrong. Ask before either version goes to an employer.
 
+## Unfinished: the resume is readable by one agent and not the other (2026-09-28)
+
+**Works:** the file is stored at `memory/resume.md`, unreachable by any tool, and
+Direct discusses it fine when the router sends a message to CHAT. It loads on turns
+whose message or last four turns mention a resume, CV, work history or cover letter.
+The job ranking uses `memory/private/profile.md` daily, which is where IGOR knowing
+his history actually pays off.
+
+**Does not work:** "Can you read resume.md?" routes TASK to React, which is sealed,
+so it correctly but uselessly says it cannot open the file. Whether the user gets
+Direct or React depends on phrasing, so the behaviour looks random from outside.
+
+**Three attempts, three different paths, because I patched symptoms.** First the
+refusal message (React), then the trigger words (Direct), then conversational
+follow-ups (Direct). Each fix was correct and none addressed the design: the rule is
+split across two agents and the router picks which one answers.
+
+**The fix, when someone picks this up:** make the quarantine symmetric instead of
+sealing React. One rule - private data and the open web never share a turn. React may
+read `resume.md` when no web tool has run in the turn, and reading it switches off
+`search` and `fetch_url` for the rest of that turn, exactly as reading the web already
+switches off the state-changing tools. That removes the split, so both agents behave
+the same way and phrasing stops mattering. It is a change to `react.py`'s tool loop,
+which is the most security-critical file in the repo: do it with tests first, and
+verify both directions (private-then-web refused, web-then-private refused).
+
 ## Private memory files are now actually private (2026-09-27)
 
 ARCHITECTURE claimed since August that `corrections.md` and `drafts.md` were
