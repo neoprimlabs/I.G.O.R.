@@ -44,7 +44,7 @@ _MAX_REPORTED = 8
 # assistants and crypto traders. The model ranks everything that survives the net
 # against the profile, so the net can afford to be loose - but only if ranking sees
 # all of it rather than an arbitrary first eight.
-_MAX_RANKED = 30
+_MAX_RANKED = 40
 
 # Companies whose Greenhouse boards are worth watching. Kept short and editable:
 # each is one HTTP call a day, and a long list buys noise rather than coverage.
@@ -52,6 +52,18 @@ _MAX_RANKED = 30
 # are not on Greenhouse under those names. A slug that 404s is two wasted calls a day
 # and a warning in the log, so it comes out rather than staying hopefully.
 _GREENHOUSE_BOARDS = ("anthropic", "scaleai", "invisibletech")
+
+# RemoteOK filters server-side by tag, verified 2026-09-30: support 99, testing 100,
+# quality-assurance 100, data-entry 88, ai 85, ml 75, annotation 20 - and qa returns
+# 0, so it is not here. Ordered most specific first, because more postings arrive
+# than the ranker reads and the tail is what gets cut.
+#
+# Remotive ignores both ?search= and ?category=: every variation returned the same
+# 16 jobs. It stays as one plain fetch rather than pretending to be filtered.
+_REMOTEOK_TAGS = (
+    "annotation", "quality-assurance", "testing", "customer-support",
+    "support", "data-entry", "ai", "ml",
+)
 
 _WWR_FEEDS = (
     "remote-customer-support-jobs",
@@ -165,12 +177,21 @@ def _from_wwr(payload: str) -> list[dict]:
 
 
 def _matches(job: dict, wanted: list[str], excluded: list[str]) -> bool:
+    """Exclusions and remote-ness only, unless a Titles list is configured.
+
+    The title list was a hand-maintained gate and was wrong in both directions in a
+    single day: 9 matches out of 1043 when narrow, payroll assistants and a crypto
+    trader when widened. Topical relevance belongs to the sources - deliberately
+    chosen RemoteOK tags and WWR categories - and the choosing belongs to the model,
+    which reads the profile. Keeping the list optional means it can still be used to
+    narrow things, but nothing depends on it being right.
+    """
     title = (job.get("title") or "").lower()
     if not title or not job.get("url"):
         return False
     if any(term in title for term in excluded):
         return False
-    if not any(term in title for term in wanted):
+    if wanted and not any(term in title for term in wanted):
         return False
 
     location = (job.get("location") or "").lower()
@@ -260,10 +281,12 @@ def record_found(found: list[dict], notes: str = "", now: Optional[datetime] = N
 
 
 def _live_fetchers():
-    sources = [
-        ("remotive", lambda: _from_remotive(_get("https://remotive.com/api/remote-jobs?limit=100"))),
-        ("remoteok", lambda: _from_remoteok(_get("https://remoteok.com/api"))),
-    ]
+    sources = []
+    for tag in _REMOTEOK_TAGS:
+        sources.append((f"remoteok:{tag}", lambda g=tag: _from_remoteok(
+            _get(f"https://remoteok.com/api?tag={g}"))))
+    sources.append(
+        ("remotive", lambda: _from_remotive(_get("https://remotive.com/api/remote-jobs"))))
     for feed in _WWR_FEEDS:
         sources.append((f"wwr:{feed}", lambda f=feed: _from_wwr(
             _get(f"https://weworkremotely.com/categories/{f}.rss", accept="application/rss+xml"))))
@@ -277,9 +300,6 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
     """New matching postings, newest source first. Never raises."""
     now = now or datetime.now(timezone.utc)
     wanted, excluded = _criteria()
-    if not wanted:
-        logger.info("Job watch: no titles in job_search.md, nothing to look for")
-        return []
 
     seen = set(_load_seen())
     found, by_url = [], set()

@@ -127,6 +127,46 @@ def test_normalisers() -> None:
     _check("malformed xml is no postings either", jobs._from_wwr("<not xml") == [])
 
 
+def test_titles_are_optional_now() -> None:
+    """The title list was a hand-maintained gate and was wrong in both directions in
+    one day: 9 matches of 1043 when narrow, payroll assistants and a crypto trader
+    when widened. Topical relevance now comes from the sources - RemoteOK tags chosen
+    deliberately - and ranking does the selecting. With no Titles section, only the
+    exclusions and the remote check apply."""
+    from agents import jobs
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (config.MEMORY_DIR / "job_search.md").write_text(
+        "# Job Search\n\n## Exclude\n- senior\n- staff engineer\n", encoding="utf-8")
+    wanted, excluded = jobs._criteria()
+    _check("no titles configured is allowed", wanted == [], str(wanted))
+    _check("exclusions still read", "senior" in excluded, str(excluded))
+
+    keep = {"title": "Customer Support Specialist", "company": "Warehance",
+            "location": "Remote", "url": "https://x/1", "source": "remoteok:support"}
+    _check("anything remote and not excluded survives", jobs._matches(keep, wanted, excluded))
+    _check("an exclusion still wins",
+           not jobs._matches(dict(keep, title="Senior Support Engineer"), wanted, excluded))
+    _check("an on-site role is still dropped",
+           not jobs._matches(dict(keep, location="Austin, TX"), wanted, excluded))
+    _check("and collect no longer gives up when no titles are set",
+           jobs.collect(now=NOW, fetchers=[("remoteok:support", lambda: [keep])]) == [keep])
+
+
+def test_source_order_decides_what_the_ranker_sees() -> None:
+    """More postings than the ranker takes, so the order is load-bearing. Specific
+    tags come before broad ones: an annotation role should reach the model before the
+    hundredth generic AI listing."""
+    from agents import jobs
+
+    _check("the specific tags come first",
+           jobs._REMOTEOK_TAGS.index("annotation") < jobs._REMOTEOK_TAGS.index("ai"),
+           str(jobs._REMOTEOK_TAGS))
+    _check("qa is not among them - it returns nothing",
+           "qa" not in jobs._REMOTEOK_TAGS, str(jobs._REMOTEOK_TAGS))
+    _check("the ranker sees more than one screenful", jobs._MAX_RANKED >= 30)
+
+
 def test_matching() -> None:
     from agents import jobs
 
@@ -289,6 +329,9 @@ if __name__ == "__main__":
     test_criteria()
     print("\nnormalisers")
     test_normalisers()
+    print("\ntitles are optional")
+    test_titles_are_optional_now()
+    test_source_order_decides_what_the_ranker_sees()
     print("\nmatching")
     test_matching()
     print("\nseen store and collection")
