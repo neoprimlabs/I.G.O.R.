@@ -206,6 +206,52 @@ def remember(found: list[dict], now: Optional[datetime] = None) -> None:
         logger.error("Could not write jobs_seen.json - %s: %s", type(e).__name__, e)
 
 
+def record_found(found: list[dict], notes: str = "", now: Optional[datetime] = None) -> None:
+    """Keep what was found and what was said about fit, so IGOR can answer later.
+
+    Without this the morning message is the only copy: it goes to Discord, lands in
+    context.db, and scrolls out of the window within a few turns. Asked "which jobs
+    that you've found recently would be the best fit for me", IGOR had nothing to
+    read and asked the user to describe his own background back to it.
+
+    Not private. These are public listings, and they already reach React through the
+    conversation. Reading this file does not close the web - reading the resume does,
+    which is what breaks the trifecta if both happen in one turn.
+    """
+    now = now or datetime.now(timezone.utc)
+    horizon = now - timedelta(days=_SEEN_DAYS)
+    path = config.MEMORY_DIR / "jobs_found.md"
+
+    kept = []
+    try:
+        for block in path.read_text(encoding="utf-8").split("\n## ")[1:]:
+            stamp = block.split("\n", 1)[0].strip()
+            try:
+                if datetime.fromisoformat(stamp) >= horizon:
+                    kept.append(block.rstrip())
+            except ValueError:
+                continue
+    except OSError:
+        pass
+
+    lines = [f"{now.isoformat()}"]
+    for job in found:
+        company = f" - {job['company']}" if job.get("company") else ""
+        lines.append(f"- {job['title']}{company}\n  {job['url']}")
+    if notes:
+        lines.append(f"\nFit notes:\n{notes.strip()}")
+    kept.insert(0, "\n".join(lines))
+
+    body = ("# Jobs found\n\nWritten by the daily job watch. Newest first, kept "
+            f"{_SEEN_DAYS} days.\n\n## " + "\n\n## ".join(kept) + "\n")
+    try:
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.error("Could not write jobs_found.md - %s: %s", type(e).__name__, e)
+
+
 def _live_fetchers():
     sources = [
         ("remotive", lambda: _from_remotive(_get("https://remotive.com/api/remote-jobs?limit=100"))),
