@@ -114,8 +114,8 @@ _TOOLS = [
                     "type": "string",
                     "enum": [
                         "tasks.md", "projects.md", "user.md", "agents.md",
-                        "digest_config.md", "watchlist.md",
-                        "research.md", "presence_config.md",
+                        "digest_config.md", "watchlist.md", "research.md",
+                        "presence_config.md", "job_search.md", "jobs_found.md",
                     ],
                     "description": "The file to read",
                 }
@@ -276,6 +276,7 @@ When to use tools:
 - search: current information, facts you are uncertain about, documentation, news, anything time-sensitive. For anything time-sensitive, set recency_days - without it you will get years-old articles that read as current
 - Every search result carries a Published date. Check it against the current date at the top of this prompt before calling anything recent, latest, or new. If the best sources you found are old, say how old rather than presenting them as current
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
+- memory_read jobs_found.md: what the daily job watch found recently and what it said about fit. Read it for any question about jobs it has found, before asking the user anything
 - read_file on memory/resume.md: the user's resume is on file and you CAN read it, including to answer which jobs suit him. The moment you do, search and fetch_url close for the rest of the turn - private data and the open web never share a turn - so read it first, or not at all in a turn that needs the web. If you have already searched, say it is on file, that you cannot open it in this turn, and offer to look in a new message. Never say it is missing and never ask him to paste it
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory

@@ -250,6 +250,9 @@ async def _job_watch() -> None:
         notes = await jobs.rank(found)
         if await _send_fn(jobs.format_for_discord(found, notes)):
             jobs.remember(found)
+            # Kept so "which of these fits me best" can be answered later. The
+            # Discord message scrolls out of the context window within a few turns.
+            jobs.record_found(found, notes)
     except Exception as e:
         logger.error("Job watch failed - %s: %s", type(e).__name__, e)
 

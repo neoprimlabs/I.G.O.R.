@@ -229,6 +229,44 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     _check("and the listing still stands without them", "Worth a look" not in jobs.format_for_discord(found))
 
 
+def test_what_was_found_is_kept() -> None:
+    """Asked "which jobs that you've found recently would be the best fit for me",
+    IGOR had nothing to read and asked the user to describe his own background back
+    to it. The morning message was the only copy, and it scrolls out of context."""
+    from agents import react
+    from agents import jobs
+
+    path = _fresh()
+    found = [{"title": "AI Trainer", "company": "iMerit", "url": "https://x/1",
+              "location": "Worldwide", "source": "remotive"},
+             {"title": "QA Tester Entry Level", "company": "Ace IT", "url": "https://x/2",
+              "location": "Remote", "source": "remoteok"}]
+    jobs.record_found(found, "1. AI Trainer - matches the daily LLM evaluation work.", now=NOW)
+
+    text = (path / "jobs_found.md").read_text(encoding="utf-8")
+    _check("the postings are kept", "AI Trainer" in text and "QA Tester" in text, text[:120])
+    _check("with their links", "https://x/1" in text, text[:200])
+    _check("and the fit notes", "daily LLM evaluation" in text, text[:300])
+
+    later = [{"title": "Support Specialist", "company": "Warehance", "url": "https://x/3",
+              "location": "Remote", "source": "wwr"}]
+    jobs.record_found(later, "", now=NOW + timedelta(days=1))
+    text = (path / "jobs_found.md").read_text(encoding="utf-8")
+    _check("a later run keeps the earlier one", "AI Trainer" in text and "Support Specialist" in text,
+           text[:200])
+    _check("newest first", text.index("Support Specialist") < text.index("AI Trainer"), text[:200])
+
+    jobs.record_found([], "", now=NOW + timedelta(days=40))
+    text = (path / "jobs_found.md").read_text(encoding="utf-8")
+    _check("and entries older than the window are dropped", "AI Trainer" not in text, text[:200])
+
+    enum = [t for t in react._TOOLS if t["name"] == "memory_read"][0]
+    allowed = enum["input_schema"]["properties"]["file"]["enum"]
+    _check("React is allowed to read it", "jobs_found.md" in allowed, str(allowed))
+    _check("and it is not treated as private",
+           not react._is_private((config.MEMORY_DIR / "jobs_found.md").resolve()))
+
+
 def test_one_bad_source_does_not_stop_the_rest() -> None:
     """Four sources, each a separate network call. One being down is normal."""
     from agents import jobs
