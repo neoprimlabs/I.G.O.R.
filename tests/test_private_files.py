@@ -67,9 +67,10 @@ async def test_read_file() -> None:
     for private in ("memory/resume.md", "memory/corrections.md", "memory/drafts.md",
                     "memory/private/notes.md"):
         out = await react._read_server_file(private)
+        low = out.lower()
         _check(f"read_file refuses {private}",
-               "private file" in out.lower() and "912" not in out and "digest goes out" not in out,
-               out[:100])
+               ("private file" in low or "sealed" in low)
+               and "912" not in out and "digest goes out" not in out, out[:100])
 
     # 2026-09-28: asked "resume.md?", IGOR said "I don't see a resume.md file in the
     # current workspace" and offered to store one if the user pasted it. The file
@@ -129,7 +130,7 @@ async def test_writes() -> None:
            "912" in (root / "memory" / "resume.md").read_text(encoding="utf-8"))
 
     out = await react._patch_server_file("memory/corrections.md", "digest", "nonsense")
-    _check("patch_file refuses one too", "private file" in out.lower(), out[:90])
+    _check("patch_file refuses one too", "sealed" in out.lower(), out[:90])
 
 
 if __name__ == "__main__":
