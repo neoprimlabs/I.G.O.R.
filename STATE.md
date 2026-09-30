@@ -163,7 +163,34 @@ the profile - skills and work history, no name, phone, email or address.
 (Pittsburgh) on one resume and New Dimension Comics (Tarentum) on the other, with
 identical duties. One is wrong. Ask before either version goes to an employer.
 
-## Unfinished: the resume is readable by one agent and not the other (2026-09-28)
+## Job watch went silent for five days, and why (2026-09-30)
+
+It worked, then stopped, and nothing said so. Deliveries: 10 postings on 09-23, 2 on
+09-24, 1 on 09-25, then **zero every day through 09-30**.
+
+Measured cause: 1043 postings fetched, **9 matched the keywords**, and all 9 had
+already been sent. These feeds are static - the same roles stay listed for weeks -
+so "new matches only" means permanent silence once the backlog is cleared.
+
+Widening `job_search.md` to generic words (assistant, operations, junior) took it to
+31 matches and pulled in payroll assistants and crypto traders. Trimmed back to 11,
+which are the right kind. **The keyword list is a coarse net, not the selector** -
+`jobs.rank` does the selecting against the profile, and now sees up to 30 matches
+rather than an arbitrary first 8.
+
+**Still unsolved: silence when nothing is new.** The watch returns early and sends
+nothing, which is indistinguishable from being broken - it is how this went unnoticed
+for five days. The fix is a weekly "nothing new, these are still open" message, or a
+shorter dedupe window so open roles resurface. Not built; decide which before the
+next quiet week.
+
+**Also fixed 09-30:** the watch kept no record of what it found, so asked "which jobs
+that you've found recently fit me best", IGOR had nothing to read and asked the user
+to describe his own background back to it. `jobs.record_found` now writes
+`memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
+list. Backfilled with today's 11 so it is answerable now.
+
+## Resolved: the resume split (2026-09-28, fixed 2026-09-30)
 
 **Works:** the file is stored at `memory/resume.md`, unreachable by any tool, and
 Direct discusses it fine when the router sends a message to CHAT. It loads on turns
@@ -180,8 +207,7 @@ refusal message (React), then the trigger words (Direct), then conversational
 follow-ups (Direct). Each fix was correct and none addressed the design: the rule is
 split across two agents and the router picks which one answers.
 
-**The fix, when someone picks this up:** make the quarantine symmetric instead of
-sealing React. One rule - private data and the open web never share a turn. React may
+**FIXED 2026-09-30.** The quarantine is symmetric instead of React being sealed. One rule - private data and the open web never share a turn. React may
 read `resume.md` when no web tool has run in the turn, and reading it switches off
 `search` and `fetch_url` for the rest of that turn, exactly as reading the web already
 switches off the state-changing tools. That removes the split, so both agents behave

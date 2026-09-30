@@ -39,6 +39,13 @@ _SEEN_DAYS = 30
 _TIMEOUT = 20
 _MAX_REPORTED = 8
 
+# Keywords are a coarse net, not the selector. A narrow list matched 9 of 1043
+# postings and the watch went silent for five days; widening it pulled in payroll
+# assistants and crypto traders. The model ranks everything that survives the net
+# against the profile, so the net can afford to be loose - but only if ranking sees
+# all of it rather than an arbitrary first eight.
+_MAX_RANKED = 30
+
 # Companies whose Greenhouse boards are worth watching. Kept short and editable:
 # each is one HTTP call a day, and a long list buys noise rather than coverage.
 # openai and surgehq were here until 2026-09-28 and returned 404 on every run - they
@@ -335,7 +342,7 @@ async def rank(found: list[dict], ask=None) -> str:
         return ""
     listing = "\n".join(
         f"{i + 1}. {j['title']} - {j.get('company') or 'unknown company'}"
-        for i, j in enumerate(found[:_MAX_REPORTED]))
+        for i, j in enumerate(found[:_MAX_RANKED]))
     try:
         if ask is not None:
             return (await ask(profile, listing) or "").strip()
