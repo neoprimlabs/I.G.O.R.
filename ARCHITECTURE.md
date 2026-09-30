@@ -76,10 +76,12 @@ user sends.
 `agents.md` (**standing preferences only - NOT the agent list above**), `tasks.md`,
 `projects.md`, `user.md`, `watchlist.md`, `research.md`, `job_search.md`, plus
 `context.db` (SQLite history). `memory_write` takes a filename from a fixed list.
-`corrections.md`, `drafts.md`, `resume.md` and anything under `memory/private/` are
-readable by no agent: `react._is_private`, called from `_safe_path`, makes
-`read_file`, `patch_file` and `write_file` refuse them and `search_memory` skip
-them.
+`corrections.md` and `drafts.md` are **sealed in every turn** - they hold text
+derived from untrusted input. `resume.md` and `memory/private/` are **guarded**:
+React may read them when no web content has entered the turn, and doing so closes
+`search` and `fetch_url` for the rest of it. **Private data and the open web never
+share a turn, in either direction.** No agent may write any of them, and
+`search_memory` skips them all.
 
 **Deployment** runs through a root-owned script at
 `/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach:
