@@ -66,10 +66,14 @@ before any model call: silent 03:00-10:00 local, 4h between messages, 2 a day, 6
 calls a day, never within 20 minutes of a live conversation. **Off unless
 `memory/presence_config.md` says `state: on`.**
 
-**Job watch** (`agents/jobs.py`) checks Remotive, RemoteOK, We Work Remotely and
-Greenhouse boards daily for remote postings matching `memory/job_search.md`. Indeed
-is not a source: no usable API. **IGOR never applies** - it reports and drafts; the
-user sends.
+**Job watch** (`agents/jobs.py`) runs daily. Topical relevance comes from the
+sources - eight RemoteOK tags, three We Work Remotely category feeds, Greenhouse
+boards, plus Remotive, which ignores its own search and category parameters. Code
+keeps only what it can be right about (remote, not excluded per
+`memory/job_search.md`, not already sent); the model ranks the rest against
+`memory/private/profile.md` and what it finds is kept in `memory/jobs_found.md`.
+Indeed is not a source: no usable API. **IGOR never applies** - it reports and
+drafts; the user sends.
 
 **Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
 (digest sections and keyword exclusions), `schedule_config.md` (digest time),

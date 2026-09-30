@@ -86,6 +86,22 @@ def _get(url: str, accept: str = "application/json") -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def _repair(text: str) -> str:
+    """Undo UTF-8 read as latin-1, which some feeds ship already broken.
+
+    RemoteOK returned "Freelance grabaciÃ³n de tareas" on 2026-09-30. Decoding our
+    side is correct - the bytes arrive that way - so the repair is to reverse the
+    mis-decode, and only when it demonstrably helps.
+    """
+    if "Ã" not in text and "â" not in text:
+        return text
+    try:
+        repaired = text.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+    return repaired if repaired.count("�") <= text.count("�") else text
+
+
 def _criteria() -> tuple[list[str], list[str]]:
     """Wanted titles and exclusions from memory/job_search.md."""
     try:
@@ -117,8 +133,8 @@ def _from_remotive(payload: str) -> list[dict]:
         return []
     out = []
     for job in data.get("jobs", []) if isinstance(data, dict) else []:
-        out.append({"title": (job.get("title") or "").strip(),
-                    "company": (job.get("company_name") or "").strip(),
+        out.append({"title": _repair((job.get("title") or "").strip()),
+                    "company": _repair((job.get("company_name") or "").strip()),
                     "location": (job.get("candidate_required_location") or "").strip(),
                     "url": (job.get("url") or "").strip(),
                     "source": "remotive"})
@@ -135,8 +151,8 @@ def _from_remoteok(payload: str) -> list[dict]:
         # The first element is a legal notice, not a posting.
         if not isinstance(job, dict) or not job.get("position"):
             continue
-        out.append({"title": (job.get("position") or "").strip(),
-                    "company": (job.get("company") or "").strip(),
+        out.append({"title": _repair((job.get("position") or "").strip()),
+                    "company": _repair((job.get("company") or "").strip()),
                     "location": (job.get("location") or "").strip(),
                     "url": (job.get("url") or "").strip(),
                     "source": "remoteok"})
@@ -168,8 +184,8 @@ def _from_wwr(payload: str) -> list[dict]:
     for item in root.iter("item"):
         raw = (item.findtext("title") or "").strip()
         company, _, title = raw.partition(":")
-        out.append({"title": (title or raw).strip(),
-                    "company": company.strip() if title else "",
+        out.append({"title": _repair((title or raw).strip()),
+                    "company": _repair(company.strip()) if title else "",
                     "location": "",
                     "url": (item.findtext("link") or "").strip(),
                     "source": "wwr"})
