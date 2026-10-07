@@ -247,10 +247,16 @@ async def _price_watch() -> None:
     try:
         loop = asyncio.get_running_loop()
         hits = await loop.run_in_executor(None, prices.check)
-        if not hits:
+        if hits:
+            if await _send_fn(prices.format_for_discord(hits)):
+                prices.remember(hits)
             return
-        if await _send_fn(prices.format_for_discord(hits)):
-            prices.remember(hits)
+        # Nothing under target. Once a week say so anyway, with how close it got:
+        # a watcher that only speaks on success cannot be told apart from a broken
+        # one, which is how the job watch sat silent for five days.
+        note = await loop.run_in_executor(None, prices.heartbeat)
+        if note:
+            await _send_fn(note)
     except Exception as e:
         logger.error("Price watch failed - %s: %s", type(e).__name__, e)
 

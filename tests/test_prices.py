@@ -166,6 +166,37 @@ def test_message() -> None:
     _check("and links the deal", "slickdeals.net/f/1" in text, text)
 
 
+def test_the_weekly_heartbeat() -> None:
+    """A watcher that only speaks on success cannot be trusted to be watching. The
+    job watch sent nothing for five days and neither of us noticed until a question
+    came in that it could not answer."""
+    from agents import prices
+
+    _fresh()
+    prices.check(fetch=lambda q: prices._from_feed(FEED))
+
+    state = prices._load_state()
+    _check("the closest price is recorded even with no hit",
+           state["closest"]["Mac mini M6"]["price"] == 769.0, str(state.get("closest")))
+    _check("along with the target it is being judged against",
+           state["closest"]["Mac mini M6"]["under"] == 700.0, str(state.get("closest")))
+
+    text = prices.heartbeat(now=NOW)
+    _check("the first heartbeat goes out", "Still watching" in text, text)
+    _check("naming the item and how close it got",
+           "Mac mini M6" in text and "769" in text, text)
+    _check("and the target", "700" in text, text)
+
+    _check("a second one the same day does not",
+           prices.heartbeat(now=NOW + timedelta(days=2)) == "",
+           prices.heartbeat(now=NOW + timedelta(days=2)))
+    _check("but one a week later does",
+           "Still watching" in prices.heartbeat(now=NOW + timedelta(days=8)))
+
+    _fresh()
+    _check("nothing watched means no heartbeat at all", prices.heartbeat(now=NOW) == "")
+
+
 def test_a_broken_feed_is_not_a_crash() -> None:
     from agents import prices
 
@@ -184,6 +215,8 @@ if __name__ == "__main__":
     test_seen_store()
     print("\nthe message")
     test_message()
+    print("\nthe weekly heartbeat")
+    test_the_weekly_heartbeat()
     print("\nbroken input")
     test_a_broken_feed_is_not_a_crash()
 
