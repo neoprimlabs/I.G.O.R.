@@ -48,7 +48,13 @@ failure falls through to React.
 **Questions about IGOR go to SelfDescribe, not React**, which returns
 `NOT_ABOUT_IGOR` for messages that are really tasks.
 
-**Scheduling.** APScheduler, in-process. Seven jobs, all registered *in code* in
+**Price watch** (`agents/prices.py`) reads `memory/price_watch.md` - a heading, a
+`query:` and an `under:` price per item - and checks Slickdeals' RSS search every two
+hours, reporting anything under target. No key, no scraping, no model call: retailers
+block this server outright (Best Buy refuses, Micro Center and PCPartPicker 403) and
+Best Buy's API no longer issues keys to free email addresses.
+
+**Scheduling.** APScheduler, in-process. Eight jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model check (daily 09:00
 plus once per start), an advocacy draft (Mondays 15:00), a job watch (14:30), a
 check every 60s for due scheduled messages, and a presence tick every 10 minutes.
