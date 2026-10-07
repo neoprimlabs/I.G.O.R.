@@ -16,6 +16,7 @@ dips below X" anyway.
 Fixtures are trimmed from a real response.
 """
 
+import asyncio
 import json
 import sys
 import tempfile
@@ -226,6 +227,140 @@ def test_the_weekly_heartbeat() -> None:
     _check("nothing watched means no heartbeat at all", prices.heartbeat(now=NOW) == "")
 
 
+AG01_WANT = ("An AOOSTAR AG01 or an equivalent OCuLink dock with the power supply "
+             "built in. A bare enclosure I have to power from my own ATX unit is not it.")
+
+DEG1 = ("MINISFORUM DEG1 External GPU Docking Station, Mini eGPU Enclosure for "
+        "RTX 4090, AMD RX 7900 XTX $99")
+AG01 = "AOOSTAR AG01 OCuLink eGPU Dock with 800W Built-In Huntkey PSU $179"
+
+
+def _judged(verdict_text, hits=None):
+    """Run judge against a canned model reply."""
+    from agents import prices
+
+    async def ask(listing):
+        return verdict_text
+
+    return asyncio.run(prices.judge(hits if hits is not None else _two_docks(), ask=ask))
+
+
+def _two_docks() -> list[dict]:
+    return [
+        {"name": "AOOSTAR AG01 eGPU dock", "under": 200.0, "price": 99.0,
+         "title": DEG1, "url": "https://slickdeals.net/f/deg1", "want": AG01_WANT},
+        {"name": "AOOSTAR AG01 eGPU dock", "under": 200.0, "price": 179.0,
+         "title": AG01, "url": "https://slickdeals.net/f/ag01", "want": AG01_WANT},
+    ]
+
+
+def test_the_want_line() -> None:
+    from agents import prices
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (config.MEMORY_DIR / "price_watch.md").write_text(
+        "## AOOSTAR AG01 eGPU dock\nquery: egpu dock\nwant: " + AG01_WANT + "\nunder: 200\n",
+        encoding="utf-8")
+
+    items = prices._watchlist()
+    _check("the want line is read", items and items[0]["want"] == AG01_WANT, str(items))
+
+    deals = [{"title": DEG1, "url": "https://slickdeals.net/f/deg1", "posted": None}]
+    hits = prices._hits(items[0], deals, set(), now=NOW)
+    _check("and travels with the hit, so the judge knows what it is judging against",
+           hits and hits[0]["want"] == AG01_WANT, str(hits))
+
+    _fresh()
+    _check("a watch with no want line still works",
+           all(i["want"] == "" for i in prices._watchlist()), str(prices._watchlist()))
+
+
+def test_judging_the_product() -> None:
+    """2026-10-07: the first live alert was a Minisforum DEG1 at $99 against a watch
+    for an AOOSTAR AG01. Both are eGPU docks, both match every query word, and the
+    DEG1 was genuinely under target - but the AG01's whole point is the 800W supply
+    inside it and the DEG1 is a bare enclosure you power yourself. No keyword in
+    either title separates them, so the price and the words stay in code and the
+    product question goes to a model that has been told what is wanted."""
+    from agents import prices
+
+    _fresh()
+    kept = _judged("1. DROP - bare enclosure, no power supply\n"
+                   "2. KEEP - the dock with its 800W supply")
+    titles = [h["title"] for h in kept]
+    _check("the wrong product is not sent", DEG1 not in titles, str(titles))
+    _check("the right one is", AG01 in titles, str(titles))
+    _check("with the reason for keeping it",
+           kept and "800W" in kept[0].get("why", ""), str(kept))
+    _check("and the reason reaches the message",
+           "800W supply" in prices.format_for_discord(kept),
+           prices.format_for_discord(kept))
+
+    # Otherwise the same wrong product is fetched and judged again on every check,
+    # for as long as it stays posted - a model call every two hours to say no twice.
+    _check("a rejected listing is remembered so it is not judged twice",
+           "https://slickdeals.net/f/deg1" in prices._load_seen(),
+           str(prices._load_seen()))
+    _check("and a kept one is not remembered until it is actually sent",
+           "https://slickdeals.net/f/ag01" not in prices._load_seen(),
+           str(prices._load_seen()))
+
+
+def test_judging_fails_open() -> None:
+    """Every failure here arrives as a 200 OK. If an unreadable reply counted as
+    DROP, a real price drop would vanish with no error anywhere - which is worse
+    than the wrong suggestion this whole mechanism exists to prevent."""
+    from agents import prices
+
+    _fresh()
+    _check("an empty reply sends unfiltered rather than silently dropping everything",
+           len(_judged("")) == 2, str(_judged("")))
+    _check("so does a reply with no verdict in it",
+           len(_judged("I am not sure about either of these.")) == 2)
+    _check("nothing is remembered when the judgement did not happen",
+           prices._load_seen() == {}, str(prices._load_seen()))
+
+    async def raising(listing):
+        raise RuntimeError("rate limited")
+
+    out = asyncio.run(prices.judge(_two_docks(), ask=raising))
+    _check("a failed call sends unfiltered", len(out) == 2, str(out))
+
+    # Partial coverage is held, not dropped: the next check judges it again.
+    kept = _judged("2. KEEP - the dock with its PSU")
+    _check("an unjudged listing is held back", len(kept) == 1, str(kept))
+    _check("and not remembered, so the next check judges it again",
+           "https://slickdeals.net/f/deg1" not in prices._load_seen(),
+           str(prices._load_seen()))
+
+    _fresh()
+    plain = [{"name": "RTX 5070 Ti", "under": 650.0, "price": 599.99,
+              "title": "ASUS RTX 5070 Ti $599.99", "url": "https://slickdeals.net/f/1"}]
+    out = asyncio.run(prices.judge(plain))
+    _check("a watch with no want line makes no model call at all",
+           out == plain, str(out))
+
+
+def test_overlapping_watches_report_once() -> None:
+    """A specific watch and a broad one are both wanted, so the same listing answers
+    both. The seen store only stops repeats between runs, not inside one."""
+    from agents import prices
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (config.MEMORY_DIR / "price_watch.md").write_text(
+        "## AOOSTAR AG01 eGPU dock\nquery: aoostar ag01\nunder: 200\n\n"
+        "## eGPU dock, any brand\nquery: egpu dock\nunder: 200\n", encoding="utf-8")
+
+    feed = ('<?xml version="1.0"?><rss version="2.0"><channel><item>'
+            '<title>AOOSTAR AG01 eGPU Dock OCuLink 800W PSU $179</title>'
+            '<link>https://slickdeals.net/f/ag01</link></item></channel></rss>')
+    hits = prices.check(fetch=lambda q: prices._from_feed(feed))
+
+    _check("a listing matching two watches is reported once", len(hits) == 1, str(hits))
+    _check("under the more specific watch's name",
+           hits and hits[0]["name"] == "AOOSTAR AG01 eGPU dock", str(hits))
+
+
 def test_a_broken_feed_is_not_a_crash() -> None:
     from agents import prices
 
@@ -248,6 +383,14 @@ if __name__ == "__main__":
     test_message()
     print("\nthe weekly heartbeat")
     test_the_weekly_heartbeat()
+    print("\nthe want line")
+    test_the_want_line()
+    print("\njudging the product")
+    test_judging_the_product()
+    print("\njudging fails open")
+    test_judging_fails_open()
+    print("\noverlapping watches")
+    test_overlapping_watches_report_once()
     print("\nbroken input")
     test_a_broken_feed_is_not_a_crash()
 

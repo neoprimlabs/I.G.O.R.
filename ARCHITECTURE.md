@@ -49,10 +49,15 @@ failure falls through to React.
 `NOT_ABOUT_IGOR` for messages that are really tasks.
 
 **Price watch** (`agents/prices.py`) reads `memory/price_watch.md` - a heading, a
-`query:` and an `under:` price per item - and checks Slickdeals' RSS search every two
-hours, reporting anything under target. No key, no scraping, no model call: retailers
-block this server outright (Best Buy refuses, Micro Center and PCPartPicker 403) and
-Best Buy's API no longer issues keys to free email addresses.
+`query:`, an optional `want:` and an `under:` price per item - and checks Slickdeals'
+RSS search every two hours, reporting anything under target. No key and no scraping:
+retailers block this server outright (Best Buy refuses, Micro Center and PCPartPicker
+403) and Best Buy's API no longer issues keys to free email addresses. Price, query
+words and post age are judged in code; whether the listing is the *right product* is
+one `summary`-model call, made only when something is already under target, against
+the `want:` line. Listings it rejects are marked seen so they are not judged twice.
+Every failure of that call fails open and sends unfiltered, because an unreadable
+reply arrives as a 200 OK and would otherwise swallow a real drop in silence.
 
 **Scheduling.** APScheduler, in-process. Eight jobs, all registered *in code* in
 `monitor.setup()`: the morning digest (13:00 UTC), a Groq model check (daily 09:00

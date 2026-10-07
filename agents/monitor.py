@@ -259,6 +259,13 @@ async def _price_watch() -> None:
         loop = asyncio.get_running_loop()
         hits = await loop.run_in_executor(None, prices.check)
         if hits:
+            # Keywords and a price cannot tell one product from another. The first
+            # live alert was a Minisforum DEG1 at $99 against a watch for an AOOSTAR
+            # AG01 - both are eGPU docks, but the AG01's point is its built-in 800W
+            # supply and the DEG1 has none. Judged against what the watch says it
+            # wants, which costs one call and only when something is already cheap.
+            hits = await prices.judge(hits)
+        if hits:
             if await _send_fn(prices.format_for_discord(hits)):
                 prices.remember(hits)
             return
