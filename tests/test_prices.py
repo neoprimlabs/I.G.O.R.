@@ -240,6 +240,8 @@ if __name__ == "__main__":
     test_price_extraction()
     print("\nmatching")
     test_matching()
+    print("\nstale deals")
+    test_stale_deals_are_not_news()
     print("\nthe seen store")
     test_seen_store()
     print("\nthe message")
