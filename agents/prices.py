@@ -62,19 +62,29 @@ def _watchlist() -> list[dict]:
     except OSError:
         return []
 
-    items, current = [], None
+    items, current, in_want = [], None, False
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("## "):
             current = {"name": stripped[3:].strip(), "query": "", "under": None,
                        "want": ""}
             items.append(current)
+            in_want = False
         elif current is not None and stripped.lower().startswith("query:"):
             current["query"] = stripped.split(":", 1)[1].strip().lower()
+            in_want = False
         elif current is not None and stripped.lower().startswith("want:"):
             current["want"] = stripped.split(":", 1)[1].strip()
+            in_want = True
+        elif in_want and stripped and not stripped.lower().startswith("under:"):
+            # The want line is prose describing a product, which does not fit on one
+            # line and is the field most likely to be edited by hand. An indented
+            # continuation that got silently dropped would truncate the description
+            # mid-sentence and the judge would never know what it was missing.
+            current["want"] += " " + stripped
         elif current is not None and stripped.lower().startswith("under:"):
             raw = stripped.split(":", 1)[1].strip().lstrip("$").replace(",", "")
+            in_want = False
             try:
                 current["under"] = float(raw)
             except ValueError:

@@ -274,6 +274,27 @@ def test_the_want_line() -> None:
     _check("a watch with no want line still works",
            all(i["want"] == "" for i in prices._watchlist()), str(prices._watchlist()))
 
+    # The want line is prose about a product. It does not fit on one line, and a
+    # continuation that got silently dropped would truncate the description
+    # mid-sentence with nothing to show it had happened.
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (config.MEMORY_DIR / "price_watch.md").write_text(
+        "# Price Watch\n\nProse about how to edit this file, before any heading.\n\n"
+        "## Dock\nquery: oculink dock\n"
+        "want: A dock with its own power supply.\n"
+        "  A bare enclosure needing a separate ATX unit is not it.\n"
+        "under: 150\n\n"
+        "## Card\nquery: rtx 5070 ti\nunder: 650\n", encoding="utf-8")
+    items = prices._watchlist()
+    _check("an indented continuation is part of the want, not discarded",
+           items and items[0]["want"].endswith("is not it."), str(items[0]["want"]))
+    _check("and the first line is still there",
+           items and items[0]["want"].startswith("A dock with its own"), str(items[0]["want"]))
+    _check("the target after a want line is still read",
+           items and items[0]["under"] == 150.0, str(items[0]))
+    _check("a later watch with no want line stays empty",
+           len(items) == 2 and items[1]["want"] == "", str(items))
+
 
 def test_judging_the_product() -> None:
     """2026-10-07: the first live alert was a Minisforum DEG1 at $99 against a watch
