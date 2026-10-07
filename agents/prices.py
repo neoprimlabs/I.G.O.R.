@@ -205,27 +205,55 @@ def _closest(item: dict, deals: list[dict]) -> Optional[dict]:
     return best
 
 
-def heartbeat(now: Optional[datetime] = None) -> str:
-    """A weekly line proving it is alive, or empty when one is not due yet.
+_STATUS = "price_watch_status.md"
 
-    Silence is indistinguishable from being broken: the job watch sent nothing for
-    five days and neither of us noticed until the user asked a question it could not
-    answer. A watcher that only speaks on success cannot be trusted to be watching.
+
+def _write_status(items: list[dict], closest: dict, now: datetime) -> None:
+    """Proof it is running, as a file to be asked for rather than a message.
+
+    2026-10-07: this was a weekly "Still watching" DM, and the user's verdict on the
+    first one was "not a good use of a message". He was right, and it was wrong three
+    ways at once. It existed to answer my question - is this thing alive - not his.
+    It quoted a $44 "closest" for an OCuLink dock, which was a cable, because the
+    closest figure is keyword-matched and never judged. And it listed a watch that
+    had been removed an hour earlier, because the closest map accumulated instead of
+    being rebuilt.
+
+    Liveness still has to be observable or this repeats the job watch going quiet for
+    five days unnoticed. It is observable here, in the log, and by asking IGOR. None
+    of those cost the user a notification.
     """
-    now = now or datetime.now(timezone.utc)
-    if not watchers.heartbeat_due(_SEEN, now=now, days=_HEARTBEAT_DAYS):
-        return ""
+    lines = [
+        "# Price watch status",
+        "",
+        "Rewritten by the price watch on every check. Nothing here is sent to anyone:"
+        " it is here to be read when asked.",
+        "",
+        f"Last checked: {now.isoformat()}",
+        f"Watching {len(items)} item(s), every two hours.",
+    ]
+    for item in items:
+        lines += ["", f"## {item['name']}",
+                  f"Target: under ${item['under']:,.0f}",
+                  f"Searched for: {item['query']!r}"]
+        best = closest.get(item["name"])
+        if not best:
+            lines.append("Nothing matching those words on the last check.")
+            continue
+        # Labelled, because it is not judged. The $44 that went out in the message
+        # this file replaces was an OCuLink cable, not a dock.
+        lines += [f"Cheapest keyword match last check: ${best['price']:,.2f}"
+                  " - NOT checked for being the right product, do not quote it as"
+                  " this item's price",
+                  f"  {best['title']}", f"  {best['url']}"]
 
-    seen = (_load_state().get("closest") or {})
-    if not seen:
-        return ""
-    lines = ["**Still watching**"]
-    for name, best in seen.items():
-        target = best.get("under")
-        lines.append(f"{name}: closest was ${best['price']:,.2f}"
-                     + (f", you want under ${target:,.0f}" if target else ""))
-    watchers.heartbeat_sent(_SEEN, now=now)
-    return "\n".join(lines)
+    try:
+        path = config.MEMORY_DIR / _STATUS
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.error("Could not write %s - %s: %s", _STATUS, type(e).__name__, e)
 
 
 def check(fetch=None) -> list[dict]:
@@ -236,10 +264,14 @@ def check(fetch=None) -> list[dict]:
     seen = set(_load_seen())
     fetch = fetch or (lambda q: _from_feed(_get(_FEED + urllib.parse.quote_plus(q))))
 
+    now = datetime.now(timezone.utc)
     hits: list[dict] = []
     found_urls: set = set()
     state = _load_state()
-    closest = state.setdefault("closest", {})
+    # Rebuilt, not updated. Carrying the old map forward kept a watch that had been
+    # removed from price_watch.md an hour earlier, and reported it as still watched.
+    closest: dict = {}
+    state["closest"] = closest
     for item in items:
         try:
             deals = fetch(item["query"])
@@ -261,7 +293,9 @@ def check(fetch=None) -> list[dict]:
         if best is not None:
             best["under"] = item["under"]
             closest[item["name"]] = best
+    state["last_checked"] = now.isoformat()
     _save_state(state)
+    _write_status(items, closest, now)
     logger.info("Price watch: %d items watched, %d under target", len(items), len(hits))
     return hits
 
