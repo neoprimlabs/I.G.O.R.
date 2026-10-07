@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import config
+import watchers
 
 logger = logging.getLogger(__name__)
 
@@ -115,37 +116,15 @@ def _hits(item: dict, deals: list[dict], seen: set) -> list[dict]:
     return out
 
 
-def _seen_path():
-    return config.MEMORY_DIR / "prices_seen.json"
+_SEEN = "prices_seen.json"
 
 
 def _load_seen() -> dict:
-    try:
-        data = json.loads(_seen_path().read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return watchers.load_seen(_SEEN)
 
 
 def remember(hits: list[dict], now: Optional[datetime] = None) -> None:
-    now = now or datetime.now(timezone.utc)
-    horizon = now - timedelta(days=_SEEN_DAYS)
-    kept = {}
-    for url, stamp in _load_seen().items():
-        try:
-            if datetime.fromisoformat(stamp) >= horizon:
-                kept[url] = stamp
-        except (TypeError, ValueError):
-            continue
-    for hit in hits:
-        kept[hit["url"]] = now.isoformat()
-    try:
-        path = _seen_path()
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(kept, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError as e:
-        logger.error("Could not write prices_seen.json - %s: %s", type(e).__name__, e)
+    watchers.remember(_SEEN, [h["url"] for h in hits], now=now, days=_SEEN_DAYS)
 
 
 _HEARTBEAT_DAYS = 7
@@ -197,16 +176,10 @@ def heartbeat(now: Optional[datetime] = None) -> str:
     answer. A watcher that only speaks on success cannot be trusted to be watching.
     """
     now = now or datetime.now(timezone.utc)
-    state = _load_state()
-    last = state.get("last_heartbeat")
-    try:
-        due = last is None or now - datetime.fromisoformat(last) >= timedelta(days=_HEARTBEAT_DAYS)
-    except (TypeError, ValueError):
-        due = True
-    if not due:
+    if not watchers.heartbeat_due(_SEEN, now=now, days=_HEARTBEAT_DAYS):
         return ""
 
-    seen = state.get("closest") or {}
+    seen = (_load_state().get("closest") or {})
     if not seen:
         return ""
     lines = ["**Still watching**"]
@@ -214,8 +187,7 @@ def heartbeat(now: Optional[datetime] = None) -> str:
         target = best.get("under")
         lines.append(f"{name}: closest was ${best['price']:,.2f}"
                      + (f", you want under ${target:,.0f}" if target else ""))
-    state["last_heartbeat"] = now.isoformat()
-    _save_state(state)
+    watchers.heartbeat_sent(_SEEN, now=now)
     return "\n".join(lines)
 
 

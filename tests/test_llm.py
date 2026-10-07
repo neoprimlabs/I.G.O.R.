@@ -146,7 +146,7 @@ async def test_behaviour() -> None:
 
 
 def test_imports() -> None:
-    for module in ("llm", "clock", "orchestrator", "context_store", "agents.direct",
+    for module in ("llm", "clock", "watchers", "orchestrator", "context_store", "agents.direct",
                    "agents.react", "agents.monitor", "agents.evaluator",
                    "agents.research_loop", "agents.research", "agents.prod_memory",
                    "agents.scheduled", "agents.compose", "agents.presence"):
