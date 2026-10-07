@@ -216,6 +216,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     # tokens - it is HTTP against public feeds - so this is close to free.
     _scheduler.add_job(_job_watch, "cron", hour=14, minute=30, id="job_watch")
 
+    # Deals vanish within hours, so this runs often. One HTTP call per watched item
+    # and no model call at all, which is why every two hours is affordable.
+    _scheduler.add_job(_price_watch, "interval", hours=2, id="price_watch")
+
     # Polled rather than one date job per message: APScheduler drops a date job more
     # than a second late, so anything due during a restart would be lost. No tokens.
     _scheduler.add_job(_deliver_scheduled, "interval", seconds=60, id="scheduled_messages")
@@ -233,6 +237,22 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
+
+
+async def _price_watch() -> None:
+    """Anything that dropped below its target. Silent when nothing has."""
+    if _send_fn is None:
+        return
+    from agents import prices
+    try:
+        loop = asyncio.get_running_loop()
+        hits = await loop.run_in_executor(None, prices.check)
+        if not hits:
+            return
+        if await _send_fn(prices.format_for_discord(hits)):
+            prices.remember(hits)
+    except Exception as e:
+        logger.error("Price watch failed - %s: %s", type(e).__name__, e)
 
 
 async def _job_watch() -> None:
