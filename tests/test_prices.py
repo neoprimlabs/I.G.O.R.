@@ -196,35 +196,73 @@ def test_message() -> None:
     _check("and links the deal", "slickdeals.net/f/1" in text, text)
 
 
-def test_the_weekly_heartbeat() -> None:
-    """A watcher that only speaks on success cannot be trusted to be watching. The
-    job watch sent nothing for five days and neither of us noticed until a question
-    came in that it could not answer."""
+def test_proof_it_is_running() -> None:
+    """A watcher that only speaks on success cannot be told apart from a broken one -
+    the job watch sat silent for five days on that. This was a weekly "Still
+    watching" DM until 2026-10-07, when the user's verdict on the first one was "not
+    a good use of a message". It answered my question, not his, so it is a file now.
+    """
     from agents import prices
 
-    _fresh()
+    path = _fresh()
     prices.check(fetch=lambda q: prices._from_feed(FEED))
+
+    _check("no message is produced at all", not hasattr(prices, "heartbeat"))
+
+    status = (path / "price_watch_status.md").read_text(encoding="utf-8")
+    _check("the status file says when it last ran",
+           "Last checked: 20" in status, status)
+    _check("and what it is watching", "RTX 5070 Ti" in status and "Mac mini M6" in status, status)
+    _check("and the target for each", "under $700" in status, status)
+    _check("and how close it got", "769.00" in status, status)
+
+    # The message this replaced reported $44 as the closest for an OCuLink dock. It
+    # was a cable. The closest figure is keyword-matched and never judged, so the
+    # file has to say so or IGOR will quote it as the item's price.
+    _check("and warns that the closest match is not a judged product",
+           "NOT checked for being the right product" in status, status)
 
     state = prices._load_state()
     _check("the closest price is recorded even with no hit",
            state["closest"]["Mac mini M6"]["price"] == 769.0, str(state.get("closest")))
     _check("along with the target it is being judged against",
            state["closest"]["Mac mini M6"]["under"] == 700.0, str(state.get("closest")))
+    _check("and when the check ran", state.get("last_checked", "").startswith("20"),
+           str(state.get("last_checked")))
 
-    text = prices.heartbeat(now=NOW)
-    _check("the first heartbeat goes out", "Still watching" in text, text)
-    _check("naming the item and how close it got",
-           "Mac mini M6" in text and "769" in text, text)
-    _check("and the target", "700" in text, text)
 
-    _check("a second one the same day does not",
-           prices.heartbeat(now=NOW + timedelta(days=2)) == "",
-           prices.heartbeat(now=NOW + timedelta(days=2)))
-    _check("but one a week later does",
-           "Still watching" in prices.heartbeat(now=NOW + timedelta(days=8)))
+def test_a_removed_watch_disappears() -> None:
+    """The message that prompted all this listed three watches when two were
+    configured: the closest map was accumulated across runs, so a watch deleted from
+    price_watch.md an hour earlier was still being reported as watched."""
+    from agents import prices
 
-    _fresh()
-    _check("nothing watched means no heartbeat at all", prices.heartbeat(now=NOW) == "")
+    path = _fresh()
+    prices.check(fetch=lambda q: prices._from_feed(FEED))
+    _check("both watches are recorded first", len(prices._load_state()["closest"]) == 2,
+           str(prices._load_state()["closest"]))
+
+    (path / "price_watch.md").write_text(
+        "## Mac mini M6\nquery: mac mini m6\nunder: 700\n", encoding="utf-8")
+    prices.check(fetch=lambda q: prices._from_feed(FEED))
+
+    closest = prices._load_state()["closest"]
+    _check("the removed watch is gone from state", "RTX 5070 Ti" not in closest, str(closest))
+    _check("and the kept one remains", "Mac mini M6" in closest, str(closest))
+    status = (path / "price_watch_status.md").read_text(encoding="utf-8")
+    _check("and gone from the status file", "RTX 5070 Ti" not in status, status)
+    _check("which says how many are watched now", "Watching 1 item(s)" in status, status)
+
+
+def test_react_can_read_the_status() -> None:
+    from agents import react
+
+    allowed = str(react._TOOLS)
+    _check("React is allowed to read the status file",
+           "price_watch_status.md" in allowed and "price_watch.md" in allowed)
+    _check("and neither is private",
+           not react._is_private((config.MEMORY_DIR / "price_watch_status.md").resolve())
+           and not react._is_private((config.MEMORY_DIR / "price_watch.md").resolve()))
 
 
 AG01_WANT = ("An AOOSTAR AG01 or an equivalent OCuLink dock with the power supply "
@@ -402,8 +440,12 @@ if __name__ == "__main__":
     test_seen_store()
     print("\nthe message")
     test_message()
-    print("\nthe weekly heartbeat")
-    test_the_weekly_heartbeat()
+    print("\nproof it is running")
+    test_proof_it_is_running()
+    print("\na removed watch")
+    test_a_removed_watch_disappears()
+    print("\nReact can read the status")
+    test_react_can_read_the_status()
     print("\nthe want line")
     test_the_want_line()
     print("\njudging the product")

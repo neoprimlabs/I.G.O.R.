@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-09-16**
+Last updated: **2026-10-07**
 
 ---
 
@@ -17,10 +17,11 @@ Last updated: **2026-09-16**
 
 ## Code
 
-- Server `/opt/igor` runs `a5c2ad3` (router on qwen3.8), deployed through the S.1
-  gate on 2026-09-16. `17d2407` before it, deployed 2026-09-12.
-  `origin/master` may be ahead by documentation-only commits; those need no deploy,
-  because nothing at runtime reads STATE.md or GAMEPLAN.md.
+- Server `/opt/igor` runs `42e0e6d` (price watch judges the product), deployed
+  through the S.1 gate on 2026-10-07 and confirmed with
+  `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+  commits; those need no deploy, because nothing at runtime reads STATE.md or
+  GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
   `.git` tracks the same remote and pulls normally.
 
@@ -189,6 +190,62 @@ that you've found recently fit me best", IGOR had nothing to read and asked the 
 to describe his own background back to it. `jobs.record_found` now writes
 `memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
 list. Backfilled with today's 11 so it is answerable now.
+
+## Price watch, and the wrong product it sent (2026-10-06 to 10-07)
+
+**Built and running.** `agents/prices.py` reads `memory/price_watch.md` and checks
+Slickdeals' RSS search every two hours, plus 90s after every start. No key, no
+scraping: measured from this server, Best Buy refuses the connection, Micro Center,
+camelcamelcamel and PCPartPicker return 403, Newegg redirects to a bot check. Best
+Buy's API no longer issues keys to free email addresses and Keepa is about $50 a
+month, against the standing no-paid-services decision. Slickdeals is deal-driven
+rather than a price feed, which is the shape of "tell me when it dips below X".
+
+**The first live alert was the wrong product.** Watching for an AOOSTAR AG01 OCuLink
+eGPU dock, it sent a Minisforum DEG1 at $99. Both are eGPU docks, both matched every
+query word, and $99 was genuinely under the $130 target - but the AG01's entire point
+is the 800W Huntkey supply built into it, and the DEG1 is a bare enclosure powered
+from your own ATX unit. **Nothing in either title separates them**, so no keyword
+list was ever going to.
+
+Fixed the way the job watch was fixed: the coarse net stays in code, the judgement
+goes to a model. Price, query words and post age are still decided in code. An
+optional `want:` line per watch says what the item actually is, in prose, including
+what would make a listing the wrong one, and `prices.judge` makes **one `summary`
+call, only when something is already under target**, to keep or drop each listing.
+Rejected listings are marked seen, or the same wrong product is re-judged every two
+hours for as long as it stays posted.
+
+**Every failure path fails open and sends unfiltered.** An empty or garbled reply
+arrives as a 200 OK; treating that as DROP would swallow a real price drop with no
+error anywhere, which is worse than the wrong suggestion this exists to prevent.
+Partial coverage is held back without being remembered, so the next check retries it.
+
+**Measured live on the server, 2026-10-07, 5 of 5 as expected:** the DEG1 dropped,
+the AG01 at $179 kept, an SFF-8611 cable and a PCIe adapter card dropped, an AG02
+with a 500W supply kept. The offline tests feed canned verdicts, so they prove the
+plumbing and nothing about the judgement - rerun the live check after any change to
+the prompt or `config.MODELS`.
+
+Two other defects fixed in passing:
+
+- **Overlapping watches sent the same listing twice** in one message. The seen store
+  stops repeats between runs, not inside one, and the watches overlap on purpose.
+- **The `want:` line was read only as far as its first line.** Indented
+  continuations fell through every branch of the parser, so the judge saw a
+  description cut off mid-sentence with nothing to show it had happened.
+
+**Current watchlist** (two items, narrowed from three on 2026-10-07): the AG01 by
+name under $200, and any-brand OCuLink dock *that includes its own power supply*
+under $150. The third watch, a generic `egpu dock` under $130, is the one that
+produced the DEG1 and was removed rather than judged - judging it would have burned
+a call per check to reject Thunderbolt enclosures.
+
+**Known gap: a stale deal is filtered, a sold-out one is not.** `_MAX_AGE_DAYS = 14`
+rejects anything posted longer ago than that - the first live run surfaced an AG01 at
+$179 posted 11 April 2025 and would have sent it as news - but a deal posted three
+days ago and already dead still reads as live. The message links the listing so this
+is visible, not hidden.
 
 ## Resolved: the resume split (2026-09-28, fixed 2026-09-30)
 
