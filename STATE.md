@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `42e0e6d` (price watch judges the product), deployed
+- Server `/opt/igor` runs `afa88e5` (price watch judges the product, and stays quiet), deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -240,6 +240,23 @@ name under $200, and any-brand OCuLink dock *that includes its own power supply*
 under $150. The third watch, a generic `egpu dock` under $130, is the one that
 produced the DEG1 and was removed rather than judged - judging it would have burned
 a call per check to reject Thunderbolt enclosures.
+
+**It sends nothing when nothing is under target.** A weekly "Still watching" message
+was tried the same day and the user's verdict on the first one was "not a good use of
+a message". He was right on all three counts: it answered my question rather than
+his, it reported a $44 "closest" for an OCuLink dock that was a refurbished DEG1, and
+it listed a watch removed an hour earlier because the closest map accumulated instead
+of being rebuilt. Liveness moved from push to pull - `memory/price_watch_status.md`
+is rewritten every check with what is watched, each target, when it last ran and the
+cheapest keyword match, labelled in the file as **not** judged for being the right
+product so it cannot be quoted back as the item's price. React reads it, and
+`price_watch.md`, when asked. Verified on the server at 05:58 UTC: two items, nothing
+under target, nothing sent, file written.
+
+**The job watch still has the weekly message this one just lost.** `jobs.heartbeat`
+sends "Job watch is running. Nothing new this week." Same objection applies and it
+has not been raised yet - decide whether that becomes a status file too before the
+next quiet week.
 
 **Known gap: a stale deal is filtered, a sold-out one is not.** `_MAX_AGE_DAYS = 14`
 rejects anything posted longer ago than that - the first live run surfaced an AG01 at
@@ -464,6 +481,13 @@ T.1 is started, not finished. Run all of them with `venv/bin/python` on the serv
   unreadable store. Three key behaviours were mutation-checked.
 - `tests/test_models_live.py` - one real call per role, about 5000 tokens, not in the
   deploy gate. **Run after any change to `config.MODELS` or `llm.model_params`.**
+- `tests/test_prices.py` - stdlib, no API. Parsing, price extraction, stale deals,
+  overlapping watches, the status file, and the product judge against canned
+  verdicts. The judge's *judgement* is not covered here and cannot be: it needs the
+  live check in `## Price watch` above, rerun after any prompt or model change.
+- `tests/test_watchers.py`, `test_jobs.py`, `test_quarantine.py`,
+  `test_private_files.py`, `test_resume_access.py` - stdlib, no API. All passing
+  2026-10-07.
 - `tests/test_router_verdicts.py` and `tests/eval_self_describe.py` - live API,
   scored. See Next action 3 for the eval's quirks.
 
