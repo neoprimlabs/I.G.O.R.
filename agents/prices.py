@@ -34,6 +34,12 @@ import watchers
 logger = logging.getLogger(__name__)
 
 _SEEN_DAYS = 30
+
+# A deal posted last year is not a price drop. The first live run surfaced an AOOSTAR
+# AG01 at $179 from 11 April 2025 - eighteen months dead - and would have sent it as
+# news. Slickdeals' search returns by relevance, not recency, so the age has to be
+# checked here.
+_MAX_AGE_DAYS = 14
 _TIMEOUT = 20
 _FEED = "https://slickdeals.net/newsearch.php?rss=1&q="
 _PRICE = re.compile(r"\$\s?([\d,]+(?:\.\d{2})?)")
@@ -93,17 +99,33 @@ def _from_feed(payload: str) -> list[dict]:
     for item in root.iter("item"):
         title = (item.findtext("title") or "").strip()
         url = (item.findtext("link") or "").strip()
+        posted = None
+        raw_date = (item.findtext("pubDate") or "").strip()
+        if raw_date:
+            try:
+                from email.utils import parsedate_to_datetime
+                posted = parsedate_to_datetime(raw_date)
+                if posted.tzinfo is None:
+                    posted = posted.replace(tzinfo=timezone.utc)
+            except (TypeError, ValueError):
+                posted = None
         if title and url:
-            deals.append({"title": title, "url": url})
+            deals.append({"title": title, "url": url, "posted": posted})
     return deals
 
 
-def _hits(item: dict, deals: list[dict], seen: set) -> list[dict]:
-    """Deals for this item that are under its target and not already reported."""
+def _hits(item: dict, deals: list[dict], seen: set,
+          now: Optional[datetime] = None) -> list[dict]:
+    """Under target, not already reported, and posted recently enough to be real."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=_MAX_AGE_DAYS)
     words = [w for w in item["query"].split() if w]
     out = []
     for deal in deals:
         if deal["url"] in seen:
+            continue
+        posted = deal.get("posted")
+        if posted is not None and posted < cutoff:
             continue
         lowered = deal["title"].lower()
         if not all(word in lowered for word in words):

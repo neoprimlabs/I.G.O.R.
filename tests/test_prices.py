@@ -134,6 +134,35 @@ def test_matching() -> None:
            not any("599.99" in h["title"] for h in again), str(again))
 
 
+def test_stale_deals_are_not_news() -> None:
+    """The first live run found an AOOSTAR AG01 at $179 posted 11 April 2025 and
+    would have sent it as a price drop. Slickdeals searches by relevance, not
+    recency, so an eighteen-month-old post ranks alongside yesterday's."""
+    from agents import prices
+
+    fresh = (NOW - timedelta(days=3)).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    stale = (NOW - timedelta(days=550)).strftime("%a, %d %b %Y %H:%M:%S +0000")
+    feed = f"""<?xml version="1.0"?><rss version="2.0"><channel>
+<item><title>AOOSTAR AG01 OCulink eGPU Dock 800W PSU $179</title>
+<link>https://slickdeals.net/f/old</link><pubDate>{stale}</pubDate></item>
+<item><title>Minisforum DEG1 eGPU Oculink Dock Refurbished $44</title>
+<link>https://slickdeals.net/f/new</link><pubDate>{fresh}</pubDate></item>
+<item><title>Mystery eGPU Dock Oculink $50</title>
+<link>https://slickdeals.net/f/undated</link></item>
+</channel></rss>"""
+
+    deals = prices._from_feed(feed)
+    _check("the post date is read", deals[0]["posted"] is not None, str(deals[0]))
+
+    item = {"name": "eGPU dock", "query": "oculink dock", "under": 200.0}
+    urls = [h["url"] for h in prices._hits(item, deals, set(), now=NOW)]
+    _check("an eighteen-month-old deal is not reported",
+           "https://slickdeals.net/f/old" not in urls, str(urls))
+    _check("a recent one is", "https://slickdeals.net/f/new" in urls, str(urls))
+    _check("one with no date is kept rather than guessed away",
+           "https://slickdeals.net/f/undated" in urls, str(urls))
+
+
 def test_seen_store() -> None:
     from agents import prices
 
