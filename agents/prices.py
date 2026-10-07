@@ -148,6 +148,77 @@ def remember(hits: list[dict], now: Optional[datetime] = None) -> None:
         logger.error("Could not write prices_seen.json - %s: %s", type(e).__name__, e)
 
 
+_HEARTBEAT_DAYS = 7
+
+
+def _state_path():
+    return config.MEMORY_DIR / "prices_state.json"
+
+
+def _load_state() -> dict:
+    try:
+        data = json.loads(_state_path().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_state(state: dict) -> None:
+    try:
+        path = _state_path()
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.error("Could not write prices_state.json - %s: %s", type(e).__name__, e)
+
+
+def _closest(item: dict, deals: list[dict]) -> Optional[dict]:
+    """The cheapest thing matching this item, whatever the target."""
+    words = [w for w in item["query"].split() if w]
+    best = None
+    for deal in deals:
+        lowered = deal["title"].lower()
+        if not all(word in lowered for word in words):
+            continue
+        price = _lowest_price(deal["title"])
+        if price is None:
+            continue
+        if best is None or price < best["price"]:
+            best = {"price": price, "title": deal["title"], "url": deal["url"]}
+    return best
+
+
+def heartbeat(now: Optional[datetime] = None) -> str:
+    """A weekly line proving it is alive, or empty when one is not due yet.
+
+    Silence is indistinguishable from being broken: the job watch sent nothing for
+    five days and neither of us noticed until the user asked a question it could not
+    answer. A watcher that only speaks on success cannot be trusted to be watching.
+    """
+    now = now or datetime.now(timezone.utc)
+    state = _load_state()
+    last = state.get("last_heartbeat")
+    try:
+        due = last is None or now - datetime.fromisoformat(last) >= timedelta(days=_HEARTBEAT_DAYS)
+    except (TypeError, ValueError):
+        due = True
+    if not due:
+        return ""
+
+    seen = state.get("closest") or {}
+    if not seen:
+        return ""
+    lines = ["**Still watching**"]
+    for name, best in seen.items():
+        target = best.get("under")
+        lines.append(f"{name}: closest was ${best['price']:,.2f}"
+                     + (f", you want under ${target:,.0f}" if target else ""))
+    state["last_heartbeat"] = now.isoformat()
+    _save_state(state)
+    return "\n".join(lines)
+
+
 def check(fetch=None) -> list[dict]:
     """Everything under target that has not been reported. Never raises."""
     items = _watchlist()
@@ -157,6 +228,8 @@ def check(fetch=None) -> list[dict]:
     fetch = fetch or (lambda q: _from_feed(_get(_FEED + urllib.parse.quote_plus(q))))
 
     hits = []
+    state = _load_state()
+    closest = state.setdefault("closest", {})
     for item in items:
         try:
             deals = fetch(item["query"])
@@ -165,6 +238,11 @@ def check(fetch=None) -> list[dict]:
                            item["name"], type(e).__name__, e)
             continue
         hits.extend(_hits(item, deals, seen))
+        best = _closest(item, deals)
+        if best is not None:
+            best["under"] = item["under"]
+            closest[item["name"]] = best
+    _save_state(state)
     logger.info("Price watch: %d items watched, %d under target", len(items), len(hits))
     return hits
 
