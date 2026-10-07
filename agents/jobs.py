@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import config
+import watchers
 
 logger = logging.getLogger(__name__)
 
@@ -217,37 +218,15 @@ def _matches(job: dict, wanted: list[str], excluded: list[str]) -> bool:
     return any(word in location for word in _REMOTE_WORDS)
 
 
-def _seen_path():
-    return config.MEMORY_DIR / "jobs_seen.json"
+_SEEN = "jobs_seen.json"
 
 
 def _load_seen() -> dict:
-    try:
-        data = json.loads(_seen_path().read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return watchers.load_seen(_SEEN)
 
 
 def remember(found: list[dict], now: Optional[datetime] = None) -> None:
-    now = now or datetime.now(timezone.utc)
-    horizon = now - timedelta(days=_SEEN_DAYS)
-    kept = {}
-    for url, stamp in _load_seen().items():
-        try:
-            if datetime.fromisoformat(stamp) >= horizon:
-                kept[url] = stamp
-        except (TypeError, ValueError):
-            continue
-    for job in found:
-        kept[job["url"]] = now.isoformat()
-    try:
-        path = _seen_path()
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(kept, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError as e:
-        logger.error("Could not write jobs_seen.json - %s: %s", type(e).__name__, e)
+    watchers.remember(_SEEN, [j.get("url", "") for j in found], now=now, days=_SEEN_DAYS)
 
 
 def record_found(found: list[dict], notes: str = "", now: Optional[datetime] = None) -> None:
@@ -394,6 +373,22 @@ async def rank(found: list[dict], ask=None) -> str:
     except Exception as e:
         logger.error("Job ranking failed - %s: %s", type(e).__name__, e)
         return ""
+
+
+def heartbeat(now: Optional[datetime] = None) -> str:
+    """A weekly line when nothing new turned up, or empty if one is not due.
+
+    This watch sent nothing from 2026-09-26 to 09-30 and neither the user nor I
+    noticed, because a watcher with nothing to say and a watcher that has died look
+    identical from outside. The count comes from the seen store, so the message is
+    evidence rather than reassurance.
+    """
+    if not watchers.heartbeat_due(_SEEN, now=now):
+        return ""
+    tracked = len(watchers.load_seen(_SEEN))
+    watchers.heartbeat_sent(_SEEN, now=now)
+    return (f"**Job watch is running.** Nothing new this week. {tracked} postings "
+            f"already sent in the last {_SEEN_DAYS} days, and the feeds are answering.")
 
 
 def format_for_discord(found: list[dict], notes: str = "") -> str:

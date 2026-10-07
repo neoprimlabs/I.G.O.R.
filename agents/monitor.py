@@ -12,6 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import config
 import llm
 import sanitize
+import watchers
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +272,11 @@ async def _job_watch() -> None:
         loop = asyncio.get_running_loop()
         found = await loop.run_in_executor(None, jobs.collect)
         if not found:
+            # Silence and death look identical from outside: this watch sent nothing
+            # from 2026-09-26 to 09-30 and nothing said so.
+            note = await loop.run_in_executor(None, jobs.heartbeat)
+            if note:
+                await _send_fn(note)
             return
         # Remember only what actually reached the user, or a failed send loses them.
         notes = await jobs.rank(found)
@@ -526,39 +532,15 @@ def _digest_exclusions() -> list[str]:
     return _parse_exclusions(text)
 
 
-def _seen_path():
-    return config.MEMORY_DIR / "news_seen.json"
+_NEWS_SEEN = "news_seen.json"
 
 
 def _load_seen_news() -> dict:
-    try:
-        data = json.loads(_seen_path().read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return watchers.load_seen(_NEWS_SEEN)
 
 
 def _remember_news(urls, now=None) -> None:
-    from datetime import datetime, timedelta, timezone as _tz
-    now = now or datetime.now(_tz.utc)
-    horizon = now - timedelta(days=_NEWS_SEEN_DAYS)
-    seen = _load_seen_news()
-    kept = {}
-    for url, stamp in seen.items():
-        try:
-            if datetime.fromisoformat(stamp) >= horizon:
-                kept[url] = stamp
-        except (TypeError, ValueError):
-            continue
-    for url in urls:
-        kept[url] = now.isoformat()
-    try:
-        path = _seen_path()
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(kept, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
-    except OSError as e:
-        logger.error("Could not write news_seen.json - %s: %s", type(e).__name__, e)
+    watchers.remember(_NEWS_SEEN, urls, now=now, days=_NEWS_SEEN_DAYS)
 
 
 def _filter_news_results(results, seen_urls, exclusions):

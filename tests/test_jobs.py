@@ -307,6 +307,26 @@ def test_what_was_found_is_kept() -> None:
            not react._is_private((config.MEMORY_DIR / "jobs_found.md").resolve()))
 
 
+def test_the_weekly_proof_of_life() -> None:
+    """This watch sent nothing from 2026-09-26 to 09-30 and neither of us noticed,
+    because nothing to say and dead look the same from outside."""
+    from agents import jobs
+
+    _fresh()
+    jobs.remember([{"url": "https://x/1"}, {"url": "https://x/2"}], now=NOW)
+
+    text = jobs.heartbeat(now=NOW)
+    _check("the first one goes out", "Job watch is running" in text, text)
+    _check("and counts what it is tracking", "2 postings" in text, text)
+
+    _check("not again the next day", jobs.heartbeat(now=NOW + timedelta(days=1)) == "")
+    _check("but again a week later",
+           "Job watch is running" in jobs.heartbeat(now=NOW + timedelta(days=8)))
+
+    _check("marking a heartbeat does not forget what was sent",
+           set(jobs._load_seen()) == {"https://x/1", "https://x/2"}, str(jobs._load_seen()))
+
+
 def test_one_bad_source_does_not_stop_the_rest() -> None:
     """Four sources, each a separate network call. One being down is normal."""
     from agents import jobs
@@ -338,6 +358,8 @@ if __name__ == "__main__":
     test_seen_and_collect()
     print("\nranking against a profile")
     test_ranking_uses_a_profile_without_contact_details()
+    print("\nproof of life")
+    test_the_weekly_proof_of_life()
     print("\na source being down")
     test_one_bad_source_does_not_stop_the_rest()
 
