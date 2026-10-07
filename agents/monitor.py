@@ -221,6 +221,16 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     # and no model call at all, which is why every two hours is affordable.
     _scheduler.add_job(_price_watch, "interval", hours=2, id="price_watch")
 
+    # Once 90s after every start, like the model check. An interval job's first run
+    # is one interval away, so without this a restart means up to two hours before
+    # anything is checked - and it makes a deploy a way to test the path end to end.
+    _scheduler.add_job(
+        _price_watch,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=90),
+        id="price_watch_startup",
+    )
+
     # Polled rather than one date job per message: APScheduler drops a date job more
     # than a second late, so anything due during a restart would be lost. No tokens.
     _scheduler.add_job(_deliver_scheduled, "interval", seconds=60, id="scheduled_messages")
