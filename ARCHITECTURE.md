@@ -56,6 +56,9 @@ retailers block this server outright (Best Buy refuses, Micro Center and PCPartP
 words and post age are judged in code; whether the listing is the *right product* is
 one `summary`-model call, made only when something is already under target, against
 the `want:` line. Listings it rejects are marked seen so they are not judged twice. When nothing is under target it sends nothing at all; liveness is in the log and in `memory/price_watch_status.md`, rewritten every check and readable by React when asked.
+Asked whether the watch is running, Monitor answers from `_watcher_status`, which
+reports what is watched, each target, when the watch last actually ran (flagged
+STALE past 6 hours) and the cheapest match seen, labelled as not product-checked.
 Every failure of that call fails open and sends unfiltered, because an unreadable
 reply arrives as a 200 OK and would otherwise swallow a real drop in silence.
 
