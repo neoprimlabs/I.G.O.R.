@@ -315,6 +315,60 @@ async def test_own_messages_are_not_material() -> None:
            "[sent proactively]" not in bundle, bundle[-400:])
 
 
+async def test_an_answered_question_does_not_look_unanswered() -> None:
+    """2026-10-09: asked at 05:49 whether the AG01 price watch was running, IGOR
+    answered. At 06:16 presence fired on lull and said the same thing again,
+    unprompted. Nobody had asked twice.
+
+    The cause was the 09-18 echo fix itself. _facts splits the turns into "What the
+    user said" and "Already sent to the user unprompted", and that split severs every
+    question from its answer. Presence saw three user lines ending in a question, and
+    a separate block it was told not to comment on. From there the question looks
+    unanswered, and answering it looks like the helpful thing to do.
+
+    The marker that tells the two cases apart was already in the data the whole time:
+    record_outbound writes "[sent proactively]" and only proactive sends carry it.
+    _facts stripped it, then called every assistant turn unprompted.
+    """
+    from agents import presence
+    import context_store
+
+    path = _fresh(_state())
+    original_db = context_store._DB_PATH
+    try:
+        context_store._DB_PATH = path / "context.db"
+        context_store.append("user", "Is the Aoostar AG01 price scouting running as it should?")
+        context_store.append("assistant",
+                             "Scheduler status: running. price_watch next run 05:56 UTC.")
+        context_store.append("assistant",
+                             "[sent proactively] The eGPU dock dropped to 120 dollars.")
+
+        model = _Model()
+        await presence.consider("lull", now=AWAKE, ask=model,
+                                last_user_at=AWAKE - timedelta(minutes=40))
+        bundle = model.asked[0]
+    finally:
+        context_store._DB_PATH = original_db
+
+    label = bundle.lower().find("already sent")
+    question = bundle.find("Aoostar AG01 price scouting")
+    answer = bundle.find("Scheduler status")
+    proactive = bundle.find("eGPU dock dropped")
+
+    _check("the already-sent block still exists", label != -1, bundle[-700:])
+    _check("the question is shown", question != -1, bundle[-700:])
+    _check("the reply to it is shown", answer != -1, bundle[-700:])
+
+    # The whole bug in one assertion: an ordinary reply filed under "already sent
+    # unprompted" is both a false label and the reason the question reads as open.
+    _check("an ordinary reply is NOT filed as an unprompted send",
+           answer < label, f"reply at {answer}, already-sent label at {label}")
+    _check("it sits after the question it answered, so the pair is visible",
+           question < answer, f"question at {question}, reply at {answer}")
+    _check("a genuinely proactive send is still filed as already sent",
+           proactive > label, f"proactive at {proactive}, label at {label}")
+
+
 async def test_silence_and_cleanup() -> None:
     from agents import presence
 
@@ -415,6 +469,7 @@ if __name__ == "__main__":
     test_which_prompt_each_trigger_gets()
     print("\nits own messages are not material")
     asyncio.run(test_own_messages_are_not_material())
+    asyncio.run(test_an_answered_question_does_not_look_unanswered())
     print("\nsilence and cleanup")
     asyncio.run(test_silence_and_cleanup())
     print("\ntriggers")
