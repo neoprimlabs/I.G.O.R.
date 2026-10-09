@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `afa88e5` (price watch judges the product, and stays quiet), deployed
+- Server `/opt/igor` runs `220255b` (presence echo fix, Monitor sees watcher state), deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -208,6 +208,54 @@ that you've found recently fit me best", IGOR had nothing to read and asked the 
 to describe his own background back to it. `jobs.record_found` now writes
 `memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
 list. Backfilled with today's 11 so it is answerable now.
+
+## Presence answered a question that was already answered (2026-10-09, fixed)
+
+Asked at 05:49 whether the AG01 price watch was running, IGOR answered. At 06:16
+presence fired on lull and said the same thing again, unprompted. The journal names
+it outright: `Presence (lull): speaking - Yes, the Aoostar AG01 price scouting is
+running.`
+
+**The cause was the 09-18 echo fix.** `_facts` split the turns into "What the user
+said" and "Already sent to the user unprompted". That stopped presence re-sending
+proactive alerts, and it also severed every question from its answer: presence saw
+three user lines ending in a question and a separate block it was told not to
+comment on, so the question read as open and answering it read as helpful. The label
+was false too - four of the five assistant turns it covered were ordinary replies.
+
+**The marker needed to tell them apart was already in the data and was being thrown
+away.** `orchestrator.record_outbound` writes `[sent proactively]` and nothing else
+carries it; `_facts` stripped it on sight, then called every assistant turn
+unprompted. The split is now on what a turn *was*: ordinary replies stay in the
+conversation in order, only marked sends get the do-not-repeat label. The 09-18 test
+passes unchanged, so that fix is intact.
+
+`presence.CONVERSATION_HEADER` is now public and `tests/eval_presence.py` reads it
+rather than holding a copy - this change altered the bundle shape and staled every
+fixture at once, and that file's premise is that fixtures match the real bundle.
+
+**Scored eval after the fix, live on the server: 8/8, false alarm 0/6, miss 0/2,
+0 echoes, 0 fabrications, 0 reports** - including the 10-09 case as a new SILENT
+case, with re-answering it counted as an echo.
+
+## Monitor could not see what the watchers are doing (2026-10-09, fixed)
+
+The first answer in that same exchange was `price_watch - next run scheduled for
+2026-10-09 05:56:38.282462+00:00`. True, and useless. "As it should" asks whether
+the watch is doing its job, and the status block Monitor answers from held only the
+scheduler's job list and the news watchlist. **A registered job and a working watch
+look identical from there** - which is how the job watch once sat silent for five
+days.
+
+`monitor._watcher_status()` now puts the watch's own state in the block: item count,
+when the check last actually ran, each target, and the cheapest match seen with the
+same "not verified as the right product" label the status file carries. A check older
+than 6 hours is reported as STALE with its age, because that is the condition the
+question is really asking about and nothing surfaced it. Verified against live state
+after deploy. Microseconds and raw tzinfo are gone from the job list.
+
+**Not done: the job watch has no equivalent.** Ask whether the job watch is working
+and Monitor still has only its scheduler entry.
 
 ## Price watch, and the wrong product it sent (2026-10-06 to 10-07)
 
@@ -499,6 +547,9 @@ T.1 is started, not finished. Run all of them with `venv/bin/python` on the serv
   unreadable store. Three key behaviours were mutation-checked.
 - `tests/test_models_live.py` - one real call per role, about 5000 tokens, not in the
   deploy gate. **Run after any change to `config.MODELS` or `llm.model_params`.**
+- `tests/test_monitor_status.py` - stdlib, no API. The status block Monitor answers
+  "is X running" from: the watched items, a stale check, an unreadable state file,
+  and the job-line formatting.
 - `tests/test_prices.py` - stdlib, no API. Parsing, price extraction, stale deals,
   overlapping watches, the status file, and the product judge against canned
   verdicts. The judge's *judgement* is not covered here and cannot be: it needs the
