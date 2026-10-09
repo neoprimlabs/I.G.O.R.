@@ -160,9 +160,27 @@ live: it ranked support and QA roles above specialised annotation work and said 
 both versions of his history; `_is_private` makes it unreachable. Ranking sends only
 the profile - skills and work history, no name, phone, email or address.
 
-**Open:** the same 2024-2026 associate job appears as K&J Comics and Games
-(Pittsburgh) on one resume and New Dimension Comics (Tarentum) on the other, with
-identical duties. One is wrong. Ask before either version goes to an employer.
+**Resolved 2026-10-09: K&J and New Dimension are two jobs, not one.** They were
+never a contradiction between the two source resumes. K&J Comics and Games stemmed
+from New Dimension Comics, the companies were near identical, and he worked at both -
+New Dimension first, K&J after. The duties read the same because it was the same work
+at a sibling company. Both are now on the resume in sequence, and `profile.md`
+describes them as two sibling retailers rather than one 2024-2026 block.
+
+**Also added 2026-10-09: his current job.** Electronics Salesperson, Walmart, Delmont
+PA, 09/2026 to present. It was missing entirely, so the job watch had been ranking
+against a profile that showed no current employment. `profile.md` now carries it
+de-identified as a big-box electronics role, and calls customer-facing technical
+work - support, success, solutions, sales engineering - a direct fit rather than a
+stretch, because explaining consumer technology to non-technical buyers is the day
+job now.
+
+**Still open: the handover month.** The combined retail span is 05/2024 to 04/2026,
+which one source resume attributed entirely to K&J. The month he moved from New
+Dimension to K&J is not known, and is marked `HANDOVER MONTH TBC` in four places in
+`resume.md`. Ask before either version goes to an employer; do not infer it from the
+outer dates. The Walmart location spelling is also unconfirmed - given as "Dlemont",
+written as Delmont PA.
 
 ## Job watch went silent for five days, and why (2026-09-30)
 
