@@ -872,6 +872,80 @@ async def _morning_digest() -> None:
         logger.error("Morning digest send failed - %s: %s", type(e).__name__, e)
 
 
+_STALE_AFTER = timedelta(hours=6)
+
+
+def _job_line(job_id: str, when) -> str:
+    """One scheduled job, readably.
+
+    This used to be f"  - {j.id}: next run {j.next_run_time}", which put
+    "2026-10-09 05:56:38.282462+00:00" in front of the user. Microseconds are not
+    information, and UTC is not the timezone he lives in.
+    """
+    if when is None:
+        return f"  - {job_id}: not scheduled"
+    return f"  - {job_id}: next run {when.strftime('%a %H:%M')} UTC"
+
+
+def _watcher_status(now: Optional[datetime] = None) -> str:
+    """What the price watch is actually doing, not just whether its job exists.
+
+    2026-10-09: asked whether the AG01 price scouting was running "as it should",
+    Monitor could only answer with the scheduler entry, because that plus the news
+    watchlist was the whole status block. A registered job and a working watch look
+    identical from there - which is how the job watch once sat silent for five days.
+    The watch's own state was already on disk and Monitor simply could not see it.
+    """
+    now = now or datetime.now(timezone.utc)
+    try:
+        from agents import prices
+        items = prices._watchlist()
+        state = prices._load_state()
+    except Exception as e:
+        logger.error("Could not read price watch state - %s: %s", type(e).__name__, e)
+        return "Price watch: state unreadable"
+
+    if not items:
+        return "Price watch: nothing configured, no items watched"
+
+    lines = [f"Price watch: {len(items)} item(s) watched, every 2 hours"]
+
+    checked = state.get("last_checked")
+    when = None
+    if checked:
+        try:
+            when = datetime.fromisoformat(checked)
+        except ValueError:
+            when = None
+    if when is None:
+        lines.append("  last run: no record of a check yet")
+    else:
+        age = now - when
+        stamp = when.strftime("%a %H:%M") + " UTC"
+        if age > _STALE_AFTER:
+            # Say it plainly. A job that is registered but has not run is the exact
+            # failure "is it running as it should" is asking about.
+            hours = int(age.total_seconds() // 3600)
+            days = age.days
+            overdue = f"{days} days" if days >= 1 else f"{hours} hours"
+            lines.append(f"  last run: {stamp} - STALE, {overdue} ago, expected every 2 hours")
+        else:
+            lines.append(f"  last run: {stamp}")
+
+    closest = state.get("closest") or {}
+    for item in items:
+        best = closest.get(item["name"])
+        target = f"target under ${item['under']:,.0f}"
+        if not best:
+            lines.append(f"  - {item['name']}: {target}, nothing matched on the last check")
+            continue
+        # Labelled, because it is keyword-matched and never product-checked. The $44
+        # "closest" for an OCuLink dock was a refurbished DEG1, not the dock wanted.
+        lines.append(f"  - {item['name']}: {target}, cheapest match ${best['price']:,.2f} "
+                     f"(not verified as the right product)")
+    return "\n".join(lines)
+
+
 async def handle(
     message: str,
     context: list[dict],
@@ -886,7 +960,7 @@ async def handle(
     if _scheduler and _scheduler.running:
         jobs = _scheduler.get_jobs()
         if jobs:
-            job_lines = [f"  - {j.id}: next run {j.next_run_time}" for j in jobs]
+            job_lines = [_job_line(j.id, j.next_run_time) for j in jobs]
             status_lines.append("Scheduler: running")
             status_lines.append("Scheduled jobs:\n" + "\n".join(job_lines))
         else:
@@ -895,7 +969,8 @@ async def handle(
         status_lines.append("Scheduler: not running")
 
     watchlist = _get_watchlist()
-    status_lines.append("Watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
+    status_lines.append("News watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
+    status_lines.append(_watcher_status())
 
     status_block = "\n".join(status_lines)
     system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block}"
