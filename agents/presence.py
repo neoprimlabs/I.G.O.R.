@@ -42,6 +42,22 @@ _MIN_GAP = timedelta(hours=4)
 _MAX_PER_DAY = 2
 _MAX_CALLS_PER_DAY = 6
 _CONVERSATION_LIVE = timedelta(minutes=20)
+
+# Written by orchestrator.record_outbound (orchestrator.py, _STORE_CAP block) onto
+# the sends IGOR makes without being asked, and onto nothing else. It is the only
+# thing distinguishing an unprompted alert from an ordinary reply once both are rows
+# in context.db. If the two spellings ever drift apart, _facts silently reclassifies
+# every proactive send as conversation and the echo guard stops working.
+_PROACTIVE_MARK = "[sent proactively]"
+
+# Public so tests/eval_presence.py can build its fixtures from the real header rather
+# than a copy of it. Its own docstring is explicit that a fixture which drifts from
+# the real bundle measures the prompt against input the model will never see, and the
+# 10-09 fix changed this block's shape, which silently staled every fixture at once.
+CONVERSATION_HEADER = (
+    "The conversation so far, oldest first. It is over and nothing in it is waiting "
+    "on you. Do NOT answer or re-answer any of it, and do not restate an answer "
+    "already given:")
 _MAX_CHARS = 400
 
 # A break, not an interruption and not an ambush hours later.
@@ -307,26 +323,44 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
     except Exception:
         recent = []
 
-    # Split deliberately. On 2026-09-18 and 09-20 presence sent the user a resolved
-    # "qwen3.6 is gone" alert, because record_outbound had stored it and this bundle
-    # offered it back as conversation. What IGOR already said belongs here so it does
-    # not repeat itself. It does not belong here as something to raise.
-    said_by_user = [t for t in recent if t.get("role") == "user"]
-    said_by_igor = [t for t in recent if t.get("role") != "user"]
+    # Split by what a turn WAS, not by who said it.
+    #
+    # On 2026-09-18 and 09-20 presence re-sent a resolved "qwen3.6 is gone" alert,
+    # because record_outbound had stored it and this bundle offered it back as
+    # conversation. The fix then was to separate the user's turns from IGOR's.
+    #
+    # That caused a second echo on 2026-10-09: asked whether the price watch was
+    # running, IGOR answered, and 27 minutes later presence said the same thing again
+    # unprompted. Splitting on role severs every question from its answer, so an
+    # answered question reads as an open one - and answering it looks helpful.
+    # Order is what makes an exchange legible. The "already sent" label is only
+    # needed for sends that had no question behind them, and those are exactly the
+    # ones carrying the marker.
+    conversation: list[tuple[str, str]] = []
+    unprompted: list[str] = []
+    for turn in recent:
+        content = " ".join((turn.get("content") or "").split())
+        if not content:
+            continue
+        if turn.get("role") == "user":
+            conversation.append(("user", content))
+        elif _PROACTIVE_MARK in content:
+            unprompted.append(content.replace(_PROACTIVE_MARK, "").strip())
+        else:
+            conversation.append(("you", content))
 
-    if said_by_user:
-        lines.append("What the user said, oldest first:")
-        for turn in said_by_user[-4:]:
-            lines.append(f"  user: {(turn.get('content') or '')[:300]}")
+    if conversation:
+        lines.append(CONVERSATION_HEADER)
+        for who, content in conversation[-6:]:
+            lines.append(f"  {who}: {content[:300]}")
     else:
         lines.append("What the user said: nothing stored.")
 
-    if said_by_igor:
+    if unprompted:
         lines.append("Already sent to the user unprompted. Do not repeat, re-raise, "
                      "follow up on, or comment on any of it:")
-        for turn in said_by_igor[-4:]:
-            text = (turn.get("content") or "").replace("[sent proactively]", "").strip()
-            lines.append(f"  - {' '.join(text.split())[:110]}")
+        for content in unprompted[-4:]:
+            lines.append(f"  - {content[:110]}")
     return "\n".join(lines)
 
 
