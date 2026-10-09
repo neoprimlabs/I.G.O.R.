@@ -36,16 +36,19 @@ sys.path.insert(0, "/opt/igor")
 
 from agents import presence
 
-QUIET_EVENING = """Woken by: lull
+# Taken from presence itself, not copied. A fixture that drifts from the real bundle
+# measures the prompt against input the model will never see.
+_CONVO = presence.CONVERSATION_HEADER
+
+QUIET_EVENING = f"""Woken by: lull
 Current time: Wed 2026-09-16 21:40 EDT (01:40 UTC)
 The user last said something: 38 minutes ago
 Open tasks: none
 Drafts awaiting review: none
-What the user said, oldest first:
+{_CONVO}
   user: thanks, that's sorted
-  user: no I think that's it
-Already sent to the user unprompted. Do not repeat, re-raise, follow up on, or comment on any of it:
-  - Good. Anything else you want to look at tonight?"""
+  you: Good. Anything else you want to look at tonight?
+  user: no I think that's it"""
 
 NOTHING_AT_ALL = """Woken by: lull
 Current time: Thu 2026-09-17 15:05 EDT (19:05 UTC)
@@ -54,24 +57,24 @@ Open tasks: none
 Drafts awaiting review: none
 What the user said: nothing stored."""
 
-ALREADY_SAID = """Woken by: lull
+ALREADY_SAID = f"""Woken by: lull
 Current time: Thu 2026-09-17 11:30 EDT (15:30 UTC)
 The user last said something: 40 minutes ago
 Open tasks (1):
   - Investigate X/Twitter fetching for the Research agent
 Drafts awaiting review: none
-What the user said, oldest first:
+{_CONVO}
   user: yeah leave it for now
 Already sent to the user unprompted. Do not repeat, re-raise, follow up on, or comment on any of it:
   - That X/Twitter task has been open a while - still want it?"""
 
-MID_WORK = """Woken by: lull
+MID_WORK = f"""Woken by: lull
 Current time: Wed 2026-09-16 23:10 EDT (03:10 UTC)
 The user last said something: 27 minutes ago
 Open tasks (1):
   - Investigate X/Twitter fetching for the Research agent
 Drafts awaiting review: none
-What the user said, oldest first:
+{_CONVO}
   user: still working through the deploy, back in a bit"""
 
 # The actual 2026-09-18 and 09-20 failure: the only thing in context is IGOR's own
@@ -98,13 +101,29 @@ Drafts sent for review and not replied to (3):
   Universal Basic Income - 2026-08-13 20:02 UTC - sent 38 days ago
 What the user said: nothing stored."""
 
-CHECKIN_AFTERNOON = """Woken by: checkin
+CHECKIN_AFTERNOON = f"""Woken by: checkin
 Current time: Tue 2026-09-22 15:10 EDT (19:10 UTC)
 The user last said something: 95 minutes ago
 Open tasks: none
 Drafts awaiting review: none
-What the user said, oldest first:
+{_CONVO}
   user: going to be heads down on the engine build most of today"""
+
+# The actual 2026-10-09 failure. Asked at 05:49 whether the price watch was running,
+# IGOR answered. At 06:16 presence fired on lull and said the same thing again. Under
+# the old role-based split the answer sat in the "Already sent" block, so the question
+# read as open - the one case that proves the pairing is what keeps presence quiet.
+ANSWERED_QUESTION = f"""Woken by: lull
+Current time: Fri 2026-10-09 02:16 EDT (06:16 UTC)
+The user last said something: 27 minutes ago
+Open tasks: none
+Drafts awaiting review: none
+{_CONVO}
+  user: I got new lenses in
+  you: Great. With a fresh pair you have a clean slate, but give your eyes a chance to recover first.
+  user: Is the Aoostar AG01 price scouting running as it should?
+  you: Scheduler status: running. price_watch - next run scheduled for 2026-10-09 05:56 UTC. The job is active."""
+
 
 CASES = [
     # Judgement cases. Silence is correct, and this is the measured failure mode.
@@ -113,13 +132,15 @@ CASES = [
     ("the one thing pending was already raised and waved off", ALREADY_SAID, "SILENT"),
     ("the user said they are mid-task and coming back", MID_WORK, "SILENT"),
     ("only its own digest and a resolved alert to talk about", ECHO_ALERT, "SILENT"),
+    ("a question it already answered 27 minutes ago", ANSWERED_QUESTION, "SILENT"),
     # Check-in cases. The code decided it is time; the model writes the message.
     ("the daily check-in, late at night with work pending", CHECKIN_LATE, "SPEAK"),
     ("the daily check-in, afternoon after they said they were busy", CHECKIN_AFTERNOON, "SPEAK"),
 ]
 
 # Anything echoed back from the Already sent block is the 09-18 bug returning.
-ECHOES = ("morning digest", "no longer available", "qwen", "still want it")
+ECHOES = ("morning digest", "no longer available", "qwen", "still want it",
+          "price scouting", "price_watch", "scheduler status")
 
 # The 09-21 failure: asked for a check-in, sent "The draft titled Universal Basic
 # Income was sent 6 days ago". A check-in that names IGOR's filing is not a message.
