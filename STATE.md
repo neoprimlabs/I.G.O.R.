@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `220255b` (presence echo fix, Monitor sees watcher state), deployed
+- Server `/opt/igor` runs `f667eeb` (Hermes tool parity: search_files, delegate_task, task_update), deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -208,6 +208,67 @@ that you've found recently fit me best", IGOR had nothing to read and asked the 
 to describe his own background back to it. `jobs.record_found` now writes
 `memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
 list. Backfilled with today's 11 so it is answerable now.
+
+## Hermes tool parity (2026-10-12)
+
+The user asked how close IGOR was to Hermes Agent, the coding-agent harness in his
+superpowers plugin, then asked for the gap closed. Mapped IGOR's React tools against
+the Hermes table: parity already on files, shell and web; the real gaps were
+`search_files`, `delegate_task` and `todo`. All three are built, tested and deployed.
+`skill_view` is NOT a gap to recover - skills were removed deliberately after a stale
+entry steered answers toward tables for weeks, and GAMEPLAN R4.4 replaces that with
+review files and sign-off.
+
+**React now has 16 tools.** The three new ones:
+
+- **`search_files`** - regex grep over IGOR's own source, `path:line: text`, with up
+  to 6 lines of context. Python, not a shell call to grep: the pattern comes from a
+  model. Skips private files through `_is_private`, which is a test, not a comment.
+  The `context` option exists because the first live delegation found the right line
+  and then ran out of iterations trying to read it - `read_file` pages by CHARACTER
+  offset while this returns a LINE number, so the worker burned its budget guessing.
+- **`delegate_task`** - one isolated worker, `handle()` again with empty context, 8
+  iterations, `MODELS["worker"]` (20b, deliberately not react's 120b). **Worker tools
+  are intersected with what the parent still holds**, so a parent that has read the
+  web cannot launder a write through a worker; granting a worker `search` or
+  `fetch_url` counts as the parent reading the web. One at a time
+  (`_delegation_gate`), depth capped at 1, 3 per turn.
+- **`task_update`** - add/done/list on `tasks.md`, in place. `memory_write` rewrites
+  whole files, which is how ConfigEdit destroyed `schedule_config.md`. Shares
+  `monitor._parse_tasks` with the digest so the two cannot disagree about what is
+  open, which they did once before.
+
+**Verified live on the server, not just offline:** a worker traced `_watcher_status`
+to `agents/monitor.py:890` and quoted its docstring; delegating `write_file` from a
+web-quarantined parent was refused; a worker's own delegation was refused at the
+depth cap.
+
+**Not done, and not a Hermes gap:** a general loop-until-done. `research_loop` has a
+100-iteration autonomous loop but it is research-specific. Generalising it is the
+larger ambition noted in auto-memory, and it is beyond parity rather than part of it.
+A `kanban`-style multi-agent board is also unbuilt; delegation is its prerequisite
+and now exists.
+
+## A public repo held the user's phone number (2026-10-12, fixed forward)
+
+`search_files` went live, was pointed at IGOR's own source as a smoke test, and
+returned the user's real name and phone number from four test fixtures. The tool was
+correct - the real `memory/resume.md` was skipped as designed - and `.gitignore`
+(`.env`, `memory/*`) had kept every actual secret out: **zero commits ever contained
+a Groq key, a Discord token or private key material.** The fixtures were hand-written
+and were the whole leak.
+
+Fixtures now use reserved fictional values. `tests/test_no_pii_committed.py` walks
+`git ls-files` and fails on anything shaped like a real phone, email or street
+address, and on `resume.md` or `memory/private/` ever becoming tracked. It checks
+PATTERNS, never values, because a guard holding the real number in order to search
+for it would be the thing it exists to prevent. It exempts only its own file, which
+has to carry the shapes it looks for.
+
+**Still open, the user's decision:** the values remain in earlier commits of a public
+repo - `git log -S` finds the phone in 2 and the name in 4. Removing them means a
+force-push over published history. Making the repo private is the cheaper fix and
+makes the history moot. Neither has been done.
 
 ## Presence answered a question that was already answered (2026-10-09, fixed)
 
@@ -547,6 +608,14 @@ T.1 is started, not finished. Run all of them with `venv/bin/python` on the serv
   unreadable store. Three key behaviours were mutation-checked.
 - `tests/test_models_live.py` - one real call per role, about 5000 tokens, not in the
   deploy gate. **Run after any change to `config.MODELS` or `llm.model_params`.**
+- `tests/test_delegation.py` - stdlib, no API. Worker isolation, the tool
+  intersection that stops quarantine laundering, the depth cap, serialization, and
+  web-delegation closing the parent's turn. Injects a fake runner, so it proves the
+  wiring and nothing about the worker - rerun the live check in `## Hermes tool
+  parity` after changing the worker prompt or model.
+- `tests/test_search_files.py` and `tests/test_task_tool.py` - stdlib, no API.
+- `tests/test_no_pii_committed.py` - stdlib, no API. **Run before any commit that
+  adds a test fixture.** The repo is public.
 - `tests/test_monitor_status.py` - stdlib, no API. The status block Monitor answers
   "is X running" from: the watched items, a stale check, an unreadable state file,
   and the job-line formatting.
