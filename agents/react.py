@@ -105,6 +105,18 @@ _TOOLS = [
         },
     },
     {
+        "name": "search_files",
+        "description": "Search IGOR's own source code and docs for a regular expression. Use this to find where something is defined or used when you do not already know the file. Returns path:line: text. Searches .py, .md, .json, .txt, .sh, .toml and .cfg under /opt/igor unless you pass a glob.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "Regular expression to search for, e.g. 'def _lowest_price' or 'MODELS\['"},
+                "glob": {"type": "string", "description": "Optional filename glob to narrow the search, e.g. '*.md' or 'prices.py'"},
+            },
+            "required": ["pattern"],
+        },
+    },
+    {
         "name": "memory_read",
         "description": "Read a memory file. Check this before responding to anything about the user's tasks, projects, or preferences.",
         "input_schema": {
@@ -624,6 +636,77 @@ async def _search_memory_files(query: str) -> str:
     return "\n\n".join(results[:20])
 
 
+_SEARCH_SKIP = frozenset({".git", "__pycache__", "venv", ".venv", "node_modules",
+                          ".pytest_cache", ".mypy_cache"})
+_SEARCH_SUFFIXES = frozenset({".py", ".md", ".json", ".txt", ".sh", ".toml", ".cfg"})
+_SEARCH_MAX_HITS = 40
+_SEARCH_MAX_CHARS = 3400
+
+
+async def _search_source(pattern: str, glob: Optional[str] = None) -> str:
+    """Grep IGOR's own source. Never raises.
+
+    React could read a file whose path it already knew and search memory, but had no
+    way to find a string anywhere in the source. On 2026-08-13 it went looking for a
+    route into ARCHITECTURE.md, invented a search_code tool that does not exist, ran
+    out of iterations and described a system that was never built.
+
+    Implemented in Python rather than shelling out to grep: the pattern comes from a
+    model, and handing model output to a shell is the one way this tool could become
+    something worse than a search. Private files are skipped through _is_private, so
+    this cannot become a way around the read guard a line at a time.
+    """
+    pattern = (pattern or "").strip()
+    if not pattern:
+        return "[search_files needs a pattern]"
+    try:
+        rx = re.compile(pattern)
+    except re.error as e:
+        return f"[invalid regex {pattern!r}: {e}]"
+
+    import fnmatch
+    root = config.BASE_DIR.resolve()
+    hits, total = [], 0
+    for path in sorted(root.rglob("*")):
+        if any(part in _SEARCH_SKIP for part in path.parts):
+            continue
+        if not path.is_file():
+            continue
+        if glob and not fnmatch.fnmatch(path.name, glob):
+            continue
+        if not glob and path.suffix not in _SEARCH_SUFFIXES:
+            continue
+        try:
+            if _is_private(path.resolve()):
+                continue
+        except Exception:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            shown = path.relative_to(root)
+        except ValueError:
+            shown = path
+        for i, line in enumerate(text.splitlines(), 1):
+            if rx.search(line):
+                total += 1
+                if len(hits) < _SEARCH_MAX_HITS:
+                    hits.append(f"{shown}:{i}: {line.strip()[:200]}")
+
+    if not hits:
+        return f"No matches for {pattern!r} in IGOR's source."
+
+    out = "\n".join(hits)
+    if len(out) > _SEARCH_MAX_CHARS:
+        out = out[:_SEARCH_MAX_CHARS].rsplit("\n", 1)[0]
+        return out + f"\n[truncated - {total} more matches, narrow the pattern or pass a glob]"
+    if total > len(hits):
+        out += f"\n[{total - len(hits)} more matches not shown, narrow the pattern]"
+    return out
+
+
 async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
     from pathlib import Path
     problem = _path_problem(path)
@@ -789,6 +872,9 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 
     if name == "search_memory":
         return await _search_memory_files(inputs.get("query", ""))
+
+    if name == "search_files":
+        return await _search_source(inputs.get("pattern", ""), inputs.get("glob") or None)
 
     if name == "read_file":
         try:
