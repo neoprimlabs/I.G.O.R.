@@ -7,20 +7,18 @@ window on purpose; the rest is reachable with `offset`. Describe nothing unread.
 
 A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
 `VM.Standard.E2.1.Micro` (1 OCPU / 956 MB), root `/opt/igor`, systemd `igor` and
-`igor-watchdog`. Models are Groq free tier via the `openai` SDK, search is Exa,
-persistence is markdown plus SQLite. No database server, no web UI, no admin panel.
+`igor-watchdog`. Groq free tier via the `openai` SDK, Exa for search, markdown plus
+SQLite for persistence. No database server, no web UI, no admin panel.
 
 ## What does NOT exist
 
-Say so plainly rather than describing these as though they work:
+Say so plainly, do not describe these as working:
 
-- **No content filter, moderation pipeline, or safety classifier** over what the
-  agents generate. Nothing screens React, Direct, Monitor, ConfigEdit, ResearchLoop
-  or SelfDescribe output for accuracy or harm; `sanitize.clean` only maps typography.
-  Two honest exceptions: `presence._tidy` drops a check-in that claims work IGOR
-  never did or runs over 400 characters, and `digest_config.md` exclusions filter
-  news by keyword. The models themselves refuse things on their own - that is
-  Groq's, not IGOR's, and IGOR cannot turn it off.
+- **No content filter, moderation pipeline, or safety classifier** over what any
+  agent generates. Nothing screens output for accuracy or harm; `sanitize.clean`
+  only maps typography. Two exceptions: `presence._tidy` drops a check-in claiming
+  work IGOR never did or over 400 chars, and `digest_config.md` filters news by
+  keyword. The models refuse things on their own - that is Groq's, not IGOR's.
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.**
 - **No connection to any external platform.** No posting, no email, no social or
   publishing accounts. IGOR drafts; a human publishes.
@@ -39,41 +37,29 @@ failure falls through to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
-| Direct | `CHAT` | gpt-oss-120b | none, by design |
-| React | `TASK`, router failure | gpt-oss-120b | all 13 |
-| Monitor | `MONITOR`, digest commands | gpt-oss-20b | none |
-| ConfigEdit | `CONFIG` | gpt-oss-120b | none, writes 3 files, only when the message names the setting |
-| ResearchLoop | `deep research` prefix | gpt-oss-20b | none, fixed pipeline |
-| SelfDescribe | `SELF` - questions about IGOR itself | gpt-oss-120b | none, reads this file |
+| Direct | `CHAT` | 120b | none, by design |
+| React | `TASK`, router failure | 120b | all 16 |
+| Monitor | `MONITOR`, digest | 20b | none |
+| ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
+| ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
+| SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
-**Questions about IGOR go to SelfDescribe, not React**, which returns
-`NOT_ABOUT_IGOR` for messages that are really tasks.
+**Questions about IGOR go to SelfDescribe, not React.**
 
-**Price watch** (`agents/prices.py`) reads `memory/price_watch.md` - a heading, a
-`query:`, an optional `want:` and an `under:` price per item - and checks Slickdeals'
-RSS search every two hours, reporting anything under target. No key and no scraping:
-retailers block this server outright (Best Buy refuses, Micro Center and PCPartPicker
-403) and Best Buy's API no longer issues keys to free email addresses. Price, query
-words and post age are judged in code; whether the listing is the *right product* is
-one `summary`-model call, made only when something is already under target, against
-the `want:` line. Listings it rejects are marked seen so they are not judged twice. When nothing is under target it sends nothing at all; liveness is in the log and in `memory/price_watch_status.md`, rewritten every check and readable by React when asked.
-Asked whether the watch is running, Monitor answers from `_watcher_status`, which
-reports what is watched, each target, when the watch last actually ran (flagged
-STALE past 6 hours) and the cheapest match seen, labelled as not product-checked.
-Every failure of that call fails open and sends unfiltered, because an unreadable
-reply arrives as a 200 OK and would otherwise swallow a real drop in silence.
+**Price watch** (`agents/prices.py`) checks Slickdeals' RSS every two hours against
+`memory/price_watch.md` (`query:`, optional `want:`, `under:`). Price and age are
+judged in code; whether a cheap listing is the *right product* is one model call
+against `want:`. Silent when nothing is under target.
 
 **Scheduling.** APScheduler, in-process. Eight jobs, all registered *in code* in
-`monitor.setup()`: the morning digest (13:00 UTC), a Groq model check (daily 09:00
-plus once per start), an advocacy draft (Mondays 15:00), a job watch (14:30), a
-check every 60s for due scheduled messages, and a presence tick every 10 minutes.
-There is no scheduler config file: retiming a job needs a code change and a deploy.
+`monitor.setup()`: the morning digest (13:00 UTC), a Groq model check, an advocacy
+draft (Mondays), a job watch (14:30), a price watch (2-hourly), a 60s check for due
+scheduled messages, and a presence tick every 10 minutes. There is no scheduler
+config file: retiming a job needs a code change and a deploy.
 
 **Scheduled messages** are the one thing the user can schedule by asking:
 `scheduled_message` adds, lists or cancels entries in `memory/scheduled.json`, up to
-30 days ahead, timed by local time, minutes from now, or a named window the code
-picks a minute inside. Words are fixed when scheduled or written at delivery by
-`agents/compose.py`. Timezone is `config.USER_TZ` (America/New_York).
+30 days ahead. Timezone is `config.USER_TZ` (America/New_York).
 
 **Presence** (`agents/presence.py`) is IGOR deciding whether to speak unprompted,
 usually deciding not to. One check-in a day at a code-picked time. Gates run in code
@@ -81,30 +67,26 @@ before any model call: silent 03:00-10:00 local, 4h between messages, 2 a day, 6
 calls a day, never within 20 minutes of a live conversation. **Off unless
 `memory/presence_config.md` says `state: on`.**
 
-**Job watch** (`agents/jobs.py`) runs daily. Topical relevance comes from the
-sources - eight RemoteOK tags, three We Work Remotely category feeds, Greenhouse
-boards, plus Remotive, which ignores its own search and category parameters. Code
-keeps only what it can be right about (remote, not excluded per
-`memory/job_search.md`, not already sent); the model ranks the rest against
-`memory/private/profile.md` and what it finds is kept in `memory/jobs_found.md`.
-Indeed is not a source: no usable API. **IGOR never applies** - it reports and
+**Job watch** (`agents/jobs.py`) runs daily over RemoteOK, We Work Remotely,
+Greenhouse and Remotive. Code filters to what it can be right about; the model ranks
+the rest against `memory/private/profile.md` and results go to
+`memory/jobs_found.md`. Indeed is not a source: no usable API. **IGOR never
+applies** - it reports and
 drafts; the user sends.
 
-**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`
-(digest sections and keyword exclusions), `schedule_config.md` (digest time),
-`agents.md` (**standing preferences only - NOT the agent list above**), `tasks.md`,
-`projects.md`, `user.md`, `watchlist.md`, `research.md`, `job_search.md`, plus
-`context.db` (SQLite history). `memory_write` takes a filename from a fixed list.
-`corrections.md` and `drafts.md` are **sealed in every turn** - they hold text
-derived from untrusted input. `resume.md` and `memory/private/` are **guarded**:
-React may read them when no web content has entered the turn, and doing so closes
-`search` and `fetch_url` for the rest of it. **Private data and the open web never
-share a turn, in either direction.** No agent may write any of them, and
-`search_memory` skips them all.
+**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`,
+`schedule_config.md`, `agents.md` (**standing preferences only - NOT the agent list
+above**), `tasks.md`, `projects.md`, `user.md`, `watchlist.md`, `research.md`,
+`job_search.md`, plus `context.db`. `memory_write` takes a filename from a fixed
+list. `corrections.md` and `drafts.md` are **sealed in every turn**.
+`resume.md` and `memory/private/` are **guarded**: React may read them when no web
+content has entered the turn, and doing so closes `search` and `fetch_url` for the
+rest of it. **Private data and the open web never share a turn, in either
+direction.** No agent may write any of them, and `search_memory` skips them all.
 
 **Deployment** runs through a root-owned script at
 `/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach:
-it compile-checks, imports every module, restarts, waits for the gateway, and reverts
+it compile-checks, imports every module, restarts, waits for the gateway, reverts
 on failure.
 
 <!-- END SELF SUMMARY -->
@@ -309,7 +291,7 @@ two-part answer: the limitation, then the specific check that would answer it.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 15 tools attach unless
+`[system] + context window + user message`. All 16 tools attach unless
 `allowed_tools` narrows them.
 
 **The 16 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
@@ -318,6 +300,15 @@ System prompt is rebuilt on every call from the current local and UTC time
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`).
+
+**Price watch, in full.** Listings the product judge rejects are marked seen so
+they are not judged twice. Every failure of that call fails open and sends
+unfiltered, because an unreadable reply arrives as a 200 OK and would otherwise
+swallow a real price drop in silence. `monitor._watcher_status` reports what is
+watched, each target, when the check last actually ran (flagged STALE past 6 hours)
+and the cheapest keyword match, labelled as not product-checked - a registered job
+and a working watch look identical from the scheduler alone, which is how the job
+watch once sat silent for five days.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
 editing in place. React could already reach the file through `memory_write`, which
