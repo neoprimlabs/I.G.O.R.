@@ -110,9 +110,15 @@ contains everything needed. When giving the user commands to run themselves, alw
 which terminal (local PowerShell vs SSH); PowerShell has no `&&`.
 
 ## Debugging Playbook (check in this order)
-1. **Wrong/weird behavior despite prompt fixes** -> `cat /opt/igor/memory/skills_react.md`
-   on the server. Learned skills inject into every prompt and override prompt edits.
-   A poisoned skill caused days of confusion once already.
+1. **Wrong/weird behavior despite prompt fixes** -> check for a prompt override file
+   on the server: `ls /opt/igor/memory/prompt_*.md`. Each agent prefers
+   `prompt_<agent>.md` over its `_DEFAULT_SYSTEM_PROMPT`, so a file nobody remembers
+   writing silently wins over every edit made in the repo.
+   **`skills_react.md` is gone** - it injected unreviewed captures into every React
+   prompt with nothing maintaining it, and one stale formatting entry steered answers
+   toward tables for weeks while prompt edits failed to override it. That is the
+   lesson to keep: an auto-injected file outranks the prompt you are editing. Do not
+   go looking for the file itself.
 2. **Slow or "frozen"** -> it is almost always 429 TPM backoff. Check journalctl for
    429 lines; check true limits with the x-ratelimit-* headers via a curl to
    /openai/v1/chat/completions.
