@@ -124,6 +124,35 @@ def test_the_glob_narrows_it() -> None:
     _check("python is excluded by the glob", "prices.py" not in out, out)
 
 
+def test_context_lines() -> None:
+    """2026-10-12: a live delegated worker found _watcher_status at monitor.py:890,
+    then ran out of iterations trying to read its docstring - read_file pages by
+    character offset and the worker had a line number. Context lines answer that in
+    one call instead of several guesses at an offset."""
+    _tree()
+
+    plain = _run("the cheapest figure")
+    _check("without context only the matching line comes back",
+           "def _lowest_price" not in plain, plain)
+
+    out = _run("the cheapest figure", context=2)
+    _check("with context the line above is included",
+           "def _lowest_price" in out, out)
+    _check("and the line below", "return min(found)" in out, out)
+    _check("every line is still labelled with its own number",
+           out.count("prices.py:") >= 3, out)
+
+    _check("context is clamped rather than trusted",
+           "prices.py" in _run("the cheapest figure", context=9999))
+    _check("a negative value behaves like none",
+           "def _lowest_price" not in _run("the cheapest figure", context=-3))
+
+    # Context must not become a way to page a private file one window at a time.
+    private = _run("Kitchen Manager", context=6)
+    _check("a private file stays unreadable even with context",
+           "Example Pizzeria" not in private and "food service" not in private, private)
+
+
 def test_output_is_capped() -> None:
     """A tool result over the cap gets chopped by the generic truncation with advice
     this tool cannot honour. Cap it here, and say so."""
@@ -170,6 +199,8 @@ if __name__ == "__main__":
     test_it_is_a_regex_and_survives_a_bad_one()
     print("\nthe glob")
     test_the_glob_narrows_it()
+    print("\ncontext lines")
+    test_context_lines()
     print("\noutput cap")
     test_output_is_capped()
     print("\nno matches")

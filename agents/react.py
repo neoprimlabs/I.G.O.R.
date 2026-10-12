@@ -124,6 +124,7 @@ _TOOLS = [
             "properties": {
                 "pattern": {"type": "string", "description": "Regular expression to search for, e.g. 'def _lowest_price' or 'MODELS\['"},
                 "glob": {"type": "string", "description": "Optional filename glob to narrow the search, e.g. '*.md' or 'prices.py'"},
+                "context": {"type": "integer", "description": "Lines of surrounding context to include with each match, 0 to 6. Use 3 or more when you need to see what the matching line does, rather than paging read_file to find it."},
             },
             "required": ["pattern"],
         },
@@ -650,7 +651,7 @@ async def _search_memory_files(query: str) -> str:
 
 _MAX_DELEGATION_DEPTH = 1
 _MAX_DELEGATIONS_PER_TURN = 3
-_WORKER_ITERATIONS = 6
+_WORKER_ITERATIONS = 8
 _WORKER_MAX_TOKENS = 1024
 
 # A worker must not reach the user, restart the service, schedule anything, write
@@ -761,7 +762,8 @@ _SEARCH_MAX_HITS = 40
 _SEARCH_MAX_CHARS = 3400
 
 
-async def _search_source(pattern: str, glob: Optional[str] = None) -> str:
+async def _search_source(pattern: str, glob: Optional[str] = None,
+                         context: int = 0) -> str:
     """Grep IGOR's own source. Never raises.
 
     React could read a file whose path it already knew and search memory, but had no
@@ -807,11 +809,25 @@ async def _search_source(pattern: str, glob: Optional[str] = None) -> str:
             shown = path.relative_to(root)
         except ValueError:
             shown = path
-        for i, line in enumerate(text.splitlines(), 1):
+        lines = text.splitlines()
+        for i, line in enumerate(lines, 1):
             if rx.search(line):
                 total += 1
-                if len(hits) < _SEARCH_MAX_HITS:
+                if len(hits) >= _SEARCH_MAX_HITS:
+                    continue
+                if context <= 0:
                     hits.append(f"{shown}:{i}: {line.strip()[:200]}")
+                    continue
+                # 2026-10-12: a delegated worker found _watcher_status at
+                # monitor.py:890 and then ran out of iterations trying to read the
+                # docstring, because read_file pages by CHARACTER offset and it had
+                # a line number. Returning the surrounding lines answers that class
+                # of question in one call instead of several guesses at an offset.
+                start = max(0, i - 1 - context)
+                end = min(len(lines), i + context)
+                block = "\n".join(
+                    f"{shown}:{n}: {lines[n - 1][:200]}" for n in range(start + 1, end + 1))
+                hits.append(block)
 
     if not hits:
         return f"No matches for {pattern!r} in IGOR's source."
@@ -992,7 +1008,13 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         return await _search_memory_files(inputs.get("query", ""))
 
     if name == "search_files":
-        return await _search_source(inputs.get("pattern", ""), inputs.get("glob") or None)
+        try:
+            around = int(inputs.get("context") or 0)
+        except (TypeError, ValueError):
+            around = 0
+        return await _search_source(inputs.get("pattern", ""),
+                                    inputs.get("glob") or None,
+                                    max(0, min(around, 6)))
 
     if name == "read_file":
         try:
