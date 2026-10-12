@@ -28,9 +28,10 @@ Say so plainly rather than describing these as though they work:
   on. IGOR cannot deploy its own code changes.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
-**React's 13 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
-`fetch_url`, `send_message`, `memory_write`, `scheduled_message`. There are no others.
+**React's 14 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`search_files`, `python_run`, `read_file`, `patch_file`, `write_file`,
+`restart_self`, `shell`, `fetch_url`, `send_message`, `memory_write`,
+`scheduled_message`. There are no others.
 
 **Routing.** Four exact-match fast paths, then one router call
 (`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
@@ -308,13 +309,21 @@ two-part answer: the limitation, then the specific check that would answer it.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 13 tools attach unless
+`[system] + context window + user message`. All 14 tools attach unless
 `allowed_tools` narrows them.
 
-**The 13 tools:** `search`, `memory_read`, `search_memory`, `python_run`,
-`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`, `scheduled_message`. `scheduled_message` is switched
-off after a web read, like the other tools that change state (`agents/scheduled.py`).
+**The 14 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
+`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
+`fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
+`scheduled_message` is switched off after a web read, like the other tools that
+change state (`agents/scheduled.py`).
+
+`search_files` greps IGOR's own source for a regex and returns `path:line: text`.
+It is implemented in Python, not by shelling out to grep, because the pattern comes
+from a model and handing model output to a shell turns a search into something
+worse. It skips private files through `_is_private`, so it cannot become a way
+around the read guard a line at a time, and it skips `.git`, `__pycache__` and the
+venv. Read-only, so it is in neither quarantine set.
 
 Up to 8 iterations:
 
