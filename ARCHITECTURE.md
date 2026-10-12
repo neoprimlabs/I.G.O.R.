@@ -28,10 +28,10 @@ Say so plainly rather than describing these as though they work:
   on. IGOR cannot deploy its own code changes.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
-**React's 15 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`search_files`, `delegate_task`, `python_run`, `read_file`, `patch_file`,
-`write_file`, `restart_self`, `shell`, `fetch_url`, `send_message`, `memory_write`,
-`scheduled_message`. There are no others.
+**React's 16 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`search_files`, `delegate_task`, `task_update`, `python_run`, `read_file`,
+`patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`, `send_message`,
+`memory_write`, `scheduled_message`. There are no others.
 
 **Routing.** Four exact-match fast paths, then one router call
 (`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
@@ -312,12 +312,20 @@ System prompt is rebuilt on every call from the current local and UTC time
 `[system] + context window + user message`. All 15 tools attach unless
 `allowed_tools` narrows them.
 
-**The 15 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
-`delegate_task`,
+**The 16 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
+`delegate_task`, `task_update`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`).
+
+`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
+editing in place. React could already reach the file through `memory_write`, which
+rewrites it wholesale from model output - the way ConfigEdit destroyed
+`schedule_config.md` and nobody noticed for six days. The digest and presence both
+read this file. An ambiguous `done` is refused with the candidates listed rather than
+guessed, and it shares `monitor._parse_tasks` with the digest so the two can never
+disagree about what is open.
 
 `delegate_task` runs one isolated worker: `handle()` again with an empty context, a
 restricted tool list, 6 iterations and `MODELS["worker"]`. It is how a job stops

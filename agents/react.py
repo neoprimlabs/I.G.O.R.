@@ -49,7 +49,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
-    "scheduled_message", "delegate_task",
+    "scheduled_message", "delegate_task", "task_update",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -102,6 +102,18 @@ _TOOLS = [
                 },
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "task_update",
+        "description": "Add a task to tasks.md, mark one done, or list the open ones. Edits the file in place - one line changed, everything else left alone - so use this rather than memory_write for tasks. The morning digest and the proactive check-ins both read this file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["add", "done", "list"], "description": "add a new task, mark an existing one done, or list open tasks"},
+                "text": {"type": "string", "description": "The task to add, or enough of an existing task to identify it uniquely. Not needed for list."},
+            },
+            "required": ["action"],
         },
     },
     {
@@ -649,6 +661,98 @@ async def _search_memory_files(query: str) -> str:
     return "\n\n".join(results[:20])
 
 
+async def _task_update(action: str, text: str = "") -> str:
+    """Add or complete one task in tasks.md, in place. Never raises.
+
+    React could already reach this file through memory_write, which rewrites the
+    whole thing from whatever the model produced. That is how ConfigEdit destroyed
+    schedule_config.md: asked to move a check-in, it rewrote the file, and nobody
+    noticed for six days. tasks.md is read by the morning digest and by presence, so
+    the same mistake here is silent in the same way.
+
+    One line appended, or one line marked [x]. Every other line is left alone.
+    """
+    import os
+    from agents import monitor
+
+    action = (action or "").strip().lower()
+    text = (text or "").strip()
+    path = config.MEMORY_DIR / "tasks.md"
+
+    try:
+        body = path.read_text(encoding="utf-8")
+    except OSError:
+        body = ""
+
+    if action == "list":
+        open_tasks = monitor._parse_tasks(body)
+        if not open_tasks:
+            return "No open tasks in tasks.md."
+        return "Open tasks:\n" + "\n".join(open_tasks)
+
+    if action not in {"add", "done"}:
+        return (f"[unknown action {action!r}. Use add, done, or list.]")
+    if not text:
+        return f"[{action} needs text: say which task]"
+
+    lines = body.splitlines()
+
+    if action == "add":
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("- ") and text.lower() in stripped.lower():
+                return f"[already on the list: {stripped}]"
+        if not body.strip():
+            lines = ["# Tasks", ""]
+        # Appended after the last bullet rather than at the end of the file, so a
+        # trailing "## Someday" section does not swallow every new task.
+        last = max((i for i, l in enumerate(lines)
+                    if l.strip().startswith("- ")), default=len(lines) - 1)
+        lines.insert(last + 1, f"- {text}")
+        new_body = "\n".join(lines).rstrip("\n") + "\n"
+        try:
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(new_body, encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as e:
+            return f"[could not write tasks.md: {type(e).__name__}: {e}]"
+        return f"Added to tasks.md: {text}"
+
+    needle = text.lower()
+    matches = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        rest = stripped[2:].strip()
+        if rest[:3].lower() == "[x]":
+            continue
+        if rest.startswith("[ ]"):
+            rest = rest[3:].strip()
+        if needle in rest.lower():
+            matches.append((i, rest))
+
+    if not matches:
+        return f"[no open task matching {text!r}. Call task_update list to see them.]"
+    if len(matches) > 1:
+        # Guessing which was meant is how the wrong task gets closed silently.
+        listed = "\n".join(f"  - {m[1]}" for m in matches)
+        return (f"[{text!r} matches more than one open task. Be more specific:\n"
+                f"{listed}]")
+
+    index, rest = matches[0]
+    indent = lines[index][:len(lines[index]) - len(lines[index].lstrip())]
+    lines[index] = f"{indent}- [x] {rest}"
+    new_body = "\n".join(lines).rstrip("\n") + "\n"
+    try:
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(new_body, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        return f"[could not write tasks.md: {type(e).__name__}: {e}]"
+    return f"Marked done in tasks.md: {rest}"
+
+
 _MAX_DELEGATION_DEPTH = 1
 _MAX_DELEGATIONS_PER_TURN = 3
 _WORKER_ITERATIONS = 8
@@ -1006,6 +1110,9 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 
     if name == "search_memory":
         return await _search_memory_files(inputs.get("query", ""))
+
+    if name == "task_update":
+        return await _task_update(inputs.get("action", ""), inputs.get("text", ""))
 
     if name == "search_files":
         try:
