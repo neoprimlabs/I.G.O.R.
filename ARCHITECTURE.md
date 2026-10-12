@@ -28,9 +28,9 @@ Say so plainly rather than describing these as though they work:
   on. IGOR cannot deploy its own code changes.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
-**React's 14 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`search_files`, `python_run`, `read_file`, `patch_file`, `write_file`,
-`restart_self`, `shell`, `fetch_url`, `send_message`, `memory_write`,
+**React's 15 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`search_files`, `delegate_task`, `python_run`, `read_file`, `patch_file`,
+`write_file`, `restart_self`, `shell`, `fetch_url`, `send_message`, `memory_write`,
 `scheduled_message`. There are no others.
 
 **Routing.** Four exact-match fast paths, then one router call
@@ -309,14 +309,35 @@ two-part answer: the limitation, then the specific check that would answer it.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 14 tools attach unless
+`[system] + context window + user message`. All 15 tools attach unless
 `allowed_tools` narrows them.
 
-**The 14 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
+**The 15 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
+`delegate_task`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`).
+
+`delegate_task` runs one isolated worker: `handle()` again with an empty context, a
+restricted tool list, 6 iterations and `MODELS["worker"]`. It is how a job stops
+having to fit in the parent's context window. Three constraints make it safe rather
+than merely useful, each covered by `tests/test_delegation.py`:
+
+- **Worker tools are intersected with what the parent still holds**, not with the
+  full list. Without that, a parent that had read the web - and so lost `write_file`
+  and `shell` - could hand the write to a worker, and the symmetric quarantine would
+  be one indirection deep and worth nothing.
+- **Granting a worker `search` or `fetch_url` counts as the parent reading the web.**
+  The worker returns text the parent acts on, so `_delegation_wants_web` folds into
+  `batch_reads_web` and the parent's state-changing tools close as they would on a
+  direct read. `delegate_task` is itself in `_QUARANTINED_AFTER_WEB`.
+- **One worker at a time** (`_delegation_gate`), on a different model from the parent
+  (20b, not react's 120b). Groq free tier is 8000 TPM per bucket and the parent is
+  mid-turn with the user waiting; fanning out 429s the hot path. Depth is capped at 1
+  so workers cannot delegate, and at 3 delegations per turn. Workers never get
+  `send_message`, `scheduled_message`, `restart_self`, `memory_write` or
+  `delegate_task`.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`.
 It is implemented in Python, not by shelling out to grep, because the pattern comes

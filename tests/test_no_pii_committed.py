@@ -40,8 +40,14 @@ def _check(name: str, condition: bool, detail: str = "") -> None:
 
 # 555-0100 through 555-0199 is the range reserved for fiction. Anything else shaped
 # like a North American number is assumed real until a human says otherwise.
-_PHONE = re.compile(r"\(?\b(\d{3})\)?[ .\-]\d{3}[ .\-](\d{4})\b")
-_FAKE_AREA = {"555"}
+_PHONE = re.compile(r"\(?\b(\d{3})\)?[ .\-](\d{3})[ .\-]\d{4}\b")
+
+# 555 is the reserved EXCHANGE, not the area code. The first version of this checked
+# group 1 and so read "(412) 555-1234" as a real number. Either position holding 555
+# is treated as invented, which is looser than the NANP rule and the right way round
+# for a guard: a false negative publishes a phone number, a false positive costs a
+# one-line edit.
+_FAKE = "555"
 
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+\-]+@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})\b")
 _FAKE_DOMAINS = {"example.com", "example.org", "example.net", "example.invalid",
@@ -53,11 +59,18 @@ _STREET = re.compile(r"\b\d{1,5}\s+[A-Z][a-z]+\s+(Street|St|Avenue|Ave|Road|Rd|L
 
 _SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".ico", ".onnx", ".wav"}
 
+# This file is exempt from its own content scan, and has to be: a guard has to hold
+# the shapes it searches for. test_the_guard_actually_catches_something below carries
+# a deliberately real-looking number, email and street address as positive controls.
+# Nothing else is exempt, and the exemption is one resolved path, not a pattern.
+_SELF = Path(__file__).resolve()
+
 
 def _tracked() -> list[Path]:
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                          capture_output=True, text=True, check=True)
-    return [ROOT / name for name in out.stdout.split("\0") if name]
+    return [ROOT / name for name in out.stdout.split("\0")
+            if name and (ROOT / name).resolve() != _SELF]
 
 
 def test_no_real_phone_numbers() -> None:
@@ -70,7 +83,7 @@ def test_no_real_phone_numbers() -> None:
         except (OSError, UnicodeDecodeError):
             continue
         for match in _PHONE.finditer(text):
-            if match.group(1) in _FAKE_AREA:
+            if _FAKE in (match.group(1), match.group(2)):
                 continue
             line = text[:match.start()].count("\n") + 1
             hits.append(f"{path.relative_to(ROOT)}:{line}")
@@ -127,10 +140,21 @@ def test_the_private_memory_files_are_not_tracked() -> None:
 def test_the_guard_actually_catches_something() -> None:
     """A guard that cannot fail is decoration. These are the shapes it must reject,
     checked against the patterns rather than against any real value."""
-    _check("a real-looking phone is caught",
-           _PHONE.search("call me on (412) 555-1234") is not None)
-    _check("the 555 fiction range is allowed",
-           _PHONE.search("(555) 010-0001").group(1) == "555")
+    real = _PHONE.search("call me on (412) 867-5309")
+    _check("a real-looking phone is caught", real is not None)
+    _check("and is not waved through as fiction",
+           real is not None and _FAKE not in (real.group(1), real.group(2)), str(real))
+
+    area = _PHONE.search("(555) 010-0001")
+    _check("555 in the area position is recognised as invented",
+           area is not None and _FAKE in (area.group(1), area.group(2)), str(area))
+
+    # The bug this replaced: only group 1 was checked, so a real area code with the
+    # reserved exchange read as real and would have been reported as a leak.
+    exchange = _PHONE.search("(412) 555-0100")
+    _check("and so is 555 in the exchange position",
+           exchange is not None and _FAKE in (exchange.group(1), exchange.group(2)),
+           str(exchange))
     _check("a real-looking email is caught",
            _EMAIL.search("someone@gmail.com").group(1) == "gmail.com")
     _check("an example domain is recognised as fake",
