@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `f667eeb` (Hermes tool parity: search_files, delegate_task, task_update), deployed
+- Server `/opt/igor` runs `cde117f` (Hermes tool parity, plus the test-suite and self-summary fixes), deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -208,6 +208,39 @@ that you've found recently fit me best", IGOR had nothing to read and asked the 
 to describe his own background back to it. `jobs.record_found` now writes
 `memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
 list. Backfilled with today's 11 so it is answerable now.
+
+## The test suite only ran on one laptop (2026-10-12, fixed)
+
+Asked whether everything shipped that day was verified end to end. It was not, and
+running every suite on the server with its own python found three things, none of
+them in the new features:
+
+1. **Five suites carried a hardcoded `sys.path.insert(0, r"c:\Dev\IGOR")`** -
+   `test_read_file_paging`, `test_digest_sources`, `test_research_threads`,
+   `test_self_describe`, `test_self_grounding`. They passed locally and died with
+   `ModuleNotFoundError` anywhere else, including the server, which is where this
+   file and CLAUDE.md both say to run them. Now using the portable idiom.
+2. **The ARCHITECTURE self-summary had grown to 6791 chars against
+   `self_describe._MAX_DOC_CHARS = 6000`**, so SelfDescribe was loading a summary
+   silently cut mid-sentence at 4393 tokens a question. That day's own
+   documentation pushed it over. Trimmed to **4997** by moving implementation depth
+   below the marker. Two stale tool counts were found doing it: the routing table
+   still said React had "all 13" tools and another line said 15.
+   **The budget is now effectively full - adding a subsystem above the marker means
+   removing something else.** `tests/test_self_describe.py` enforces both bounds.
+3. **`test_self_grounding` imported `_ground_if_self_referential`**, deliberately
+   removed in `13d10ab`. `test_self_describe` already asserts that function is gone,
+   so one suite required the absence of what another imported. Deleted; the
+   mechanism was replaced by SelfDescribe, which has 27 checks of its own.
+
+A fourth came from the live end-to-end pass rather than any offline test:
+**`task_update` was missing from `_WORKER_FORBIDDEN`**, so a delegated worker could
+add or close tasks in `tasks.md`. Fixed, and the test now asserts the whole set.
+
+**21 of 21 suites pass locally and on the server.** The live pass (26 checks: tool
+registration, real-tree grep, `task_update` against a copy of the real `tasks.md`,
+delegation guards, watcher status, presence bundle) is in the session scratch and
+worth rebuilding if this needs re-proving.
 
 ## Hermes tool parity (2026-10-12)
 
