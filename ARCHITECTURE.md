@@ -344,8 +344,10 @@ than merely useful, each covered by `tests/test_delegation.py`:
   (20b, not react's 120b). Groq free tier is 8000 TPM per bucket and the parent is
   mid-turn with the user waiting; fanning out 429s the hot path. Depth is capped at 1
   so workers cannot delegate, and at 3 delegations per turn. Workers never get
-  `send_message`, `scheduled_message`, `restart_self`, `memory_write` or
-  `delegate_task`.
+  `send_message`, `scheduled_message`, `restart_self`, `memory_write`,
+  `task_update` or `delegate_task`. `task_update` was missed when it was added and a
+  live end-to-end check found it; `tests/test_delegation.py` now asserts the whole
+  set so the next state-changing tool cannot be forgotten the same way.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
 with an optional `context` of up to 6 surrounding lines. The context exists

@@ -762,8 +762,13 @@ _WORKER_MAX_TOKENS = 1024
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
     "delegate_task", "send_message", "scheduled_message", "restart_self",
-    "memory_write",
+    "memory_write", "task_update",
 })
+# task_update was missed when it was added, and a live end-to-end check found it.
+# It writes tasks.md, which the morning digest and presence both read, so a worker
+# closing a task is a user-visible change made by something with no conversation and
+# no idea what the user meant. Anything new that changes state the user sees belongs
+# in this list, and the check in tests/test_delegation.py asserts the whole set.
 
 # One worker at a time. Groq free tier is 8000 TPM on shared buckets and the parent
 # is mid-turn with the user waiting, so fanning out is the one sure way to 429 the

@@ -134,14 +134,23 @@ def test_forbidden_tools_are_stripped() -> None:
     _run(react._delegate(
         goal="x",
         tools=["read_file", "send_message", "restart_self", "scheduled_message",
-               "memory_write", "delegate_task"],
+               "memory_write", "delegate_task", "task_update"],
         parent_tools=ALL_TOOLS, depth=0, run=runner))
 
     granted = runner.calls[0]["allowed_tools"]
     _check("the useful tool survives", "read_file" in granted, str(granted))
     for banned in ("send_message", "restart_self", "scheduled_message",
-                   "memory_write", "delegate_task"):
+                   "memory_write", "delegate_task", "task_update"):
         _check(f"{banned} is withheld", banned not in granted, str(granted))
+
+    # task_update was added after this list was written and was missed, which a live
+    # end-to-end check caught rather than any offline test. Asserting the whole set
+    # means the next state-changing tool cannot be forgotten the same way.
+    _check("the forbidden set is exactly what is intended",
+           react._WORKER_FORBIDDEN == frozenset({
+               "delegate_task", "send_message", "scheduled_message", "restart_self",
+               "memory_write", "task_update"}),
+           str(sorted(react._WORKER_FORBIDDEN)))
 
 
 def test_quarantine_cannot_be_laundered_through_a_worker() -> None:
