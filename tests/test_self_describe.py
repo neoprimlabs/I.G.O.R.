@@ -8,7 +8,12 @@ guaranteed the fabrication. The budget was the bug.
 """
 import sys
 
-sys.path.insert(0, r"c:\Dev\IGOR")
+from pathlib import Path
+
+# Not a hardcoded c:\Dev\IGOR. These five suites carried one, so they ran only
+# on the author's laptop and failed with ModuleNotFoundError on the server -
+# which is where CLAUDE.md says to run them. Found by running all of them there.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
 import orchestrator

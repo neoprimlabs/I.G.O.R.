@@ -9,7 +9,12 @@ Every input below is a real line from that run.
 """
 import sys
 
-sys.path.insert(0, r"c:\Dev\IGOR")
+from pathlib import Path
+
+# Not a hardcoded c:\Dev\IGOR. These five suites carried one, so they ran only
+# on the author's laptop and failed with ModuleNotFoundError on the server -
+# which is where CLAUDE.md says to run them. Found by running all of them there.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agents.research_loop import _DISTILL_SYSTEM, _clean_thread, _extract_recent_threads
 
