@@ -339,7 +339,11 @@ than merely useful, each covered by `tests/test_delegation.py`:
   `send_message`, `scheduled_message`, `restart_self`, `memory_write` or
   `delegate_task`.
 
-`search_files` greps IGOR's own source for a regex and returns `path:line: text`.
+`search_files` greps IGOR's own source for a regex and returns `path:line: text`,
+with an optional `context` of up to 6 surrounding lines. The context exists
+because `read_file` pages by character offset: a worker that knows a line number
+has no way to jump to it and burns iterations guessing, which is how the first
+live delegation ran out of budget after finding the right line.
 It is implemented in Python, not by shelling out to grep, because the pattern comes
 from a model and handing model output to a shell turns a search into something
 worse. It skips private files through `_is_private`, so it cannot become a way
