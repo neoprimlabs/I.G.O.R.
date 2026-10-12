@@ -49,7 +49,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
-    "scheduled_message",
+    "scheduled_message", "delegate_task",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -102,6 +102,18 @@ _TOOLS = [
                 },
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "delegate_task",
+        "description": "Hand one self-contained job to a worker with its own empty context, and get back what it found. Use this when a job needs several steps of looking around that would otherwise fill your own context - tracing a symbol through the codebase, reading several files to answer one question. The worker cannot message the user, write memory, restart anything, or delegate further. Name only the tools it needs. It returns text; it cannot show you its tool output.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "What the worker should find out, stated so it makes sense with no other context. Include file paths or names it will need."},
+                "tools": {"type": "array", "items": {"type": "string"}, "description": "Tools the worker may use, e.g. [\"search_files\", \"read_file\"]. Only tools you currently hold can be passed on."},
+            },
+            "required": ["goal"],
         },
     },
     {
@@ -636,6 +648,112 @@ async def _search_memory_files(query: str) -> str:
     return "\n\n".join(results[:20])
 
 
+_MAX_DELEGATION_DEPTH = 1
+_MAX_DELEGATIONS_PER_TURN = 3
+_WORKER_ITERATIONS = 6
+_WORKER_MAX_TOKENS = 1024
+
+# A worker must not reach the user, restart the service, schedule anything, write
+# memory, or delegate again. It exists to find something out and report back.
+_WORKER_FORBIDDEN = frozenset({
+    "delegate_task", "send_message", "scheduled_message", "restart_self",
+    "memory_write",
+})
+
+# One worker at a time. Groq free tier is 8000 TPM on shared buckets and the parent
+# is mid-turn with the user waiting, so fanning out is the one sure way to 429 the
+# hot path. Serial is slower and finishes; parallel is faster and does not.
+_delegation_gate = asyncio.Semaphore(1)
+
+_WORKER_SYSTEM = """You are a worker. Another agent has handed you one job and is waiting for the result.
+
+You have no conversation history and no access to the user. Do the job with the tools you were given and report what you found.
+
+- Answer with the findings themselves, not a description of how you looked.
+- Quote exact names, paths, line numbers and values. The agent reading this cannot see your tool output, only your reply.
+- If the tools you have cannot settle it, say what is missing and stop. Do not guess, and do not substitute a plausible answer for a checked one.
+- Do not ask questions. Nobody will answer them.
+- Be brief. A few sentences, or a short list.
+
+Style:
+- No emojis
+- No em dashes - use plain hyphens
+- No exclamation points
+- No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+
+def _delegation_wants_web(args: dict) -> bool:
+    """Whether a delegate_task call would put the worker on the open web.
+
+    A worker allowed to search returns text the parent then acts on, which is
+    untrusted content entering the turn by a longer route. handle() folds this into
+    batch_reads_web so the parent's state-changing tools close exactly as they would
+    on a direct read.
+    """
+    requested = args.get("tools") or []
+    if not isinstance(requested, list):
+        return False
+    return any(t in _WEB_TOOLS for t in requested)
+
+
+async def _delegate(goal: str, tools, parent_tools, depth: int = 0, run=None) -> str:
+    """Run one isolated worker and return what it found. Never raises.
+
+    react.py already gathers parallel tool calls inside a single turn, which is not
+    the same thing: a worker gets its own empty context, so a long job stops having
+    to fit in the parent's context window alongside everything else.
+
+    The tool set is intersected with what the parent still holds. Without that, a
+    parent that had read the web - and so lost write_file and shell - could hand the
+    write to a worker, and the symmetric quarantine would be one indirection deep
+    and worth nothing.
+    """
+    goal = (goal or "").strip()
+    if not goal:
+        return "[delegate_task needs a goal: say what the worker should find out]"
+
+    if depth >= _MAX_DELEGATION_DEPTH:
+        return ("[delegate_task refused: workers cannot delegate further. Do this "
+                "part yourself with the tools you have.]")
+
+    requested = tools if isinstance(tools, list) else []
+    requested = [t for t in requested if isinstance(t, str)]
+    if not requested:
+        return "[delegate_task needs a tools list: name the tools the worker may use]"
+
+    allowed = [t for t in requested
+               if t in parent_tools and t not in _WORKER_FORBIDDEN]
+    if not allowed:
+        withheld = ", ".join(sorted(set(requested)))
+        return (f"[delegate_task refused: none of these are available to delegate "
+                f"({withheld}). Either they are withheld from workers, or this turn "
+                f"has already given them up.]")
+
+    runner = run or handle
+    try:
+        async with _delegation_gate:
+            logger.info("Delegating (depth %d, tools %s): %s", depth, allowed, goal[:90])
+            result = await runner(
+                goal,
+                [],
+                max_tokens=_WORKER_MAX_TOKENS,
+                max_iterations=_WORKER_ITERATIONS,
+                model=config.MODELS.get("worker") or config.MODELS["research"],
+                allowed_tools=allowed,
+                system_override=_WORKER_SYSTEM,
+                _depth=depth + 1,
+            )
+    except Exception as e:
+        logger.error("Delegated worker failed - %s: %s", type(e).__name__, e)
+        return (f"[the worker failed: {type(e).__name__}: {e}. Nothing was returned, "
+                f"so do not assume anything about the result.]")
+
+    result = (result or "").strip()
+    if not result:
+        return "[the worker returned nothing. Treat the question as unanswered.]"
+    return result
+
+
 _SEARCH_SKIP = frozenset({".git", "__pycache__", "venv", ".venv", "node_modules",
                           ".pytest_cache", ".mypy_cache"})
 _SEARCH_SUFFIXES = frozenset({".py", ".md", ".json", ".txt", ".sh", ".toml", ".cfg"})
@@ -960,6 +1078,7 @@ async def handle(
     model: str | None = None,
     allowed_tools: list[str] | None = None,
     system_override: str | None = None,
+    _depth: int = 0,
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -979,6 +1098,7 @@ async def handle(
         tools = [t for t in tools if t["function"]["name"] in allowed_tools]
 
     tool_failures = 0
+    delegations = 0
     length_retried = False
     seen_calls: set = set()
     web_read = False
@@ -1038,7 +1158,9 @@ async def handle(
                 logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
             # A single batch can contain both a web read and a write, and gather
             # gives no ordering guarantee, so the batch is judged as a whole.
-            batch_reads_web = any(tc.function.name in _WEB_TOOLS for tc in tool_calls)
+            batch_reads_web = any(tc.function.name in _WEB_TOOLS for tc in tool_calls) or any(
+                tc.function.name == "delegate_task" and _delegation_wants_web(_args_of(tc))
+                for tc in tool_calls)
             batch_reads_private = any(
                 _targets_private(tc.function.name, _args_of(tc)) for tc in tool_calls)
 
@@ -1061,8 +1183,24 @@ async def handle(
                                    tc.function.name, web_read or batch_reads_web,
                                    private_read or batch_reads_private)
                     return blocked
-                result = await _execute_tool(
-                    tc.function.name, args, allow_private=not (web_read or batch_reads_web))
+                if tc.function.name == "delegate_task":
+                    # Handled here rather than in _execute_tool because it needs two
+                    # things only this loop has: the tools the parent still holds
+                    # after quarantine, and the budget for this turn.
+                    nonlocal delegations
+                    if delegations >= _MAX_DELEGATIONS_PER_TURN:
+                        return (f"[delegate_task refused: already delegated "
+                                f"{_MAX_DELEGATIONS_PER_TURN} times this turn. "
+                                f"Finish with what you have.]")
+                    delegations += 1
+                    result = await _delegate(
+                        args.get("goal", ""), args.get("tools"),
+                        parent_tools=[t["function"]["name"] for t in tools],
+                        depth=_depth)
+                else:
+                    result = await _execute_tool(
+                        tc.function.name, args,
+                        allow_private=not (web_read or batch_reads_web))
                 if len(result) > _TOOL_RESULT_CAP:
                     result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
                 return result

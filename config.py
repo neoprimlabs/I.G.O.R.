@@ -23,7 +23,14 @@ MODELS = {
     "research": "openai/gpt-oss-20b",    # 8000 TPM bucket, shared with evaluator and summary
     "evaluator": "openai/gpt-oss-20b",   # shares research's bucket
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
+    "worker": "openai/gpt-oss-20b",      # delegated workers; see below
 }
+# Delegated workers run on 20b, NOT on react's 120b. A worker starts while the
+# parent is mid-turn, so putting both on one 8000 TPM bucket means the parent's
+# next call contends with its own worker. 20b shares with research, evaluator and
+# summary, none of which are on the hot path while the user is waiting. Workers are
+# serialized too (react._delegation_gate), so at most one draws on it at a time.
+#
 # chat and react share a bucket on purpose: the router sends a message to one or
 # the other and never both, so they alternate on the hot path instead of stacking.
 #
