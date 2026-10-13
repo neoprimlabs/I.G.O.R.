@@ -129,6 +129,46 @@ def test_only_the_wanted_variant_counts() -> None:
     _check("and only that one", hits and "US" in hits[0]["variant"], str(hits))
 
 
+def test_a_short_variant_filter_does_not_match_by_accident() -> None:
+    """The first live run alerted on two variants instead of one. `variant: us`
+    matched "AG01(OCULINK PORTS) / EU（Shipped from GE warehouse）" because
+    "warehouse" contains "us". A two-letter filter as a substring of the whole title
+    will collide; it has to be anchored to the region option."""
+    from agents import stock
+
+    real = json.dumps({
+        "title": "AOOSTAR AG01 OCuLink eGPU Dock",
+        "variants": [
+            {"title": "AG01(OCULINK PORTS) / US", "option2": "US",
+             "available": True, "price": 17900},
+            {"title": "AG01(OCULINK PORTS) / EU（Shipped from GE warehouse）",
+             "option2": "EU（Shipped from GE warehouse）",
+             "available": True, "price": 16900},
+            {"title": "AG01(OCULINK PORTS) / AU", "option2": "AU",
+             "available": True, "price": 17900},
+        ],
+    })
+
+    _fresh()
+    hits = _run(real)
+    titles = [h["variant"] for h in hits]
+    _check("only the US variant is returned", len(hits) == 1, str(titles))
+    _check("and it is the right one", titles and titles[0].endswith("US"), str(titles))
+    _check("the German warehouse variant is not mistaken for US",
+           not any("warehouse" in t for t in titles), str(titles))
+
+    # "AU" must not be caught by a "us" filter either, and vice versa.
+    _fresh("## X\nurl: " + URL + "\nvariant: au\n")
+    hits = _run(real)
+    _check("a different short filter picks its own variant",
+           len(hits) == 1 and hits[0]["variant"].endswith("AU"),
+           str([h["variant"] for h in hits]))
+
+    _fresh("## X\nurl: " + URL + "\n")
+    _check("no variant filter watches them all", len(_run(real)) == 3,
+           str([h["variant"] for h in _run(real)]))
+
+
 def test_the_price_ceiling_is_respected() -> None:
     _fresh()
     _check("in stock but over target is not an alert",
@@ -230,6 +270,8 @@ if __name__ == "__main__":
     test_the_transition_is_what_matters()
     print("\nvariant matching")
     test_only_the_wanted_variant_counts()
+    print("\na short variant filter")
+    test_a_short_variant_filter_does_not_match_by_accident()
     print("\nthe price ceiling")
     test_the_price_ceiling_is_respected()
     print("\na failed fetch")
