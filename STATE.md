@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `71a6956` (Hermes tool parity, test-suite fixes, scrubbed history), deployed
+- Server `/opt/igor` runs the stock watch as of 2026-10-13; check with `git -C /opt/igor log -1`, deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -210,6 +210,54 @@ that you've found recently fit me best", IGOR had nothing to read and asked the 
 to describe his own background back to it. `jobs.record_found` now writes
 `memory/jobs_found.md` - postings, links and fit notes, 30 days, in `memory_read`'s
 list. Backfilled with today's 11 so it is answerable now.
+
+## Restock alerts (2026-10-13)
+
+He asked for restock alerts after talking to IGOR: "Thats where it will benefit me
+the most." Right call - the price watch reads Slickdeals, which only knows about
+discounts somebody posted, and cannot see a vendor refilling a shelf.
+
+**`agents/stock.py`, hourly, zero tokens.** Shopify exposes
+`/products/<handle>.js`: variants with an `available` boolean and a price in cents.
+Structured, keyless, no model call. Config is `memory/stock_watch.md` (`url:`,
+optional `variant:` and `under:`); state is `memory/stock_state.json`. Monitor
+answers from `stock.status()`.
+
+**Measured on the first live run: the AOOSTAR AG01 was in stock, US variant, $179** -
+under his old $200 target - and the price watch could not see it, because the only
+Slickdeals posting was 18 months old and correctly age-filtered. That is the gap this
+closes, demonstrated rather than argued.
+
+**The relay is the weak point.** `aoostar.com` refuses this server: 429 inside 150ms,
+including the bare storefront on the fourth request ever, still refusing after a 60s
+wait - an IP-level block on the Oracle range. The fetch tries direct, then falls back
+to `r.jina.ai`. **A third party is on the critical path.** If it goes, restock checks
+stop and the log says so. Only public product URLs are sent to it.
+
+Three non-obvious things, each a test:
+
+- **A failed fetch must not record "unavailable"**, or the next good check looks like
+  a restock and messages about nothing. Both failure paths carry state forward.
+- **State is tracked twice**: raw availability for status, and available-AND-under-
+  ceiling for transitions. Recording an over-target restock as merely available would
+  suppress the alert when the price later dropped while still in stock.
+- **The variant filter is anchored to the region option**, not a substring of the
+  title. `variant: us` matched `EU（Shipped from GE warehouse）` on the first live
+  run, because "warehouse" contains "us". Caught by reading the log, not by a test -
+  the second time in two days a substring match looked fine offline and matched
+  something absurd against real data.
+
+**Also corrected:** ARCHITECTURE claimed "No working self-modification -
+`restart_self` writes a sentinel nothing acts on." False. `watchdog.py` watches
+`/opt/igor/restart_requested`, reads it, unlinks it and runs `systemctl restart igor`
+with a cooldown. `restart_self` works; what IGOR cannot do is pull, gate or roll back
+its own code. That claim sat in the self-summary, so IGOR was telling people
+something untrue about itself.
+
+**The self-summary budget is the recurring tax here.** Documenting the stock watch
+pushed it over 5000 twice. The three watchers are now one combined block above the
+marker with depth below, which bought real headroom instead of shaving adjectives,
+but it sits at **4994 of 5000**. Adding a subsystem means restructuring, not editing.
 
 ## The test suite only ran on one laptop (2026-10-12, fixed)
 
