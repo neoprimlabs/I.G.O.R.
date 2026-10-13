@@ -221,6 +221,17 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     # and no model call at all, which is why every two hours is affordable.
     _scheduler.add_job(_price_watch, "interval", hours=2, id="price_watch")
 
+    # Hourly, not two-hourly: a restock on a part that sells out is time-sensitive in
+    # a way a posted discount is not. Costs no tokens - the vendor's product JSON is
+    # structured, so nothing here calls a model.
+    _scheduler.add_job(_stock_watch, "interval", hours=1, id="stock_watch")
+    _scheduler.add_job(
+        _stock_watch,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=120),
+        id="stock_watch_startup",
+    )
+
     # Once 90s after every start, like the model check. An interval job's first run
     # is one interval away, so without this a restart means up to two hours before
     # anything is checked - and it makes a deploy a way to test the path end to end.
@@ -248,6 +259,20 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
 
     _scheduler.start()
     logger.info("Monitor scheduler started")
+
+
+async def _stock_watch() -> None:
+    """Anything that came back in stock. Silent otherwise."""
+    if _send_fn is None:
+        return
+    from agents import stock
+    try:
+        loop = asyncio.get_running_loop()
+        hits = await loop.run_in_executor(None, stock.check)
+        if hits:
+            await _send_fn(stock.format_for_discord(hits))
+    except Exception as e:
+        logger.error("Stock watch failed - %s: %s", type(e).__name__, e)
 
 
 async def _price_watch() -> None:
@@ -971,6 +996,11 @@ async def handle(
     watchlist = _get_watchlist()
     status_lines.append("News watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
     status_lines.append(_watcher_status())
+    try:
+        from agents import stock
+        status_lines.append(stock.status())
+    except Exception as e:
+        logger.error("Could not read stock watch state - %s: %s", type(e).__name__, e)
 
     status_block = "\n".join(status_lines)
     system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block}"
