@@ -175,12 +175,14 @@ work - support, success, solutions, sales engineering - a direct fit rather than
 stretch, because explaining consumer technology to non-technical buyers is the day
 job now.
 
-**Still open: the handover month.** The combined retail span is 05/2024 to 04/2026,
-which one source resume attributed entirely to K&J. The month he moved from New
-Dimension to K&J is not known, and is marked `HANDOVER MONTH TBC` in four places in
-`resume.md`. Ask before either version goes to an employer; do not infer it from the
-outer dates. The Walmart location spelling is also unconfirmed - given as "Dlemont",
-written as Delmont PA.
+**Settled 2026-10-12, both of them.** On his instruction the handover months go to
+K&J: the role is now one continuous entry, 05/2024 to 04/2026 under K&J Comics and
+Games, with New Dimension Comics named in a bullet as the sibling store it started
+at. No invented month, no gap, no overlap, nothing marked unknown. **Do not re-split
+this into two dated entries.** He also confirmed Delmont PA is the correct spelling.
+`resume.md` now has no TBC markers and a continuous timeline: Walmart 09/2026 to
+present, K&J 05/2024 to 04/2026, Pizzeria Davide 11/2022 to 05/2024, Cheesecake
+Factory 2020 to 2022. A pre-edit copy is at `memory/resume.md.bak` on the server.
 
 ## Job watch went silent for five days, and why (2026-09-30)
 
@@ -329,9 +331,16 @@ pulled in 189 ordinary words and flagged `.gitignore`. The digit pattern has
 boundaries, or it slices `022-2024` out of `2022-2024`. It skips with a notice where
 the private files are absent, so **it only really counts when run on the server.**
 
-**Note:** GitHub keeps unreachable objects server-side until its own GC runs, so the
-old commits may remain fetchable by exact SHA for a while. Closing that needs GitHub
-support, or making the repo private.
+**Two decisions he made 2026-10-12.** The leftover unreachable objects are being
+left to GitHub's own garbage collection rather than chased. And **the repo should go
+private** - he will reopen it if he finds someone to show IGOR to.
+
+**The repo is still PUBLIC and I could not change it.** The `gh` CLI here is
+authenticated as `WoahBanz` with `viewerPermission: READ` and
+`viewerCanAdminister: false`; pushes work only because git uses the SSH key, which
+is a separate credential. Changing visibility needs the `neoprimlabs` account:
+Settings, then Danger Zone, then Change visibility. Until that is done, treat the
+repo as public when committing anything.
 
 ## Presence answered a question that was already answered (2026-10-09, fixed)
 
