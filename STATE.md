@@ -17,7 +17,7 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs `cde117f` (Hermes tool parity, plus the test-suite and self-summary fixes), deployed
+- Server `/opt/igor` runs `71a6956` (Hermes tool parity, test-suite fixes, scrubbed history), deployed
   through the S.1 gate on 2026-10-07 and confirmed with
   `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
@@ -298,10 +298,37 @@ PATTERNS, never values, because a guard holding the real number in order to sear
 for it would be the thing it exists to prevent. It exempts only its own file, which
 has to carry the shapes it looks for.
 
-**Still open, the user's decision:** the values remain in earlier commits of a public
-repo - `git log -S` finds the phone in 2 and the name in 4. Removing them means a
-force-push over published history. Making the repo private is the cheaper fix and
-makes the history moot. Neither has been done.
+**History scrubbed on the user's instruction, 2026-10-12.** `git filter-repo`
+replaced the name, the phone number in all three formats, the former employer and the
+bare `"912"` fragment with reserved fictional values across all 276 commits, then a
+force-push. Current file content is byte-identical to before (verified by comparing
+tree hashes). Backups of the original history are two bundles in
+`C:\Dev\IGOR_backup\history-rewrite\`.
+
+**Verified from a fresh clone of GitHub, scanning all 1416 objects** rather than
+commit diffs - which matters, because `git log -S` reported clean when it was not.
+Three passes were needed:
+
+1. The name, phone and employer.
+2. **`tests/test_jobs.py` looped over `(a tuple of literal PII fragments)`**
+   asserting none appeared in what reaches the ranking model. The fixture never
+   contained them, so it proved nothing while publishing a surname, a phone fragment
+   and a home town. Replaced with "the profile sent must equal the fixture's own text
+   exactly", which catches anything extra being attached and needs no real values.
+3. The bare `"912"` left in assertion markers.
+
+**The PII guard only knew shapes** - phone, email, street - and a surname is not
+phone-shaped, which is why it missed case 2. It now also derives identifiers from the
+real private files at runtime and fails if any appear in a tracked file. On the
+server it derives exactly five, and it was confirmed to trip on the line that leaked.
+Words come only from a `## Contact` block: falling back to the whole of `profile.md`
+pulled in 189 ordinary words and flagged `.gitignore`. The digit pattern has
+boundaries, or it slices `022-2024` out of `2022-2024`. It skips with a notice where
+the private files are absent, so **it only really counts when run on the server.**
+
+**Note:** GitHub keeps unreachable objects server-side until its own GC runs, so the
+old commits may remain fetchable by exact SHA for a while. Closing that needs GitHub
+support, or making the repo private.
 
 ## Presence answered a question that was already answered (2026-10-09, fixed)
 
