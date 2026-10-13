@@ -136,11 +136,23 @@ def _save_state(state: dict) -> None:
         logger.error("Could not write %s - %s: %s", _STATE, type(e).__name__, e)
 
 
+def _region(title: str, variant: dict) -> str:
+    """The option that distinguishes variants, e.g. "US" in "AG01(...) / US"."""
+    option = variant.get("option2") or variant.get("option1") or ""
+    if option:
+        return str(option).strip().lower()
+    return title.rsplit("/", 1)[-1].strip().lower()
+
+
 def _variants(product: dict, wanted: str) -> list[dict]:
     out = []
     for v in product.get("variants") or []:
         title = str(v.get("title") or "")
-        if wanted and wanted not in title.lower():
+        # Matched against the region option, from the start, not as a substring of
+        # the whole title. A plain `wanted in title.lower()` made `variant: us` match
+        # "AG01(OCULINK PORTS) / EU（Shipped from GE warehouse）", because "warehouse"
+        # contains "us". The first live run alerted on two variants instead of one.
+        if wanted and not _region(title, v).startswith(wanted):
             continue
         price = v.get("price")
         try:
