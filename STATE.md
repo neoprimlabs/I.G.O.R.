@@ -310,11 +310,14 @@ commit diffs - which matters, because `git log -S` reported clean when it was no
 Three passes were needed:
 
 1. The name, phone and employer.
-2. **`tests/test_jobs.py` looped over `(a tuple of literal PII fragments)`**
-   asserting none appeared in what reaches the ranking model. The fixture never
-   contained them, so it proved nothing while publishing a surname, a phone fragment
-   and a home town. Replaced with "the profile sent must equal the fixture's own text
-   exactly", which catches anything extra being attached and needs no real values.
+2. **`tests/test_jobs.py` looped over a tuple of literal fragments** - a surname, a
+   piece of the phone number, an email domain and a home town - asserting none
+   appeared in what reaches the ranking model. The fixture never contained them, so
+   it proved nothing while publishing all four. Replaced with "the profile sent must
+   equal the fixture's own text exactly", which catches anything extra being
+   attached and needs no real values. **Do not quote the old line to explain this.
+   Writing this entry the first time put those fragments straight back into the
+   public repo, and the final check caught it.**
 3. The bare `"912"` left in assertion markers.
 
 **The PII guard only knew shapes** - phone, email, street - and a surname is not
