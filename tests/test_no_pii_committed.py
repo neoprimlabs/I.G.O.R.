@@ -126,6 +126,98 @@ def test_no_street_addresses() -> None:
            not hits, f"found at {hits[:6]}")
 
 
+_COMMON = {
+    "contact", "resume", "private", "skills", "present", "remote", "version",
+    "github", "google", "python", "flutter", "engine", "unreal", "discord",
+    "firebase", "supabase", "mapbox", "android", "riverpod", "associate",
+    "manager", "founder", "developer", "engineer", "salesperson", "electronics",
+    "operations", "inventory", "shipping", "receiving", "community", "events",
+    "gaming", "tournaments", "signings", "kitchen", "service", "january",
+    "february", "march", "april", "june", "july", "august", "september",
+    "october", "november", "december", "monday", "tuesday", "wednesday",
+    "thursday", "friday", "saturday", "sunday", "handover", "month",
+    # His own brand, deliberately public: it is the GitHub org and the portfolio
+    # domain. Finding it in the repo is not a leak.
+    "neoprimlabs",
+}
+
+
+def _private_identifiers() -> set:
+    """Distinctive strings taken from the real private files, if they are here.
+
+    The pattern checks above only know SHAPES. On 2026-10-12 a leak-detection test
+    in test_jobs.py carried the user's surname, a fragment of his phone number and
+    his town as literals - to assert they did not appear - and every shape check
+    walked straight past them, because a surname is not phone-shaped. A guard cannot
+    hold the real values, so it reads them from the files that legitimately do.
+
+    Only the Contact block and long digit runs are used. The whole resume would drag
+    in every ordinary word it shares with the source tree and the test would get
+    switched off for noise, which is worse than not having it.
+    """
+    sources = []
+    memory = ROOT / "memory"
+    for name in ("resume.md",):
+        p = memory / name
+        if p.is_file():
+            sources.append(p)
+    private = memory / "private"
+    if private.is_dir():
+        sources.extend(sorted(private.glob("*.md")))
+
+    tokens = set()
+    for path in sources:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        # Words are taken ONLY from a Contact block. The first version fell back to
+        # the whole file when there was none, and memory/private/profile.md is
+        # deliberately de-identified, so that pulled in 189 ordinary words - "never",
+        # "context", "files" - and flagged .gitignore and ARCHITECTURE.md. A guard
+        # that noisy gets switched off, which is worse than not having one.
+        low = text.lower()
+        if "## contact" in low:
+            start = low.index("## contact")
+            rest = text[start + 10:]
+            cut = rest.find("\n##")
+            block = rest[:cut] if cut != -1 else rest[:400]
+            for word in re.findall(r"[A-Za-z][A-Za-z'\-]{4,}", block):
+                if word.lower() not in _COMMON:
+                    tokens.add(word.lower())
+        for digits in re.findall(r"(?<!\d)\d{7,}(?!\d)", text):
+            tokens.add(digits)
+        # The boundaries matter: without them this sliced "022-2024" out of the date
+        # range "2022-2024" and then flagged three test files and STATE.md for
+        # containing it. A phone number is not a substring of a year.
+        for digits in re.findall(r"(?<!\d)\d{3}[ .\-]\d{4}(?!\d)", text):
+            tokens.add(digits)
+    return tokens
+
+
+def test_nothing_from_the_private_files_is_committed() -> None:
+    identifiers = _private_identifiers()
+    if not identifiers:
+        print("  skip  the private files are not on this machine, nothing to compare")
+        print("        (they live on the server; run this there to make it count)")
+        return
+
+    hits = []
+    for path in _tracked():
+        if path.suffix.lower() in _SKIP_SUFFIXES or not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8").lower()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for token in identifiers:
+            if token in text:
+                hits.append(f"{path.relative_to(ROOT)} contains {token!r}")
+    _check(f"no tracked file contains anything from the private files "
+           f"({len(identifiers)} identifiers checked)",
+           not hits, f"{hits[:6]}")
+
+
 def test_the_private_memory_files_are_not_tracked() -> None:
     """resume.md and memory/private/ live on the server and are edited with
     sudo -u igor, never through git. If one were ever committed, every guard above
@@ -170,6 +262,8 @@ if __name__ == "__main__":
     test_no_real_email_addresses()
     print("\nstreet addresses")
     test_no_street_addresses()
+    print("\nnothing from the private files")
+    test_nothing_from_the_private_files_is_committed()
     print("\nprivate files are not tracked")
     test_the_private_memory_files_are_not_tracked()
     print("\nthe guard can fail")

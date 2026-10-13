@@ -26,6 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import config
 
+PROFILE_FIXTURE = (
+    "Self-taught developer. Flutter and Unreal Engine 5. Daily LLM prompting and\n"
+    "evaluation. Kitchen manager 2022-2024. No CS degree.\n")
+
 _failures: list[str] = []
 
 
@@ -249,9 +253,7 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
            asyncio.run(jobs.rank(found, ask=_fake)) == "" and not seen, str(seen))
 
     (path / "private").mkdir()
-    (path / "private" / "profile.md").write_text(
-        "Self-taught developer. Flutter and Unreal Engine 5. Daily LLM prompting and\n"
-        "evaluation. Kitchen manager 2022-2024. No CS degree.\n", encoding="utf-8")
+    (path / "private" / "profile.md").write_text(PROFILE_FIXTURE, encoding="utf-8")
 
     notes = asyncio.run(jobs.rank(found, ask=_fake))
     _check("the profile reaches the model", "Flutter" in seen.get("profile", ""), str(seen)[:120])
@@ -259,9 +261,19 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
            seen.get("listing", ""))
     _check("the notes come back", "LLM evaluation" in notes, notes)
 
-    for private in ("0001", "testcase", "@example.com", "somewhere, zz"):
-        _check(f"no contact detail in what was sent: {private}",
-               private not in (seen.get("profile", "") + seen.get("listing", "")).lower())
+    # This used to loop over fragments of the user's real phone number, surname,
+    # email and town, asserting none appeared. Two things wrong with that: the
+    # fixture above never contained them, so it proved nothing, and naming them put
+    # them in a public repo - the exact failure the check was written to guard
+    # against. Asserting the profile sent is EXACTLY the file's own text is stronger
+    # anyway: it catches anything extra being attached, contact details or not,
+    # without this file having to know a single real value.
+    _check("only the profile file's own text is sent, nothing appended",
+           seen.get("profile", "").strip() == PROFILE_FIXTURE.strip(),
+           repr(seen.get("profile", ""))[:200])
+    _check("and the listing sent names only the postings, nothing about the user",
+           PROFILE_FIXTURE.split(".")[0] not in seen.get("listing", ""),
+           seen.get("listing", "")[:160])
 
     text = jobs.format_for_discord(found, notes)
     _check("the notes are shown with the postings", "Worth a look" in text and "LLM evaluation" in text,
