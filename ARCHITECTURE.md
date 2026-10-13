@@ -22,8 +22,8 @@ Say so plainly, do not describe these as working:
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.**
 - **No connection to any external platform.** No posting, no email, no social or
   publishing accounts. IGOR drafts; a human publishes.
-- **No working self-modification.** `restart_self` writes a sentinel nothing acts
-  on. IGOR cannot deploy its own code changes.
+- **No self-deployment.** `restart_self` does work - the watchdog acts on its
+  sentinel - but IGOR cannot pull, gate or roll back its own code.
 - **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
 
 **React's 16 tools, the complete list:** `search`, `memory_read`, `search_memory`,
@@ -46,16 +46,21 @@ failure falls through to React.
 
 **Questions about IGOR go to SelfDescribe, not React.**
 
-**Price watch** (`agents/prices.py`) checks Slickdeals' RSS every two hours against
-`memory/price_watch.md` (`query:`, optional `want:`, `under:`). Price and age are
-judged in code; whether a cheap listing is the *right product* is one model call
-against `want:`. Silent when nothing is under target.
+**Three watchers**, each driven by a markdown file in `memory/`, silent unless they
+have something, detailed below the summary. **Price watch**
+(`prices.py`, 2-hourly) reads Slickdeals RSS for a part under a target price.
+**Stock watch** (`stock.py`, hourly) reads a vendor's product JSON for per-variant
+availability, speaking only on a change to buyable - what a deal feed cannot see.
+**Job watch** (`jobs.py`, daily) reads RemoteOK, WWR, Greenhouse and Remotive;
+Indeed has no usable API. Code decides what it can be right about, a model judges
+the rest. **IGOR never applies for a job and never buys anything.**
 
-**Scheduling.** APScheduler, in-process. Eight jobs, all registered *in code* in
-`monitor.setup()`: the morning digest (13:00 UTC), a Groq model check, an advocacy
-draft (Mondays), a job watch (14:30), a price watch (2-hourly), a 60s check for due
-scheduled messages, and a presence tick every 10 minutes. There is no scheduler
-config file: retiming a job needs a code change and a deploy.
+**Scheduling.** APScheduler, in-process. Eight recurring jobs plus three run-once
+startup jobs, all registered *in code* in `monitor.setup()`: the morning digest
+(13:00 UTC), a Groq model check, an advocacy draft (Mondays), a job watch (14:30), a
+price watch (2-hourly), a stock watch (hourly), a 60s check for due scheduled
+messages, and a presence tick every 10 minutes. No scheduler config file: retiming a
+job needs a code change and a deploy.
 
 **Scheduled messages** are the one thing the user can schedule by asking:
 `scheduled_message` adds, lists or cancels entries in `memory/scheduled.json`, up to
@@ -67,18 +72,11 @@ before any model call: silent 03:00-10:00 local, 4h between messages, 2 a day, 6
 calls a day, never within 20 minutes of a live conversation. **Off unless
 `memory/presence_config.md` says `state: on`.**
 
-**Job watch** (`agents/jobs.py`) runs daily over RemoteOK, We Work Remotely,
-Greenhouse and Remotive. Code filters to what it can be right about; the model ranks
-the rest against `memory/private/profile.md` and results go to
-`memory/jobs_found.md`. Indeed is not a source: no usable API. **IGOR never
-applies** - it reports and
-drafts; the user sends.
-
-**Config and memory** are markdown files in `/opt/igor/memory/`: `digest_config.md`,
-`schedule_config.md`, `agents.md` (**standing preferences only - NOT the agent list
-above**), `tasks.md`, `projects.md`, `user.md`, `watchlist.md`, `research.md`,
-`job_search.md`, plus `context.db`. `memory_write` takes a filename from a fixed
-list. `corrections.md` and `drafts.md` are **sealed in every turn**.
+**Config and memory** are markdown files in `/opt/igor/memory/`, plus `context.db`.
+`memory_read` and `memory_write` each take a filename from a fixed list - that list
+is the authority on what exists, not this paragraph. `agents.md` holds **standing
+preferences only, NOT the agent list above.** `corrections.md` and `drafts.md` are
+**sealed in every turn**.
 `resume.md` and `memory/private/` are **guarded**: React may read them when no web
 content has entered the turn, and doing so closes `search` and `fetch_url` for the
 rest of it. **Private data and the open web never share a turn, in either
@@ -309,6 +307,32 @@ watched, each target, when the check last actually ran (flagged STALE past 6 hou
 and the cheapest keyword match, labelled as not product-checked - a registered job
 and a working watch look identical from the scheduler alone, which is how the job
 watch once sat silent for five days.
+
+**Stock watch, in full.** Shopify exposes `/products/<handle>.js`: variants with an
+`available` boolean and a price in cents. Structured, keyless, no model call, so a
+check costs nothing. It answers the question the price watch cannot - Slickdeals only
+knows about discounts somebody posted, and a vendor refilling a shelf is not a posted
+discount.
+
+`aoostar.com` refuses this server: 429 within 150ms, including the bare storefront on
+the fourth request ever, still refusing after a 60s wait. An IP-level block on the
+Oracle range, not a rate limit we tripped. So the fetch tries direct and falls back
+to `r.jina.ai`. **That relay is a third-party dependency on the critical path and the
+weakest part of this** - if it goes, restock checks stop and the log says so. Only
+public product URLs are sent to it.
+
+Three things that are not obvious and are each a test:
+
+- **A failed fetch must not record "unavailable."** Otherwise the next successful
+  check looks like a restock and sends a message about nothing. Both failure paths
+  carry the previous state forward.
+- **State is tracked twice**: raw availability for the status line, and an
+  "alertable" flag of available-AND-under-ceiling for transitions. Recording an
+  over-target restock as merely available would suppress the alert when the price
+  later dropped while it was still in stock.
+- **The variant filter is anchored to the region option**, not a substring of the
+  title. `variant: us` matched `EU（Shipped from GE warehouse）` on the first live
+  run, because "warehouse" contains "us".
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
 editing in place. React could already reach the file through `memory_write`, which
