@@ -10,7 +10,8 @@ Isolated: history in memory only, scheduled store in a temp file, no corrections
 log, no critic. Nothing reaches context.db, scheduled.json or Discord. Token use
 does reach the ledger, which is the point - it is real spend.
 
-Four user turns, each one there because it failed live on 2026-10-14 or -16:
+Seven user turns: four that failed live on 2026-10-14 or -16, and three for
+search_history and repeating messages, which had never run live:
   - "around 100am" was scheduled for 10:00
   - "draft something new at the scheduled time" added a second entry
   - "actually make it 11:30" cancelled and re-added rather than using update
@@ -31,7 +32,7 @@ import config
 import context_store
 import orchestrator
 import usage
-from agents import scheduled
+from agents import react, scheduled
 
 _MODEL = config.MODELS["react"]
 _NEEDS = 40000  # four React turns with headroom; measured cost is printed at the end
@@ -112,6 +113,29 @@ async def main() -> int:
     _check("same entry, so update was used rather than cancel-and-add",
            [e["id"] for e in entries] == first, f"{first} -> {[e['id'] for e in entries]}")
 
+    print("\n===== search_history and a repeating message =====")
+    searched = []
+    real_search = react._search_history
+    react._search_history = lambda q: searched.append(q) or real_search(q)
+    store.unlink(missing_ok=True)
+    o = orchestrator.Orchestrator(notify)
+    o._context = []
+    try:
+        await _turns(o, ["When did I ask you to message me around 100am? Check our past conversations."])
+        _check("React searched the stored conversation", bool(searched), str(searched))
+        await _turns(o, ["Every weekday at 9am send me one short, practical idea for improving IGOR",
+                         "pause that one for now"])
+    finally:
+        react._search_history = real_search
+    entries = _entries()
+    _check("one repeating entry", len(entries) == 1 and entries[0].get("repeat") == "weekdays",
+           str(entries))
+    _check("at 09:00", bool(entries) and _local_hm(entries[0]) == "09:00", entries and _local_hm(entries[0]))
+    _check("and paused, not cancelled", bool(entries) and entries[0].get("paused") is True, str(entries))
+
+    import llm
+    benched = {m: round(until - __import__("time").time()) for m, (until, _) in llm._benched.items()}
+    print(f"\nFallback during this run: {'yes, benched ' + str(benched) if benched else 'no'}")
     spent = sum(usage.last_24h().get(_MODEL, {}).values()) - before
     print(f"\nSpent {spent:,} tokens on {_MODEL}. Headroom now: {usage.headroom(_MODEL)}")
     print("\nall pass" if not _failures else f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
