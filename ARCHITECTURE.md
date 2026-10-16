@@ -549,8 +549,10 @@ OpenAI-compatible wire format.
 
 ## Memory and config files
 
-All live in `memory/` on the server, Syncthing-managed, and are **gitignored** -
-they exist only on the host unless deliberately backed up.
+All live in `memory/` on the server and are **gitignored** - they exist only on the
+host, plus the daily off-host archive `scripts/backup_memory.ps1` pulls to the
+user's PC (30 kept). Syncthing used to sync this folder; it is no longer running
+on either end (2026-10-16), so that archive is the only other copy.
 
 **Read at startup, restart required:** `schedule_config.md`
 
