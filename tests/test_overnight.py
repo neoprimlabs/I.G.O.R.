@@ -345,6 +345,92 @@ def test_prompts_carry_the_style_block() -> None:
     _check("write prompt has no em dash", "—" not in overnight._WRITE_SYSTEM)
 
 
+def _finished_paper(work, goals, name: str, title: str) -> str:
+    gid = _first_id(goals)
+    folder = work.folder(gid)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / name).write_text(f"# {title}\n\nBody.\n", encoding="utf-8")
+    return str((folder / name).relative_to(config.MEMORY_DIR))
+
+
+def test_quiet_night_section_empty() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    _check("no sessions gives nothing", overnight.digest_section(NIGHT) == ("", []))
+    work.log_session("g", "research", "0 new findings", 500, 3, [], [], now=NIGHT_TIME)
+    _check("a session that produced nothing gives nothing",
+           overnight.digest_section(NIGHT) == ("", []))
+    _check("another night is not mixed in",
+           overnight.digest_section("2026-10-16") == ("", []))
+    tmp.cleanup()
+
+
+def test_section_lists_finished_and_waiting() -> None:
+    import proposals
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    rel = _finished_paper(work, goals, f"paper-{NIGHT}.md", "Edge Agents Compared")
+    gid = _first_id(goals)
+    draft = work.folder(gid) / f"draft-{NIGHT}.md"
+    draft.write_text("# Half\n", encoding="utf-8")
+    work.log_session(gid, "research", "paper finished", 4200, 3,
+                     [rel], [rel], now=NIGHT_TIME)
+    work.log_session(gid, "research", "draft kept", 1800, 2,
+                     [str(draft.relative_to(config.MEMORY_DIR))], [],
+                     stopped="rate limited", now=NIGHT_TIME)
+    proposals.add("preference", "p", "e", "Leave out tables.", "t")
+    text, papers = overnight.digest_section(NIGHT)
+    _check("the paper title is listed", "Edge Agents Compared" in text, text)
+    _check("the paper is returned for attaching",
+           [p.name for p in papers] == [f"paper-{NIGHT}.md"], str(papers))
+    _check("the draft is listed", f"draft-{NIGHT}.md" in text, text)
+    _check("waiting proposals are counted", "1 proposal" in text, text)
+    _check("tokens and searches are shown", "6000" in text and "5" in text, text)
+    _check("the stopped reason is shown", "rate limited" in text, text)
+    _check("no em dash", "—" not in text)
+    tmp.cleanup()
+
+
+def test_digest_attaches_finished_papers() -> None:
+    from agents import monitor
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    rel = _finished_paper(work, goals, f"paper-{NIGHT}.md", "Edge Agents Compared")
+    work.log_session(_first_id(goals), "research", "paper finished", 100, 1,
+                     [rel], [rel, rel], now=NIGHT_TIME)
+    (config.MEMORY_DIR / "digest_config.md").write_text("- overnight\n", encoding="utf-8")
+    sent, files = [], []
+
+    async def send(text):
+        sent.append(text)
+
+    async def send_file(text):
+        files.append(text)
+
+    morning = datetime(2026, 10, 17, 9, 0, tzinfo=clock.USER_TZ)
+    monitor._send_fn, monitor._send_file_fn = send, send_file
+    _run(monitor._morning_digest(now=morning))
+    _check("the digest carries an overnight section",
+           len(sent) == 1 and "Overnight" in sent[0] and "Edge Agents Compared" in sent[0],
+           str(sent))
+    _check("each paper is sent once", len(files) == 1 and files[0].startswith("# Edge Agents"),
+           str(files))
+
+    sent.clear(); files.clear()
+    monitor._send_file_fn = None
+    _run(monitor._morning_digest(now=morning))
+    _check("without a file sender the paper is listed by name",
+           files == [] and f"paper-{NIGHT}.md" in sent[0], str(sent))
+
+    sent.clear(); files.clear()
+    monitor._send_file_fn = send_file
+    _run(monitor._morning_digest(now=datetime(2026, 10, 18, 9, 0, tzinfo=clock.USER_TZ)))
+    _check("a quiet night adds no section and attaches nothing",
+           files == [] and "Overnight" not in sent[0], str(sent))
+    monitor._send_fn = None
+    tmp.cleanup()
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

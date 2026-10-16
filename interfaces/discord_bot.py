@@ -44,7 +44,7 @@ class IgorBot(discord.Client):
         logger.info("I.G.O.R. online: %s (ID: %d)", self.user, self.user.id)
         # Fresh orchestrator on every connection - resets session context per spec
         self._orchestrator = Orchestrator(notify=self.send_to_user, notify_file=self.send_file_to_user)
-        monitor.setup(send_fn=self.send_to_user)
+        monitor.setup(send_fn=self.send_to_user, send_file_fn=self.send_file_to_user)
 
     async def on_message(self, message: discord.Message) -> None:
         if self.user is None or message.author.id == self.user.id:

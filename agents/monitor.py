@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _scheduler: Optional[AsyncIOScheduler] = None
 _send_fn: Optional[Callable[[str], Awaitable[None]]] = None
+_send_file_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _client: Optional[openai.AsyncOpenAI] = None
 _setup_done: bool = False
 
@@ -179,13 +180,15 @@ async def _check_bridgemind_videos() -> None:
         logger.error("BridgeMind check failed - %s: %s", type(e).__name__, e)
 
 
-def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
-    global _scheduler, _send_fn, _client, _setup_done
+def setup(send_fn: Callable[[str], Awaitable[None]],
+          send_file_fn: Optional[Callable[[str], Awaitable[None]]] = None) -> None:
+    global _scheduler, _send_fn, _send_file_fn, _client, _setup_done
     if _setup_done:
         return
     _setup_done = True
 
     _send_fn = send_fn
+    _send_file_fn = send_file_fn
     _client = openai.AsyncOpenAI(
         api_key=config.GROQ_API_KEY,
         base_url="https://api.groq.com/openai/v1",
@@ -259,8 +262,22 @@ def setup(send_fn: Callable[[str], Awaitable[None]]) -> None:
     _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=15, minute=0, id="advocacy_draft")
     logger.info("Advocacy draft scheduled Mondays at 15:00 UTC (%s)", _ADVOCACY["topic"])
 
+    # Minute 20, clear of the :00 and :30 jobs. max_instances=1 is APScheduler's default,
+    # stated because work.log_session is a read-modify-write with no lock: two ticks
+    # running at once would lose a log entry. The tick ignores hours outside its window.
+    _scheduler.add_job(_overnight_tick, "cron", minute=20, id="overnight", max_instances=1)
+
     _scheduler.start()
     logger.info("Monitor scheduler started")
+
+
+async def _overnight_tick() -> None:
+    try:
+        from agents import overnight
+        result = await overnight.tick()
+        logger.info("Overnight tick: %s", result)
+    except Exception as e:
+        logger.error("Overnight tick job failed - %s: %s", type(e).__name__, e)
 
 
 async def _stock_watch() -> None:
@@ -826,7 +843,7 @@ def _parse_projects(content: str) -> list[str]:
     return projects
 
 
-async def _morning_digest() -> None:
+async def _morning_digest(now: Optional[datetime] = None) -> None:
     if _send_fn is None:
         return
 
@@ -893,10 +910,32 @@ async def _morning_digest() -> None:
             lines.append("No results available.")
         lines.append("")
 
+    papers = []
+    if "overnight" in sections:
+        try:
+            import work
+            from agents import overnight
+            text, papers = overnight.digest_section(work.night_of(now or datetime.now(timezone.utc)))
+        except Exception as e:
+            logger.error("Overnight digest section failed - %s: %s", type(e).__name__, e)
+            text = ""
+        if text:
+            lines.append("**Overnight:**")
+            lines.append(text)
+            lines.append("")
+
     try:
         await _send_fn("\n".join(lines))
     except Exception as e:
         logger.error("Morning digest send failed - %s: %s", type(e).__name__, e)
+        return
+
+    if _send_file_fn is not None:
+        for paper in papers:
+            try:
+                await _send_file_fn(paper.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.error("Overnight paper send failed - %s: %s", type(e).__name__, e)
 
 
 _STALE_AFTER = timedelta(hours=6)
