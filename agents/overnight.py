@@ -28,7 +28,7 @@ _TRIGGER_FINDINGS = 12
 _TRIGGER_SESSIONS = 3
 # 20b is an 8000 TPM bucket and the write call asks for 3072 on top of its prompt.
 _WRITE_INPUT_CHARS = 9000
-_UNSURE_HEADING = "## What I am unsure about"
+_WRITE_RESERVE = _WRITE_BUDGET + _WRITE_INPUT_CHARS // 3 + 500
 
 _WRITE_SYSTEM = """You write a short research paper from a list of sourced findings.
 
@@ -176,7 +176,15 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     summary = f"{added} new findings{search_error}"
     text = findings_path.read_text(encoding="utf-8") if findings_path.exists() else ""
     _, new_findings, new_sessions = _findings_state(text)
-    if new_findings and (new_findings >= _TRIGGER_FINDINGS or new_sessions >= _TRIGGER_SESSIONS):
+    attempt_mark = f"<!-- write attempted {night} -->"
+    room = token_room - (work.overnight_tokens() - start_tokens)
+    triggered = new_findings and (new_findings >= _TRIGGER_FINDINGS
+                                  or new_sessions >= _TRIGGER_SESSIONS)
+    if triggered and attempt_mark in text:
+        summary += ", paper write already failed tonight"
+    elif triggered and room < _WRITE_RESERVE:
+        summary += ", paper write waits for budget"
+    elif triggered:
         body = text[-_WRITE_INPUT_CHARS:]
         write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
         paper = await complete(_WRITE_SYSTEM, write_user, _WRITE_BUDGET)
@@ -204,6 +212,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 state["files"].append(str(draft_path.relative_to(config.MEMORY_DIR)))
                 summary += f", draft kept: {why}"
         else:
+            with findings_path.open("a", encoding="utf-8") as f:
+                f.write(f"\n{attempt_mark}\n")
             summary += ", paper write returned nothing"
     state["next_action"] = next_action
     return summary

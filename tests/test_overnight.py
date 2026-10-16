@@ -60,6 +60,8 @@ class _Stubs:
         self.findings_per_step, self.unsure, self.links, self.raises = (
             findings_per_step, unsure, links, raises)
         self.n = 0
+        self.plan_users = []
+        self.empty_write = False
 
     async def search(self, query, max_results=5):
         self.queries.append(query)
@@ -71,12 +73,15 @@ class _Stubs:
             raise self.raises
         if system.startswith("You plan one step"):
             self.n += 1
+            self.plan_users.append(user)
             return f"query number {self.n}"
         if system.startswith("You turn raw search results"):
             lines = [f"- fact {self.n}-{i} (https://e.example/{self.n}/{i})"
                      for i in range(self.findings_per_step)]
             return "\n".join(lines) + f"\nNext: thread {self.n}"
         self.writes += 1
+        if self.empty_write:
+            return ""
         body = "# Paper\n\n## Findings\n" + "".join(
             f"Claim {i} ([src](https://e.example/p{i})).\n" for i in range(self.links))
         if self.unsure:
@@ -219,9 +224,66 @@ def test_restart_resumes() -> None:
     later = datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ)
     _run(overnight.tick(later, search=s.search, complete=s.complete))
     second = (work.folder(gid) / "findings.md").read_text(encoding="utf-8")
+    _check("the second PLAN prompt carries the stored next_action",
+           "Suggested next thread: thread 3" in s.plan_users[3], s.plan_users[3][:300])
+    _check("the first session had no hint", "Suggested next thread" not in s.plan_users[0])
     _check("the second tick continues the file", second.startswith(first))
     _check("with the next marker number",
            second.count("<!-- session 1 -->") == 1 and "<!-- session 2 -->" in second, second)
+    tmp.cleanup()
+
+
+def test_token_room_stops_loop_and_gates_write() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    used = {"n": 0}
+    work.overnight_tokens = lambda: used["n"]
+
+    s = _Stubs(findings_per_step=1)
+    real = s.complete
+
+    async def spending(system, user, max_tokens):
+        used["n"] += 25000
+        return await real(system, user, max_tokens)
+
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=spending))
+    _check("the loop stops once the room is used", len(s.queries) == 2, str(len(s.queries)))
+    tmp.cleanup()
+
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    used = {"n": 0}
+    work.overnight_tokens = lambda: used["n"]
+    s = _Stubs(findings_per_step=7)
+    real = s.complete
+
+    async def spending2(system, user, max_tokens):
+        used["n"] += 18000
+        return await real(system, user, max_tokens)
+
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=spending2))
+    _check("a triggered write is skipped when there is no room", s.writes == 0, str(s.writes))
+    _check("the log says it waits", "waits for budget" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    work.overnight_tokens = lambda: 0
+    later = datetime(2026, 10, 18, 1, 0, tzinfo=clock.USER_TZ)
+    _run(overnight.tick(later, search=s.search, complete=s.complete))
+    _check("the trigger stays pending and writes later", s.writes == 1, str(s.writes))
+    tmp.cleanup()
+
+
+def test_empty_write_retries_once_per_night() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    s = _Stubs(findings_per_step=5)
+    s.empty_write = True
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    _run(overnight.tick(datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=s.complete))
+    _check("only one write call tonight", s.writes == 1, str(s.writes))
+    _run(overnight.tick(datetime(2026, 10, 18, 1, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=s.complete))
+    _check("it tries again the next night", s.writes == 2, str(s.writes))
     tmp.cleanup()
 
 
