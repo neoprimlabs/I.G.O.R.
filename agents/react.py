@@ -1350,6 +1350,7 @@ async def handle(
     system_override: str | None = None,
     _depth: int = 0,
     label: str = "React",
+    force_tool: str | None = None,
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -1370,6 +1371,7 @@ async def handle(
 
     tool_failures = 0
     delegations = 0
+    forced_done = force_tool is None
     length_retried = False
     seen_calls: set = set()
     web_read = False
@@ -1386,9 +1388,13 @@ async def handle(
                 i + 1,
             )
             break
+        must = {}
+        if not forced_done and any(t["function"]["name"] == force_tool for t in tools):
+            must["tool_choice"] = {"type": "function", "function": {"name": force_tool}}
         try:
             response = await llm.create(client, use_model, label, params=False,
-                                        messages=messages, tools=tools, max_tokens=max_tokens)
+                                        messages=messages, tools=tools, max_tokens=max_tokens,
+                                        **must)
         except openai.BadRequestError as e:
             if "tool_use_failed" in str(e) and tool_failures < 3:
                 tool_failures += 1
@@ -1421,6 +1427,7 @@ async def handle(
 
         if choice.finish_reason == "tool_calls":
             tool_calls = choice.message.tool_calls
+            forced_done = True
             for tc in tool_calls:
                 logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
             # A single batch can contain both a web read and a write, and gather

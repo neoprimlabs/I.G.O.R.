@@ -425,7 +425,7 @@ class Orchestrator:
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
-            return "React"
+            return "Schedule"
 
         # No fast path for self-referential questions. A regex over nouns cannot tell
         # "tell me about your shell tool" from "use your shell tool" - same tokens,
@@ -516,7 +516,22 @@ class Orchestrator:
         max_tokens = 3072 if file_mode else 2048
 
         if destination == "Monitor":
-            return await monitor.handle(content, self._window(), call)
+            # No history. Live 2026-10-16, React falsely said a weekday message was
+            # scheduled; a minute later Monitor repeated that from the conversation
+            # while its own status block said none. Monitor reports current values,
+            # and the status block is the only source for them - SelfDescribe learned
+            # the same lesson about prior turns.
+            return await monitor.handle(content, [], call)
+
+        if destination == "Schedule":
+            # The scheduling tool is required until it has been called once. Live
+            # 2026-10-16, "every weekday at 10am send me..." got a confident
+            # "Scheduled" from one model call that never touched the tool, and the
+            # store stayed empty. tool_choice was measured that day on both 120b and
+            # 20b: each returned the right scheduled_message call, 600-1200 tokens.
+            react.set_notify(self._notify)
+            return await react.handle(content, self._window(), max_tokens=2048,
+                                      force_tool="scheduled_message")
 
         if destination == "Direct":
             from agents import direct

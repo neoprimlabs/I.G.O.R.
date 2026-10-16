@@ -70,7 +70,8 @@ async def test_routing() -> None:
     for message in TO_REACT:
         routed.clear()
         got = await o._classify(orchestrator._spell_out_times(message))
-        _check(f"to React in code: {message!r}", got == "React" and not routed, f"{got}, router={bool(routed)}")
+        _check(f"to the scheduling route in code: {message!r}", got == "Schedule" and not routed,
+               f"{got}, router={bool(routed)}")
     for message in LEFT_TO_THE_ROUTER:
         routed.clear()
         await o._classify(message)
@@ -138,10 +139,93 @@ async def test_write_passes_the_series_on() -> None:
     _check("a message with no past gets the brief alone", "repeats" not in without, without)
 
 
+async def test_schedule_cannot_be_claimed_without_the_tool() -> None:
+    """Live 2026-10-16: "every weekday at 10am send me one practical idea for IGOR"
+    got "Scheduled a recurring message for you..." from one model call that never
+    used the tool, and scheduled.json stayed empty. This fake model does exactly that
+    whenever it is allowed to - and only calls the tool when it is required to."""
+    import json
+    from types import SimpleNamespace
+    from agents import react
+
+    store = Path(tempfile.mkdtemp())
+    config.MEMORY_DIR = store
+    calls = []
+
+    def reply(text):
+        return SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="stop", message=SimpleNamespace(content=text, tool_calls=None))], usage=None)
+
+    async def create(model, **kwargs):
+        calls.append(kwargs)
+        if kwargs.get("tool_choice"):
+            args = json.dumps({"action": "add", "in_minutes": 60, "repeat": "weekdays",
+                               "brief": "one practical idea for IGOR"})
+            call = SimpleNamespace(id="c1", type="function",
+                                   function=SimpleNamespace(name="scheduled_message", arguments=args))
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason="tool_calls", message=SimpleNamespace(content=None, tool_calls=[call]))],
+                usage=None)
+        if any(m.get("role") == "tool" for m in kwargs["messages"]):
+            return reply("Done - every weekday, starting with the first one in an hour.")
+        return reply("Scheduled a recurring message for you: every weekday at 10:00 AM.")
+
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    real = react._get_client
+    react._get_client = lambda: fake
+    try:
+        claimed = await react.handle("every weekday at 10am send me one practical idea for IGOR", [])
+        stored_free = json.loads((store / "scheduled.json").read_text()) if (store / "scheduled.json").exists() else []
+        _check("unforced, this model claims success and stores nothing (the 10-16 failure)",
+               claimed.startswith("Scheduled") and stored_free == [], f"{claimed!r} {stored_free}")
+
+        calls.clear()
+        answer = await react.handle("every weekday at 10am send me one practical idea for IGOR", [],
+                                    force_tool="scheduled_message")
+        stored = json.loads((store / "scheduled.json").read_text())
+    finally:
+        react._get_client = real
+    _check("on the scheduling route the tool is required on the first call",
+           calls[0].get("tool_choice", {}).get("function", {}).get("name") == "scheduled_message", str(calls[0].keys()))
+    _check("so the message really is stored, repeating",
+           len(stored) == 1 and stored[0]["repeat"] == "weekdays", str(stored))
+    _check("and once the tool has run, the model is free to answer",
+           "tool_choice" not in calls[1] and answer.startswith("Done"), f"{calls[1].keys()} {answer!r}")
+
+
+async def test_monitor_gets_no_history() -> None:
+    """Live 2026-10-16: Monitor said a weekday message was scheduled because React
+    had said so a turn earlier, while its own status block said none."""
+    import orchestrator
+    from agents import monitor
+    seen = {}
+
+    async def handle(content, context, call):
+        seen["context"] = context
+        return "status"
+
+    async def notify(_):
+        pass
+
+    o = orchestrator.Orchestrator(notify)
+    o._context = [{"role": "user", "content": "every weekday at 10am send me an idea"},
+                  {"role": "assistant", "content": "Scheduled a recurring message for you."}]
+    real = monitor.handle
+    monitor.handle = handle
+    try:
+        await o._route("Monitor", "whats scheduled?")
+    finally:
+        monitor.handle = real
+    _check("Monitor answers from its status block alone, with no conversation",
+           seen.get("context") == [], str(seen.get("context")))
+
+
 if __name__ == "__main__":
     asyncio.run(test_routing())
     asyncio.run(test_continuity())
     asyncio.run(test_write_passes_the_series_on())
+    asyncio.run(test_schedule_cannot_be_claimed_without_the_tool())
+    asyncio.run(test_monitor_gets_no_history())
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
         sys.exit(1)
