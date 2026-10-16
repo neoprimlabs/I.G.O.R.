@@ -396,6 +396,37 @@ def test_the_1am_message() -> None:
            reply.startswith("Okay, tomorrow at 1:00 AM."), reply)
 
 
+def test_react_cannot_prewrite() -> None:
+    """2026-10-16, live: offered a content field, React pre-wrote the message three
+    times out of three, once cancelling a correct brief to do it."""
+    from agents import react, scheduled
+
+    schema = next(t for t in react._TOOLS if t["name"] == "scheduled_message")
+    _check("the tool offers no content field",
+           "content" not in schema["input_schema"]["properties"], str(schema["input_schema"]["properties"].keys()))
+
+    path = _fresh_store()
+    scheduled.run_tool({"action": "add", "in_minutes": 90,
+                        "content": "Imagine a single point of consciousness..."})
+    entries = _stored(path)
+    _check("a stray content from React is stored as a brief, written at send time",
+           len(entries) == 1 and entries[0]["content"] == "" and entries[0]["brief"].startswith("Imagine"),
+           str(entries))
+
+
+def test_monitor_sees_pending() -> None:
+    """2026-10-16, live: Monitor said nothing was scheduled while one was pending."""
+    from agents import scheduled
+
+    _fresh_store()
+    _check("an empty store says none, plainly", scheduled.status() == "Messages scheduled for the user: none.",
+           scheduled.status())
+    scheduled.add(brief="something thought-provoking", at="2026-09-12 23:30", now=NOW)
+    status = scheduled.status()
+    _check("a pending message is listed with its local time and what it is for",
+           "Sat 2026-09-12 23:30 EDT" in status and "thought-provoking" in status, status)
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -418,6 +449,8 @@ if __name__ == "__main__":
     asyncio.run(test_compose_at_delivery())
     print("\nthe 1am message")
     test_the_1am_message()
+    test_react_cannot_prewrite()
+    test_monitor_sees_pending()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

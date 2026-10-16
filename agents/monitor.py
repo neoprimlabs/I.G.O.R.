@@ -43,6 +43,7 @@ Your primary function is scheduled reports that run automatically, not reactive 
 When queried directly, report:
 - Scheduler status (running / not running, next scheduled jobs)
 - Current watchlist (what is being monitored)
+- Messages scheduled for the user, exactly as the status block lists them. You cannot change them; the user can ask I.G.O.R. to change or cancel one
 - Any system health issues you're aware of
 
 IMPORTANT CONSTRAINTS:
@@ -996,6 +997,12 @@ async def handle(
     watchlist = _get_watchlist()
     status_lines.append("News watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
     status_lines.append(_watcher_status())
+    try:
+        from agents import scheduled
+        status_lines.append(scheduled.status())
+    except Exception as e:
+        logger.error("Could not read scheduled messages - %s: %s", type(e).__name__, e)
+        status_lines.append("Messages scheduled for the user: could not be read, so this is unknown.")
     try:
         from agents import stock
         status_lines.append(stock.status())

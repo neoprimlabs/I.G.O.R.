@@ -379,11 +379,14 @@ dates.
 
 ### Scheduled messages and presence
 
-An entry in `memory/scheduled.json` holds either `content` (exact words) or a
-`brief` (words written at delivery by `agents/compose.py`); given both, the brief
-is kept. Every add returns the other pending entries with their ids, so a
-corrected time can cancel the one it replaces instead of both sending. Asking for
-a message later, or changing one, routes `TASK`.
+React can only give a `brief`: the words are written at delivery by
+`agents/compose.py`, and words the user dictated go in double quotes inside it,
+which compose keeps verbatim. Offered a fixed-text field, React pre-wrote the
+message 3 times out of 3 in a live test. `content` (fixed words) remains for code
+callers. Every add returns the other pending entries with their ids, so a
+corrected time can cancel the one it replaces instead of both sending. Monitor's
+status lists what is pending. Asking for a message later, or changing one, routes
+`TASK`.
 
 Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live

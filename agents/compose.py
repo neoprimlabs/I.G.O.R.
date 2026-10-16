@@ -35,6 +35,7 @@ Rules:
 - Use ONLY the facts in the block. If you have no detail, keep it simple rather than inventing one.
 - Never invent activity, progress, events, or anything the user said or did. Do not guess how something went.
 - Do not restate the brief back. Do not mention scheduling, reminders, timestamps or ids.
+- If the brief has words in double quotes, the user dictated them: include them exactly as written.
 - Refer to the time of day naturally if it matters, not as a clock reading.
 
 Style:

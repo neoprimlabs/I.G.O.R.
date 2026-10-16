@@ -273,8 +273,7 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "list", "cancel"]},
-                "content": {"type": "string", "description": "add: the exact words to send. Use brief instead unless the user dictated the wording"},
-                "brief": {"type": "string", "description": "add: what the message is for, in a few words. The words are written when it sends, so it fits the moment"},
+                "brief": {"type": "string", "description": "add: what the message is for, in a few words. The words are written when it sends, so it fits the moment. If the user dictated exact words, put them in double quotes inside the brief"},
                 "at": {"type": "string", "description": "add: local time, YYYY-MM-DD HH:MM"},
                 "in_minutes": {"type": "integer", "description": "add: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add: let IGOR pick a varied time inside this window"},
@@ -320,7 +319,7 @@ When to use tools:
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - memory_write: when the user asks you to remember, add, store, or update something
-- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. Use brief, not content, unless the user gave the exact words - "message me something thought-provoking" is a brief, and the words get written fresh when it sends. Do not show the user a draft of a brief message; there is no draft. When the user corrects the time or changes what they want, the new entry replaces the old one: cancel the old id, which the add result lists, so only one sends
+- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want, the new entry replaces the old one: cancel the old id, which the add result lists, so only one sends
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
