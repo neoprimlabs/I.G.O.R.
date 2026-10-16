@@ -52,6 +52,12 @@ _EARLIEST_AHEAD = timedelta(minutes=5)
 _SAME_SLOT = timedelta(minutes=5)
 _REPEATS = ("daily", "weekdays", "weekly")
 _REPEAT_WORDS = {"daily": "every day", "weekdays": "every weekday", "weekly": "every week"}
+# Continuity, as Hermes' cron: each run of a repeating message is shown what the
+# series already said. Live 2026-10-16, a weekday "practical idea" series got one
+# specific idea as its brief, so every weekday would have repeated it. Hermes passes
+# the latest output; three, because Thursday repeating Tuesday is the same failure.
+_KEEP_RECENT = 3
+_RECENT_CHARS = 600
 
 
 class _Unreadable(Exception):
@@ -391,11 +397,15 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
             if writer is None:
                 from agents.compose import write as writer
             try:
-                written = await writer(brief, now)
+                if entry.get("repeat"):
+                    written = await writer(brief, now, recent=entry.get("recent") or [])
+                else:
+                    written = await writer(brief, now)
             except Exception as e:
                 logger.error("Composing %s failed - %s: %s", entry["id"], type(e).__name__, e)
                 written = None
             text = (written or "").strip() or brief
+        body = text
         if now - datetime.fromisoformat(entry["due"]) > _LATE_AFTER:
             text = f"(Scheduled for {_local(entry['due'])}, delivered late.)\n{text}"
         try:
@@ -419,6 +429,7 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                 kept["due"] = _next_occurrence(datetime.fromisoformat(kept["due"]),
                                                kept["repeat"], now).isoformat()
                 kept["attempts"] = 0
+                kept["recent"] = ([body[:_RECENT_CHARS]] + (kept.get("recent") or []))[:_KEEP_RECENT]
                 logger.info("Scheduled message %s delivered, next %s", entry["id"], kept["due"])
             else:
                 entries = [x for x in entries if x["id"] != entry["id"]]

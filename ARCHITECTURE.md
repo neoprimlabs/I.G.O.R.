@@ -31,7 +31,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React switch to
 `gpt-oss-20b` until Groq's stated reset, and the reply says so.
 
-**Routing.** Four exact-match fast paths, then one router call
+**Routing.** Five fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
@@ -133,7 +133,13 @@ A Discord DM travels this path every time:
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
+   regex       _SCHEDULING              -> React
    ```
+
+   `_SCHEDULING` is a request shape ("message me at", "every weekday", "make it
+   11:30", "pause that"), not a noun, and never fires on digest or watch changes.
+   The router rule for these did not hold live. A wrong match only sends a
+   message to React, where unclassifiable messages go anyway.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
@@ -380,7 +386,9 @@ the next occurrence, stepped on the local calendar so 09:00 stays 09:00 across a
 daylight-saving change. After downtime it sends one late message, then the next
 future one - never a backlog. `pause` and `resume` keep the entry; resuming skips
 what was missed. Repeating messages are never merged. Each delivery is a fresh
-agent run, so a daily message spends daily tokens on 120b.
+agent run, so a daily message spends daily tokens on 120b. Continuity, as in
+Hermes' cron: each run is shown the series' last three messages and told not to
+repeat them, since a brief naming one idea would otherwise repeat it every day.
 Asking for a message later, or changing one, routes `TASK`. A long agent run holds
 the 60s delivery job, so the next ticks are skipped, not lost.
 

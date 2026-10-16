@@ -112,17 +112,25 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
-async def write(brief: str, now: Optional[datetime] = None) -> Optional[str]:
+async def write(brief: str, now: Optional[datetime] = None,
+                recent: Optional[list[str]] = None) -> Optional[str]:
     """The message for a scheduled brief: an agent run, then compose(), then None.
 
     Each step is a model call that can fail, time out or come back empty, and the
     caller sends the brief itself if this returns None.
     """
     from agents import react
+    task = f"What this message is for: {brief}"
+    if recent:
+        earlier = "\n".join(f"- {r}" for r in recent)
+        task += ("\n\nThis message repeats. Earlier ones in the series, newest first - say "
+                 "something new, and do not repeat their ideas or wording. If the brief names "
+                 "one specific idea, take it as an example of the kind wanted, not as the "
+                 f"content of every message:\n{earlier}")
     try:
         text = await asyncio.wait_for(
             react.handle(
-                f"What this message is for: {brief}",
+                task,
                 [],
                 max_tokens=_AGENT_MAX_TOKENS,
                 allowed_tools=_AGENT_TOOLS,
