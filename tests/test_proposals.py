@@ -177,7 +177,7 @@ def test_proposals_written_not_applied() -> None:
              "- No exclamation points\n"
              "- No casual filler phrases (\"Sure!\", \"Of course!\", \"Happy to help!\")")
     _check("the prompt carries the style block", block in s.calls[0]["system"])
-    _check("the prompt has no em dash", "—" not in s.calls[0]["system"])
+    _check("the prompt has no em dash", "\u2014" not in s.calls[0]["system"])
     tmp.cleanup()
 
 
