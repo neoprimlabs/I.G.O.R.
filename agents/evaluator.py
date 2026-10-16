@@ -51,7 +51,7 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
-async def evaluate(task: str, response: str) -> tuple[bool, str]:
+async def evaluate(task: str, response: str, label: str = "Evaluator") -> tuple[bool, str]:
     """Judge response against task contract. Returns (passed, feedback).
 
     Runs on its own client and the evaluator model (config.MODELS["evaluator"]).
@@ -80,7 +80,7 @@ async def evaluate(task: str, response: str) -> tuple[bool, str]:
             messages[0]["content"],
             messages[1:],
             max_tokens=1024,
-            label="Evaluator",
+            label=label,
         )
     except Exception as e:
         logger.error("Evaluator failed open - %s: %s", type(e).__name__, e)
