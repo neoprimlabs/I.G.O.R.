@@ -38,7 +38,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
 | React | `TASK`, router failure | 120b | all 18 |
-| Monitor | `MONITOR`, digest | 20b | none |
+| Monitor | `MONITOR`, digest | 20b | none; no history, status block only |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
@@ -133,11 +133,13 @@ A Discord DM travels this path every time:
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
-   regex       _SCHEDULING              -> React
+   regex       _SCHEDULING              -> Schedule (React, tool required)
    ```
 
    `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
-   it 11:30"), never digest or watch changes; the router rule for them did not hold.
+   it 11:30"), never digest or watch changes. Its React call requires the
+   `scheduled_message` tool (`tool_choice`) until it has run once: live, React
+   once confirmed a schedule it never made.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
@@ -433,11 +435,8 @@ valid 200 OK.
 completion tokens than unset with output holding (PLAN median 47 tokens, DISTILL
 419). Unset is not the same as high.
 
-Gathering and synthesis are deliberately in separate contexts. The previous design
-handed one ReAct loop a batch of searches plus a write instruction, and ReAct
-appends every tool result to a single growing history, so raw material and
-synthesis competed for one 8000 TPM budget. Raw material won: two consecutive runs
-spent all 8 iterations searching, never reached the write, and recorded nothing.
+Gathering and synthesis are in separate contexts: one ReAct loop doing both spent
+all 8 iterations searching, twice, and recorded nothing.
 
 Findings are delivered as a **raw file attachment with no model pass over them**,
 followed by an offer to synthesize on request. A `synthesize research` fast path
