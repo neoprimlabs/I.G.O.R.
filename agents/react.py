@@ -608,9 +608,18 @@ def _targets_private(name: str, args: dict) -> bool:
         return False
 
 
+def _reads_untrusted(name: str, args: dict) -> bool:
+    """A call whose result carries text from the open web or from corrections."""
+    return name in _WEB_TOOLS or _is_proposal_list(name, args)
+
+
+def _is_proposal_list(name: str, args: dict) -> bool:
+    return name == "proposal" and isinstance(args, dict) and args.get("action") == "list"
+
+
 def _quarantine_check(name: str, args: dict, web_read: bool, private_read: bool) -> Optional[str]:
     """Why this call is closed off, or None. One rule, both directions."""
-    if web_read and name in _QUARANTINED_AFTER_WEB:
+    if web_read and name in _QUARANTINED_AFTER_WEB and not _is_proposal_list(name, args):
         return _QUARANTINE_REFUSAL
     if web_read and _targets_private(name, args):
         return _PRIVATE_AFTER_WEB_REFUSAL
@@ -1469,7 +1478,8 @@ async def handle(
                 logger.info("ReAct tool: %s %s", tc.function.name, tc.function.arguments[:100])
             # A single batch can contain both a web read and a write, and gather
             # gives no ordering guarantee, so the batch is judged as a whole.
-            batch_reads_web = any(tc.function.name in _WEB_TOOLS for tc in tool_calls) or any(
+            batch_reads_web = any(_reads_untrusted(tc.function.name, _args_of(tc))
+                                  for tc in tool_calls) or any(
                 tc.function.name == "delegate_task" and _delegation_wants_web(_args_of(tc))
                 for tc in tool_calls)
             batch_reads_private = any(

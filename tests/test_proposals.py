@@ -326,6 +326,106 @@ def test_tool_wiring() -> None:
     tmp.cleanup()
 
 
+class _Scripted:
+    """A fake Groq client: each create() returns the next scripted turn."""
+
+    def __init__(self, *turns):
+        from types import SimpleNamespace
+        self._ns = SimpleNamespace
+        self.turns, self.tool_sets = list(turns), []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _call(self, i, name, args):
+        return self._ns(id=f"c{i}", type="function",
+                        function=self._ns(name=name, arguments=json.dumps(args)))
+
+    async def _create(self, model, **kwargs):
+        self.tool_sets.append([t["function"]["name"] for t in kwargs.get("tools") or []])
+        turn = self.turns.pop(0)
+        usage = self._ns(total_tokens=10, prompt_tokens=8, completion_tokens=2)
+        if turn is None:
+            msg = self._ns(content="done", tool_calls=None)
+            return self._ns(choices=[self._ns(finish_reason="stop", message=msg)], usage=usage)
+        calls = [self._call(i, n, a) for i, (n, a) in enumerate(turn)]
+        msg = self._ns(content=None, tool_calls=calls)
+        return self._ns(choices=[self._ns(finish_reason="tool_calls", message=msg)], usage=usage)
+
+
+def _react_turn(*turns):
+    from agents import react
+    fake = _Scripted(*turns)
+    real = react._get_client
+    react._get_client = lambda: fake
+    try:
+        _run(react.handle("go", [], max_tokens=1024))
+    finally:
+        react._get_client = real
+    return fake
+
+
+def test_list_then_approve_in_one_turn_is_refused() -> None:
+    overnight, goals, proposals, work, tmp = _fresh()
+    pid = proposals.add("preference", "p", "e", "Hostile rule.", "t")
+    approve = ("proposal", {"action": "approve", "id": pid})
+    fake = _react_turn([("proposal", {"action": "list"})], [approve], None)
+    _check("nothing written to preferences.md after list then approve",
+           not (config.MEMORY_DIR / "preferences.md").exists())
+    _check("the proposal is still pending", len(proposals.pending()) == 1)
+    _check("proposal is withdrawn from the schema after the list",
+           "proposal" in fake.tool_sets[0] and "proposal" not in fake.tool_sets[1], str(fake.tool_sets))
+
+    fake = _react_turn([("proposal", {"action": "list"}), approve], None)
+    _check("list and approve in one batch is refused",
+           not (config.MEMORY_DIR / "preferences.md").exists() and len(proposals.pending()) == 1)
+
+    fake = _react_turn([("search", {"query": "x"}), approve], None)
+    _check("a web read in the batch also refuses approval",
+           not (config.MEMORY_DIR / "preferences.md").exists())
+
+    fake = _react_turn([approve], None)
+    _check("approve in a fresh turn works",
+           "Hostile rule." in (config.MEMORY_DIR / "preferences.md").read_text(encoding="utf-8"))
+    tmp.cleanup()
+
+
+def test_empty_reply_advances_seen_but_a_failed_call_does_not() -> None:
+    overnight, goals, proposals, work, tmp = _fresh()
+    goals.add("Review recent mistakes", "self_improve")
+    s = _Stub(reply="")
+    _tick(overnight, s)
+    _check("the empty reply was a call", len(s.calls) == 1)
+    s2 = _Stub()
+    _tick(overnight, s2)
+    _check("the same inputs are not re-sent", s2.calls == [], str(s2.calls))
+    tmp.cleanup()
+
+    overnight, goals, proposals, work, tmp = _fresh()
+    goals.add("Review recent mistakes", "self_improve")
+
+    class _Boom(_Stub):
+        async def complete(self, system, user, max_tokens):
+            raise RuntimeError("model down")
+
+    _tick(overnight, _Boom())
+    s3 = _Stub()
+    _tick(overnight, s3)
+    _check("after a failed call the inputs are retried", len(s3.calls) == 1, str(s3.calls))
+    tmp.cleanup()
+
+
+def test_hand_written_preference_lines_survive() -> None:
+    overnight, goals, proposals, work, tmp = _fresh()
+    path = config.MEMORY_DIR / "preferences.md"
+    path.write_text("# My notes\nKeep replies short.\n- hand written bullet", encoding="utf-8")
+    pid = proposals.add("preference", "p", "e", "Added by approval.", "t")
+    proposals.decide(pid, approve=True)
+    text = path.read_text(encoding="utf-8")
+    _check("header, note and bullet all survive",
+           "# My notes" in text and "Keep replies short." in text and "- hand written bullet" in text, text)
+    _check("the new bullet is appended on its own line", "\n- Added by approval." in text, text)
+    tmp.cleanup()
+
+
 if __name__ == "__main__":
     test_no_new_input_no_call()
     test_inputs_are_capped_and_errors_read()
@@ -337,6 +437,9 @@ if __name__ == "__main__":
     test_reject_unknown_and_tool()
     test_hostile_text_stays_on_one_line()
     test_tool_wiring()
+    test_list_then_approve_in_one_turn_is_refused()
+    test_empty_reply_advances_seen_but_a_failed_call_does_not()
+    test_hand_written_preference_lines_survive()
     if _failures:
         print(f"\n{len(_failures)} failed: {_failures}")
         sys.exit(1)
