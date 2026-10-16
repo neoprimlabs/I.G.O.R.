@@ -49,6 +49,8 @@ CASES = [
     # The boundary I am least sure about: a current value, not how it works.
     ("what time does the digest go out", "Monitor"),
     ("what is on the watchlist", "Monitor"),
+    # 2026-10-16: the daily token cap ran out with nowhere to ask about it.
+    ("how much of the token budget is left today", "Monitor"),
 
     # 2026-10-14. The first went to ConfigEdit, which passed it on; the follow-ups
     # went to Direct, which has no tools, and promised a 1am rewrite it could not do.
