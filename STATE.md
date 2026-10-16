@@ -705,8 +705,9 @@ user, not made quietly.
    `gpt-oss-120b` (Direct and React) is **200000 TPD**, read from a 429 body on
    2026-10-16 when a day of live testing exhausted it - roughly 55 React calls a day.
    The cap appears ONLY in the 429 body; the `x-ratelimit-*` headers look healthy
-   while it is gone. 20b and qwen are still unmeasured. The orchestrator's 429 reply
-   says "wait a minute", which is wrong for a daily cap with a 20-minute wait.
+   while it is gone. 20b and qwen are still unmeasured. Since `_rate_limit_reply`
+   the user is told it is the daily allowance and Groq's actual wait, and chat no
+   longer retries a daily cap for 90s first.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 4. Monitoring detects a dead process, not a dead gateway. If IGOR is running and

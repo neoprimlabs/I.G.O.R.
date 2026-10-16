@@ -242,7 +242,8 @@ Two call sites stay out, on purpose:
   router reserves 10 tokens, reads one word, and fails fast to React by design.
 
 Exceptions propagate. Callers handle rate limits differently on purpose: the
-orchestrator notifies and sleeps, the evaluator fails open, Monitor drops the digest
+orchestrator notifies and sleeps on a per-minute limit but answers at once on the
+daily cap, quoting the wait from Groq's 429 body (`_rate_limit_reply`), the evaluator fails open, Monitor drops the digest
 section, the research loop stops and reports what it has.
 
 This module exists because the knowledge lived as prose in CLAUDE.md and every new
