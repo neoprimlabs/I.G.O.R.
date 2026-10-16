@@ -64,7 +64,11 @@ job needs a code change and a deploy.
 
 **Scheduled messages** are the one thing the user can schedule by asking:
 `scheduled_message` adds, lists or cancels entries in `memory/scheduled.json`, up to
-30 days ahead. Timezone is `config.USER_TZ` (America/New_York).
+30 days ahead. Timezone is `config.USER_TZ` (America/New_York). An entry holds
+either `content` (exact words) or a `brief` (words written at delivery by
+`agents/compose.py`); given both, the brief is kept. Every add returns the other
+pending entries with their ids, so a corrected time can cancel the one it replaces
+instead of both sending. Asking for a message later, or changing one, routes `TASK`.
 
 **Presence** (`agents/presence.py`) is IGOR deciding whether to speak unprompted,
 usually deciding not to. One check-in a day at a code-picked time. Gates run in code
@@ -283,6 +287,9 @@ that React does not have.
 Its prompt forbids claiming anything about IGOR's own state, features or
 performance, because it cannot check. Asked something of that kind it must give a
 two-part answer: the limitation, then the specific check that would answer it.
+It may not say IGOR lacks a capability, and may not promise any future action -
+it has no tools, so asked to do something it says so and asks for the request as
+its own message.
 
 ### React
 

@@ -366,6 +366,36 @@ async def test_compose_at_delivery() -> None:
            len(send.sent) == 1 and "check in" in send.sent[0], str(send.sent))
 
 
+def test_the_1am_message() -> None:
+    """2026-10-14, replayed. Asked for thought-provoking material at 1am, IGOR sent
+    content and brief together, was refused, and kept the pre-written words. Then
+    "I said 1am" added a second entry beside the misread 10am one, and all of them
+    sent - two at 1am, one at 10am."""
+    from agents import scheduled
+
+    oct14 = _utc(2026, 10, 14, 22, 11)
+    path = _fresh_store()
+    reply = scheduled.add("Imagine a single point of consciousness...", at="2026-10-15 01:00",
+                          brief="Philosophical thought prompt", now=oct14)
+    entries = _stored(path)
+    _check("content and brief together is scheduled, not refused",
+           len(entries) == 1 and not reply.startswith("Not scheduled"), reply)
+    _check("and the brief is kept, so the words are written when it sends",
+           bool(entries) and entries[0]["brief"] == "Philosophical thought prompt"
+           and entries[0]["content"] == "", str(entries))
+
+    path = _fresh_store()
+    reply = scheduled.add(brief="thought provoking material", at="2026-10-15 10:00", now=oct14)
+    _check("a first message lists nothing else as pending", "pending" not in reply, reply)
+    wrong = _stored(path)[0]["id"]
+    reply = scheduled.add(brief="thought provoking material", at="2026-10-15 01:00", now=oct14)
+    _check("the correction shows the misread entry still pending, by id",
+           wrong in reply and "10:00" in reply, reply)
+    _check("and says both will send unless the old one is cancelled", "cancel" in reply, reply)
+    _check("the confirmation of the new one still comes first",
+           reply.startswith("Okay, tomorrow at 1:00 AM."), reply)
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -386,6 +416,8 @@ if __name__ == "__main__":
     print("\nwindows and composition")
     test_window_picks_the_time()
     asyncio.run(test_compose_at_delivery())
+    print("\nthe 1am message")
+    test_the_1am_message()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

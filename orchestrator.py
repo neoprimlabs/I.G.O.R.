@@ -36,11 +36,12 @@ CONFIG - requests to CHANGE a saved setting: add or remove a digest section, cha
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-Four rules that override the above:
+Five rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
 Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR.
-Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF."""
+Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF.
+Asking IGOR to message the user later, or to change, correct or cancel a message already planned, is TASK - including short follow-ups like "I said 1am" or "write something new when it sends". It is never CONFIG and never CHAT."""
 
 _VERDICT_MAP = {
     "CHAT": "Direct",
