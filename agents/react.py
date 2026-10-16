@@ -51,7 +51,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
-    "scheduled_message", "delegate_task", "task_update",
+    "scheduled_message", "delegate_task", "task_update", "goal",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -309,6 +309,20 @@ _TOOLS = [
         },
     },
     {
+        "name": "goal",
+        "description": "Standing goals IGOR works on at night. add: record a new goal. list: show them with ids. pause / resume: stop and restart one. retire: finish one for good (it is archived).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["add", "list", "pause", "resume", "retire"]},
+                "statement": {"type": "string", "description": "add: the goal, in the user's words, as one sentence"},
+                "kind": {"type": "string", "enum": ["research", "self_improve"], "description": "add: research gathers knowledge for the user; self_improve changes IGOR itself"},
+                "id": {"type": "string", "description": "pause, resume, retire: id from list"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "memory_write",
         "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences.",
         "input_schema": {
@@ -348,6 +362,7 @@ When to use tools:
 - search_history: anything said in an earlier conversation - "what did we decide about X", "when did I mention Y". Your context holds only the last few turns, so search before saying you do not know
 - memory_write: when the user asks you to remember, add, store, or update something
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
+- goal: when the user states a standing aim for IGOR to work on over time, or asks to see, pause, resume or retire one. add records it; list shows the ids
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
@@ -808,7 +823,7 @@ _WORKER_MAX_TOKENS = 1024
 # A worker must not reach the user, restart the service, schedule anything, write
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
-    "delegate_task", "send_message", "scheduled_message", "restart_self",
+    "delegate_task", "goal", "send_message", "scheduled_message", "restart_self",
     "memory_write", "task_update",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
@@ -1328,6 +1343,10 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
     if name == "scheduled_message":
         from agents import scheduled
         return scheduled.run_tool(inputs)
+
+    if name == "goal":
+        import goals
+        return goals.run_tool(inputs)
 
     if name == "memory_write":
         from agents import prod_memory
