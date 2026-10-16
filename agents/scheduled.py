@@ -128,9 +128,17 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
     brief = (brief or "").strip()
-    if bool(content) == bool(brief):
+    if content and brief:
+        # 2026-10-14: asked for "thought provoking material" at 1am, the model sent
+        # both, was refused, and retried keeping the words it had pre-written. The
+        # message arrived as text the user had already read in chat. A model that
+        # writes a brief has said what the message is for; the words it drafted
+        # alongside are its own, not dictated, so the brief wins.
+        logger.info("Scheduled message given both content and brief, keeping the brief")
+        content = ""
+    if not content and not brief:
         return ("Not scheduled: give either content (the exact words to send) or brief "
-                "(what the message is about, written when it sends), not both.")
+                "(what the message is about, written when it sends).")
     if sum(x is not None for x in (at, in_minutes, window)) != 1:
         return "Not scheduled: give exactly one of at, in_minutes or window."
 
@@ -164,10 +172,27 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
 
     entry = {"id": secrets.token_hex(3), "due": due.isoformat(), "content": content,
              "brief": brief, "created": now.isoformat(), "attempts": 0}
+    others = list(entries)
     entries.append(entry)
     _save(entries)
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
-    return f"Okay, {_human(due, now)}."
+    reply = f"Okay, {_human(due, now)}."
+    # 2026-10-14: "I said 1am" added a second entry and left the misread 10am one in
+    # place, and both sent. The model never saw it - nothing showed what was pending.
+    if others:
+        reply += ("\nAlso pending, ids are internal and not for the user:\n" + _lines(others)
+                  + "\nIf the new message replaces one of these, cancel the old one now"
+                  " or both will send.")
+    return reply
+
+
+def _lines(entries: list[dict]) -> str:
+    lines = []
+    for e in sorted(entries, key=lambda e: e["due"]):
+        state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
+        summary = (e.get("content") or e.get("brief") or "")[:80]
+        lines.append(f"{e['id']}  {_local(e['due'])}{state}  {summary}")
+    return "\n".join(lines)
 
 
 def list_pending() -> str:
@@ -177,12 +202,7 @@ def list_pending() -> str:
         return "The scheduled message store is unreadable."
     if not entries:
         return "No scheduled messages."
-    lines = []
-    for e in sorted(entries, key=lambda e: e["due"]):
-        state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
-        summary = (e.get("content") or e.get("brief") or "")[:80]
-        lines.append(f"{e['id']}  {_local(e['due'])}{state}  {summary}")
-    return "\n".join(lines)
+    return _lines(entries)
 
 
 def cancel(entry_id: str) -> str:

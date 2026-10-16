@@ -50,6 +50,12 @@ CASES = [
     ("what time does the digest go out", "Monitor"),
     ("what is on the watchlist", "Monitor"),
 
+    # 2026-10-14. The first went to ConfigEdit, which passed it on; the follow-ups
+    # went to Direct, which has no tools, and promised a 1am rewrite it could not do.
+    ("Ok thanks could you message me around 100am with some thought provoking material?", "React"),
+    ("I said 1am", "React"),
+    ("Not too bad. You could go deeper than that. Just be sure to draft something new at the scheduled time.", "React"),
+
     ("drop weather from the digest", "ConfigEdit"),
     ("change the digest time to 14:00", "ConfigEdit"),
 ]
