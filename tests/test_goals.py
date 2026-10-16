@@ -132,6 +132,37 @@ def test_run_tool_actions() -> None:
             {"action": "add", "statement": "S", "kind": ""}), "")
 
 
+def test_rewrites_keep_malformed_blocks() -> None:
+    goals, tmp = _fresh()
+    with tmp:
+        bad = "## g1 Hand edited\nkin: research\nstatus: active"
+        good = ("## g2 Fine goal\nkind: research\nstatus: active\ncreated: 2026-10-16\n"
+                "last_reviewed: 2026-10-16T00:00:00+00:00\nnext_action: start\n")
+        path = config.MEMORY_DIR / "goals.md"
+        path.write_text(bad + "\n\n" + good, encoding="utf-8")
+        goals.set_status("g2", "paused")
+        _check("kept after pause", bad in path.read_text(encoding="utf-8"), "")
+        _check("g2 paused", goals.load()[0]["status"] == "paused", "")
+        goals.note_progress("g2", "next thing", now=_utc(2026, 10, 20))
+        _check("kept after progress", bad in path.read_text(encoding="utf-8"), "")
+        _check("progress stored", goals.load()[0]["next_action"] == "next thing", "")
+        goals.set_status("g2", "retired")
+        _check("kept after retire", bad in path.read_text(encoding="utf-8"), "")
+        _check("g2 left goals.md", "g2" not in path.read_text(encoding="utf-8"), "")
+
+
+def test_invalid_values_skipped() -> None:
+    goals, tmp = _fresh()
+    with tmp:
+        tail = "created: 2026-10-16\nlast_reviewed: 2026-10-16T00:00:00+00:00\nnext_action: start\n"
+        (config.MEMORY_DIR / "goals.md").write_text(
+            "## g1 Typo status\nkind: research\nstatus: actve\n" + tail + "\n"
+            "## g2 Bad kind\nkind: bogus\nstatus: active\n" + tail + "\n"
+            "## g3 Good\nkind: self_improve\nstatus: paused\n" + tail, encoding="utf-8")
+        _check("only the valid goal loads", [g["id"] for g in goals.load()] == ["g3"], "")
+        _check("nothing worked from invalid ones", goals.next_to_work() is None, "")
+
+
 def test_react_wiring() -> None:
     import asyncio
     from agents import react
@@ -153,6 +184,8 @@ if __name__ == "__main__":
     test_retire_archives()
     test_malformed_block_skipped()
     test_run_tool_actions()
+    test_rewrites_keep_malformed_blocks()
+    test_invalid_values_skipped()
     test_react_wiring()
 
     if _failures:

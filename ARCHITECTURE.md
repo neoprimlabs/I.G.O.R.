@@ -37,7 +37,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 18 |
+| React | `TASK`, router failure | 120b | all 19 |
 | Monitor | `MONITOR`, digest | 20b | none; no history, status block only |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -185,7 +185,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 18 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 19 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -255,10 +255,10 @@ its own message.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 18 tools attach unless
+`[system] + context window + user message`. All 19 tools attach unless
 `allowed_tools` narrows them.
 
-**The 18 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
+**The 19 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
 `watch_history`, `search_files`, `delegate_task`, `task_update`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`, `goal`.
