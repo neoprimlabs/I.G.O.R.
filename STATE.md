@@ -17,8 +17,9 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs `026ec4b` (rate-limit replies quote Groq's real wait),
-  deployed through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+- Server `/opt/igor` runs the 2026-10-16 gap closures (fallback model, shell
+  blocklist, conversation search, repeating messages), deployed through the S.1
+  gate. Check with `git -C /opt/igor log -1`.
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -649,6 +650,13 @@ marked failed for a human.
   model sees them, and every Groq response's token count goes to a ledger Monitor
   reports against the cap. **Next: run `tests/live_scheduling.py` once, tomorrow,**
   when the 2026-10-16 spend has aged out of Groq's window. It checks all three.
+- **Same day, four Hermes gaps closed, unit-tested only:** a 120b rate limit now
+  falls back to 20b until Groq's stated reset, with a notice on the reply; the shell
+  refuses a hardline blocklist in code; `search_history` searches 10000 stored
+  messages; scheduled messages repeat (daily, weekdays, weekly) with pause and
+  resume. **None of the four has run live.** Fallback only fires on a real 429, so
+  it will prove itself the next time 120b runs dry - check journalctl for "falling
+  back". The rest belong in tomorrow's live pass.
 - **Known detour, now narrower:** scheduling requests used to route CONFIG and
   usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
   did not decline - see Known broken 7. The new router rule should stop the detour.
@@ -757,11 +765,18 @@ T.1 is started, not finished. Run all of them with `venv/bin/python` on the serv
   web-delegation closing the parent's turn. Injects a fake runner, so it proves the
   wiring and nothing about the worker - rerun the live check in `## Hermes tool
   parity` after changing the worker prompt or model.
+- `tests/test_fallback.py` - stdlib, no API. 120b -> 20b on a 429, benching until
+  Groq's reset, the turn notice, both models limited, and React's own loop.
+- `tests/test_shell_guard.py` - stdlib, no API. The shell blocklist (23 blocked, 14
+  everyday commands that must still run, nothing runs if any part is blocked) and
+  `search_history` (all words, newest first, literal % and _, speed at 3000 rows).
 - `tests/test_usage.py` - stdlib, no API. The token ledger (summing, the 24h
   window, pruning, never raising) and run-together times (`100am` -> `1:00am`, and
   what must stay untouched).
 - `tests/test_rate_limit.py` - stdlib, no API. What the user is told on a 429,
   from the real 2026-10-16 daily-cap text; chat does not retry a daily cap.
+- **ARCHITECTURE.md is at 36970 of the ~37000 characters ten `read_file` pages
+  hold** (`test_read_file_paging`). Trim before adding.
 - `tests/live_scheduling.py` - **spends real tokens**, ~4 React turns. The three
   scheduling failures from 2026-10-14/16. Refuses to run when the ledger shows less
   than 40000 left on 120b, and prints what it spent.
