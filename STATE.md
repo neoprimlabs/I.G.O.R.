@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-07**
+Last updated: **2026-10-16**
 
 ---
 
@@ -17,9 +17,8 @@ Last updated: **2026-10-07**
 
 ## Code
 
-- Server `/opt/igor` runs the stock watch as of 2026-10-13; check with `git -C /opt/igor log -1`, deployed
-  through the S.1 gate on 2026-10-07 and confirmed with
-  `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+- Server `/opt/igor` runs `d045db3` (scheduled-message fixes), deployed through the
+  S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -607,7 +606,8 @@ coupling either.
 
 React's `scheduled_message` tool adds, lists or cancels one-off messages in
 `memory/scheduled.json`. A monitor job checks the file every 60s and sends what is
-due; the text is fixed at scheduling time, so delivery costs no tokens. Limits: 30
+due. An entry is fixed `content` (no tokens at delivery) or a `brief` that
+`agents/compose.py` writes into words at delivery; given both, the brief wins. Limits: 30
 days ahead, 20 pending. Failed sends retry each tick up to 10 times, then stay
 marked failed for a human.
 
@@ -625,10 +625,20 @@ marked failed for a human.
 - **Verified end to end 2026-09-15:** React called the tool itself for two requests
   made the night before, and both were delivered from the queue - 92704e at 13:15
   UTC and 88532e at 15:40 UTC. The queue is empty and cleans up after itself.
-- **Known detour, and it has bitten once:** scheduling requests route CONFIG (the
-  router's CONFIG line names "change a schedule time"). Usually ConfigEdit declines
-  and React handles it, costing one wasted call, ~600-700 tokens. Once it did not
-  decline - see Known broken 7.
+- **2026-10-14, fixed 10-16 (`d045db3`):** one request for "thought provoking
+  material at 1am" produced three entries - a misread 10am, then two 1am ones added
+  on correction without cancelling anything - and all three sent, two with words the
+  user had already read. The follow-up asking for fresh words at send time went to
+  Direct, which promised it with no tools. Now: every add lists the other pending
+  ids so a correction can cancel; the router has a rule sending "message me later"
+  and corrections to TASK (live test: all three replayed messages route React, 26/27
+  overall - the one miss, "We could have you use your autonomous scheduled system",
+  misroutes identically under the old prompt); Direct may not promise actions or
+  deny capabilities. **Not yet confirmed in Discord** - the next real correction of
+  a scheduled time is the test of whether React cancels the old id.
+- **Known detour, now narrower:** scheduling requests used to route CONFIG and
+  usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
+  did not decline - see Known broken 7. The new router rule should stop the detour.
 - **Known limitation:** a crash between sending and saving can send a message twice.
 
 ## Presence (new, 2026-09-16, off by default)
