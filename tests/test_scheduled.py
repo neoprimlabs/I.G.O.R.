@@ -625,6 +625,20 @@ async def test_repeating() -> None:
            str(_stored(path)))
 
 
+def test_confirmation_carries_the_date() -> None:
+    """2026-10-16: the tool said "Monday at 10:00 AM" and React told the user
+    "Monday, October 23" - the stored date was Monday the 19th."""
+    from agents import scheduled
+    fri = _utc(2026, 10, 16, 21, 22)          # Fri 17:22 EDT
+    _fresh_store()
+    reply = scheduled.add(brief="a practical idea", at="2026-10-19 10:00", repeat="weekdays", now=fri)
+    _check("a confirmation days ahead names the real date", "Monday, October 19 at 10:00 AM" in reply, reply)
+    reply = scheduled.add(brief="later", at="2026-10-30 09:00", now=fri)
+    _check("and so does one more than a week out", "Friday, October 30 at 9:00 AM" in reply, reply)
+    reply = scheduled.add(brief="soon", at="2026-10-17 01:00", now=fri)
+    _check("tomorrow still says tomorrow", reply.startswith("Okay, tomorrow at 1:00 AM"), reply)
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -653,6 +667,7 @@ if __name__ == "__main__":
     asyncio.run(test_write_at_delivery())
     test_update_in_place()
     asyncio.run(test_repeating())
+    test_confirmation_carries_the_date()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

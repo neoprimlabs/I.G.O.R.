@@ -124,10 +124,11 @@ def _human(due: datetime, now: datetime) -> str:
         day = "today"
     elif days == 1:
         day = "tomorrow"
-    elif days < 7:
-        day = local.strftime("%A")
     else:
-        day = local.strftime("%A the %d").replace(" 0", " ")
+        # The date, always. Given only "Monday at 10:00 AM", React told the user
+        # "Monday, October 23" for Monday the 19th (2026-10-16): a model fills a
+        # missing date in by itself, so the tool must not leave one missing.
+        day = f"{local:%A}, {local:%B} {local.day}"
     return day + " at " + clock_time
 
 
