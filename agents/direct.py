@@ -82,12 +82,13 @@ def _resume_if_asked(message: str, context: list[dict] | None = None) -> str:
 
 
 def _get_system_prompt() -> str:
+    import proposals
     path = config.MEMORY_DIR / "prompt_direct.md"
     if path.exists():
         content = path.read_text(encoding="utf-8").strip()
         if content:
-            return content
-    return _DEFAULT_SYSTEM_PROMPT
+            return proposals.with_preferences(content)
+    return proposals.with_preferences(_DEFAULT_SYSTEM_PROMPT)
 
 
 async def handle(

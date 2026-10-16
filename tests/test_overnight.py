@@ -326,13 +326,13 @@ def test_findings_rotate_after_finished_paper() -> None:
     tmp.cleanup()
 
 
-def test_self_improve_is_a_stub_without_a_call() -> None:
+def test_self_improve_without_input_makes_no_call() -> None:
     overnight, goals, work, tmp, _ = _fresh()
     goals.add("Review recent mistakes", "self_improve")
     s = _Stubs()
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     _check("no model call", s.systems == [] and s.queries == [])
-    _check("the session is logged", "Task 4" in work._load()[-1]["summary"], str(work._load()))
+    _check("the session is logged", "no new" in work._load()[-1]["summary"], str(work._load()))
     tmp.cleanup()
 
 

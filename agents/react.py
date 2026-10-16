@@ -51,7 +51,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
-    "scheduled_message", "delegate_task", "task_update", "goal",
+    "scheduled_message", "delegate_task", "task_update", "goal", "proposal",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -323,6 +323,18 @@ _TOOLS = [
         },
     },
     {
+        "name": "proposal",
+        "description": "Fixes IGOR proposed after reviewing its own mistakes. list: show the pending ones with their evidence. approve: accept one. reject: discard one. Approving a preference makes it a standing rule; approving a prompt or code change only queues it for a Claude Code session.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "approve", "reject"]},
+                "id": {"type": "string", "description": "approve, reject: id from list, such as p3"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "memory_write",
         "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences.",
         "input_schema": {
@@ -363,6 +375,7 @@ When to use tools:
 - memory_write: when the user asks you to remember, add, store, or update something
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
 - goal: when the user states a standing aim for IGOR to work on over time, or asks to see, pause, resume or retire one. add records it; list shows the ids
+- proposal: when the user asks about, approves or rejects a fix IGOR proposed for its own mistakes. list first, show the user the problem, evidence and change, and approve or reject only on their explicit word for that id
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
@@ -481,12 +494,13 @@ def _openai_tools() -> list:
 
 
 def _get_system_prompt() -> str:
+    import proposals
     path = config.MEMORY_DIR / "prompt_react.md"
     if path.exists():
         content = path.read_text(encoding="utf-8").strip()
         if content:
-            return content
-    return _DEFAULT_SYSTEM_PROMPT
+            return proposals.with_preferences(content)
+    return proposals.with_preferences(_DEFAULT_SYSTEM_PROMPT)
 
 
 
@@ -823,7 +837,7 @@ _WORKER_MAX_TOKENS = 1024
 # A worker must not reach the user, restart the service, schedule anything, write
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
-    "delegate_task", "goal", "send_message", "scheduled_message", "restart_self",
+    "delegate_task", "goal", "proposal", "send_message", "scheduled_message", "restart_self",
     "memory_write", "task_update",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
@@ -1347,6 +1361,10 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
     if name == "goal":
         import goals
         return goals.run_tool(inputs)
+
+    if name == "proposal":
+        import proposals
+        return proposals.run_tool(inputs)
 
     if name == "memory_write":
         from agents import prod_memory

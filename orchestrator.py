@@ -137,7 +137,8 @@ _OLD_ENTRY_CAP = 700
 # (~2100 tokens) on an 8000 TPM model, so it has roughly 2300 tokens of room for
 # history. Direct carries no tools on a 12000 bucket and can afford far more.
 # One number cannot serve both.
-_CONTEXT_BUDGET_REACT = 8500
+# 1500 chars paid for the approved-preferences block react appends to its system prompt.
+_CONTEXT_BUDGET_REACT = 7000
 _CONTEXT_BUDGET_DIRECT = 24000
 
 # SelfDescribe gets almost no history on purpose. At 8000 chars it answered a
