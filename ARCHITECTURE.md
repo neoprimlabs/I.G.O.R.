@@ -47,7 +47,7 @@ check for due scheduled messages. Retiming one needs a deploy.
 and stay silent unless something changed.
 
 **Scheduled messages** are what the user can schedule by asking:
-`scheduled_message` adds, lists or cancels one-off messages in
+`scheduled_message` adds, updates, lists or cancels one-off messages in
 `memory/scheduled.json`, up to 30 days ahead, in America/New_York time.
 
 **Presence**: one check-in a day at a code-picked time, behind gates checked in
@@ -388,8 +388,9 @@ in double quotes and are kept verbatim. Offered a fixed-text field, React pre-wr
 the message 3 times out of 3 in a live test; `content` remains for code callers.
 
 A second brief due within 5 minutes of a pending one is merged into it, so one
-message sends. Every add returns the other pending entries with their ids, so a
-corrected time can cancel the old one. Monitor's status lists what is pending.
+message sends. A correction is `update`, which edits a pending message in place by
+id, as Hermes does; cancel-then-add was two calls and React kept skipping the
+cancel. Every add also lists the other pending entries with their ids. Monitor's status lists what is pending.
 Asking for a message later, or changing one, routes `TASK`. A long agent run holds
 the 60s delivery job, so the next ticks are skipped, not lost.
 

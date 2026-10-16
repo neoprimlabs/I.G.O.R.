@@ -492,6 +492,48 @@ async def test_write_at_delivery() -> None:
         react.handle, compose.compose = real_handle, real_compose
 
 
+def test_update_in_place() -> None:
+    """A correction is one call, as in Hermes. Cancel-then-add was two, and React
+    skipped the cancel often enough that both messages sent."""
+    from agents import scheduled
+
+    oct14 = _utc(2026, 10, 14, 22, 11)
+    path = _fresh_store()
+    scheduled.add(brief="thought-provoking material", at="2026-10-15 10:00", now=oct14)
+    eid = _stored(path)[0]["id"]
+
+    reply = scheduled.update(eid, at="2026-10-15 01:00", now=oct14)
+    entries = _stored(path)
+    _check("update moves the time, and still one entry",
+           len(entries) == 1 and entries[0]["due"] == "2026-10-15T05:00:00+00:00", str(entries))
+    _check("and keeps the id and the brief",
+           entries[0]["id"] == eid and entries[0]["brief"] == "thought-provoking material", str(entries))
+    _check("the reply says the new time in words", "1:00 AM" in reply, reply)
+
+    scheduled.update(eid, brief="deeper, written fresh, nothing about sleep", now=oct14)
+    entries = _stored(path)
+    _check("update changes the brief without moving the time",
+           entries[0]["brief"].startswith("deeper") and entries[0]["due"] == "2026-10-15T05:00:00+00:00",
+           str(entries))
+
+    before = _stored(path)
+    for name, kwargs in [
+        ("an unknown id", dict(entry_id="nope", at="2026-10-15 02:00")),
+        ("a time already past", dict(entry_id=eid, at="2026-10-14 08:00")),
+        ("nothing to change", dict(entry_id=eid)),
+        ("two times at once", dict(entry_id=eid, at="2026-10-15 02:00", in_minutes=5)),
+    ]:
+        reply = scheduled.update(now=oct14, **kwargs)
+        _check(f"update refuses {name} and changes nothing",
+               reply.startswith("Not updated") and _stored(path) == before, reply)
+
+    path = _fresh_store()
+    scheduled.run_tool({"action": "add", "in_minutes": 60, "brief": "x"})
+    eid = _stored(path)[0]["id"]
+    reply = scheduled.run_tool({"action": "update", "id": eid, "in_minutes": "90"})
+    _check("React reaches update through the tool", reply.startswith("Okay, now"), reply)
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -518,6 +560,7 @@ if __name__ == "__main__":
     test_monitor_sees_pending()
     test_same_slot_merges()
     asyncio.run(test_write_at_delivery())
+    test_update_in_place()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
