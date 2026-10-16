@@ -35,9 +35,9 @@ def _write(path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _parse(text: str) -> tuple[list[dict], int]:
-    """(valid goals, highest id number seen including skipped blocks)."""
-    goals, top = [], 0
+def _split(text: str) -> list[tuple[str, Optional[dict], int]]:
+    """Each block as (raw text, goal or None if malformed, id number or 0)."""
+    out = []
     for chunk in text.split("\n## "):
         chunk = chunk.strip()
         if chunk.startswith("## "):
@@ -46,19 +46,37 @@ def _parse(text: str) -> tuple[list[dict], int]:
             continue
         head, _, body = chunk.partition("\n")
         goal_id, _, statement = head.strip().partition(" ")
-        if goal_id[:1] == "g" and goal_id[1:].isdigit():
-            top = max(top, int(goal_id[1:]))
+        id_ok = goal_id[:1] == "g" and goal_id[1:].isdigit()
+        number = int(goal_id[1:]) if id_ok else 0
         fields = {}
         for line in body.splitlines():
             key, sep, value = line.partition(":")
             if sep and key.strip() in _FIELDS:
                 fields[key.strip()] = value.strip()
-        if (not (goal_id[:1] == "g" and goal_id[1:].isdigit()) or not statement.strip()
-                or any(f not in fields for f in _FIELDS)):
+        if (not id_ok or not statement.strip() or any(f not in fields for f in _FIELDS)
+                or fields["kind"] not in KINDS
+                or fields["status"] not in _SETTABLE + ("retired",)):
             logger.warning("Skipping malformed goal block %r", head[:60])
+            out.append(("## " + chunk, None, number))
             continue
-        goals.append({"id": goal_id, "statement": statement.strip(), **fields})
-    return goals, top
+        out.append(("## " + chunk, {"id": goal_id, "statement": statement.strip(), **fields},
+                    number))
+    return out
+
+
+def _parse(text: str) -> tuple[list[dict], int]:
+    """(valid goals, highest id number seen including skipped blocks)."""
+    blocks = _split(text)
+    return [g for _, g, _ in blocks if g], max([n for _, _, n in blocks], default=0)
+
+
+def _replace(goal: dict, replacement: Optional[dict]) -> None:
+    """Swap or drop one goal's block, leaving every other block's text as written,
+    including ones that did not parse: a hand edit must survive the next change."""
+    parts = [_block(replacement).strip() if g and g["id"] == goal["id"] and replacement
+             else raw for raw, g, _ in _split(_path().read_text(encoding="utf-8"))
+             if not (g and g["id"] == goal["id"] and replacement is None)]
+    _write(_path(), "\n\n".join(parts) + "\n")
 
 
 def _block(g: dict) -> str:
@@ -70,10 +88,6 @@ def _read(path) -> tuple[list[dict], int]:
     if not path.exists():
         return [], 0
     return _parse(path.read_text(encoding="utf-8"))
-
-
-def _save(goals: list[dict]) -> None:
-    _write(_path(), "\n".join(_block(g) for g in goals))
 
 
 def load() -> list[dict]:
@@ -120,11 +134,11 @@ def set_status(goal_id: str, status: str) -> str:
             old += "\n"
         # Archive first: a crash between the two writes duplicates a goal, never loses one.
         _write(archive, old + ("\n" if old else "") + _block(goal))
-        _save([g for g in goals if g["id"] != goal_id])
+        _replace(goal, None)
         logger.info("Retired goal %s", goal_id)
         return f"Retired {goal_id}. It is kept in the archive."
     goal["status"] = status
-    _save(goals)
+    _replace(goal, goal)
     logger.info("Goal %s now %s", goal_id, status)
     return f"{goal_id} is now {status}."
 
@@ -153,7 +167,7 @@ def note_progress(goal_id: str, next_action: str, now: Optional[datetime] = None
         if g["id"] == goal_id:
             g["last_reviewed"] = now.isoformat()
             g["next_action"] = " ".join((next_action or "").split()) or "start"
-            _save(goals)
+            _replace(g, g)
             return
     logger.warning("note_progress: no goal %s", goal_id)
 
