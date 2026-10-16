@@ -25,11 +25,20 @@
 
 .PARAMETER TestAlert
     Send a test alert and exit. Verifies the webhook path without breaking IGOR.
+
+.PARAMETER WorkOnly
+    Path to a local archive. Runs only the memory/work/ extraction against it
+    (into -WorkDest) and exits 0. For testing; touches no server.
+
+.PARAMETER WorkDest
+    Where memory/work/ is copied after a pull. Default Documents\IGOR Work.
 #>
 param(
     [switch]$Install,
     [switch]$TestAlert,
-    [int]$Keep = 30
+    [int]$Keep = 30,
+    [string]$WorkOnly,
+    [string]$WorkDest = (Join-Path $env:USERPROFILE 'Documents\IGOR Work')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,6 +82,43 @@ function Send-Alert {
 }
 
 
+function Export-WorkFolder {
+    # Copies memory/work/ out of a pulled archive so the overnight papers and
+    # proposals can be read on this PC. Never throws and never exits: it runs
+    # before the health checks, which must still alert if this fails.
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Dest
+    )
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $names = & tar.exe -tzf $Archive 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "  work folder: could not list $Archive"
+            return $false
+        }
+        if (-not ($names | Where-Object { $_ -match '^(\./)?memory/work/.' })) {
+            Write-Host '  work folder: none in archive, skipped'
+            return $true
+        }
+        if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
+        & tar.exe -xzf $Archive -C $Dest --strip-components=2 memory/work 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "  work folder: extraction failed (tar exit $LASTEXITCODE)"
+            return $false
+        }
+        Write-Host "  work folder: extracted to $Dest"
+        return $true
+    } catch {
+        Write-Warning "  work folder: $($_.Exception.Message)"
+        return $false
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
+
 if ($Install) {
     $script = $MyInvocation.MyCommand.Path
     # conhost --headless runs the console host with no window at all. A plain
@@ -93,6 +139,11 @@ if ($Install) {
 
 if ($TestAlert) {
     Send-Alert -Title 'Test alert' -Detail 'Triggered manually with -TestAlert. IGOR is fine.'
+    exit 0
+}
+
+if ($WorkOnly) {
+    Export-WorkFolder -Archive $WorkOnly -Dest $WorkDest | Out-Null
     exit 0
 }
 
@@ -164,6 +215,7 @@ if ($tarSize -gt 0) {
     if ($LASTEXITCODE -eq 0 -and (Test-Path $archive) -and (Get-Item $archive).Length -gt 0) {
         $backupOk = $true
         Write-Output "  saved $archive ($((Get-Item $archive).Length) bytes)"
+        Export-WorkFolder -Archive $archive -Dest $WorkDest | Out-Null
     }
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'

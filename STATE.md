@@ -26,9 +26,10 @@ Last updated: **2026-10-16**
 
 ## Next action
 
-**Pick up here.** Building A.4, the overnight work loop (design approved
-2026-10-16). Then the SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop
-dashboard) are committed to GAMEPLAN as the near-term work after this.
+**Pick up here.** A.4, the overnight work loop, is built on branch
+`worktree-overnight-loop` and **not deployed**. After the final review and the merge
+to master, do the five pending steps in `## Overnight work loop` below. Then the
+SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop dashboard) follow.
 
 **Flagged spec deviation, the user's call:** `IGOR_SPEC.md` says "no hoarding of
 conversation history"; on 2026-10-16 `context.db` retention went from 200 to 10000
@@ -87,6 +88,37 @@ set a limit.
    Run it after any change to `agents/self_describe.py`, the router prompt, or
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
+
+## Overnight work loop (A.4, built 2026-10-16, branch only)
+
+Built and offline-tested on `worktree-overnight-loop`; **nothing is deployed and the
+server is untouched.** `ARCHITECTURE.md` already describes it, so it describes the
+branch, not the running server, until the merge. Design:
+`docs/superpowers/specs/2026-10-16-overnight-work-loop-design.md`.
+
+Built: `goals.py` and React's `goal` tool; `work.py` (work folder, night log,
+budget); `agents/overnight.py` (hourly tick at minute 20, research sessions with a
+code-level paper check, self-improvement sessions, the digest section);
+`proposals.py` and React's `proposal` tool (untrusted-read quarantine on `list`);
+approved preferences in `memory/preferences.md` read by Direct, React and the job
+ranking; `scripts/backup_memory.ps1` copying `memory/work/` to `Documents\IGOR Work`
+on the PC (tested against an archive with and without the folder, and a corrupt
+one). Offline suite: 32 suites, 0 not passing.
+
+**Pending until the merge** (the deploy script pulls `origin/master`):
+
+1. Commit and push on master, deploy through the gate, expect `=== deploy OK`.
+2. On the server as `igor`: add `overnight` to the Sections line of
+   `memory/digest_config.md` (without it the digest says nothing about the loop).
+3. Seed the two goals with `goals.add` (research towards an income feature, and
+   self-improvement).
+4. Run **one** session by hand inside a forced window
+   (`overnight.tick(now=<local 01:00>)`), read its spend from the log and the files
+   it wrote, and record the spend here. Do not repeat it: it spends 20b's budget.
+5. When a night first stops with `daily cap 20b: <limit>`, put that limit in
+   `config.DAILY_TOKEN_CAPS` and in Known broken 2. It is the first measurement of
+   20b's daily cap, which is unmeasured today; the per-night budget of 60000 tokens
+   is a guess until then.
 
 ## Presence, first week (2026-09-17 to 09-21)
 
@@ -743,7 +775,8 @@ user, not made quietly.
    `gpt-oss-120b` (Direct and React) is **200000 TPD**, read from a 429 body on
    2026-10-16 when a day of live testing exhausted it - roughly 55 React calls a day.
    The cap appears ONLY in the 429 body; the `x-ratelimit-*` headers look healthy
-   while it is gone. 20b and qwen are still unmeasured. Since `_rate_limit_reply`
+   while it is gone. 20b and qwen are still unmeasured (the overnight loop's first
+   daily-cap stop will measure 20b). Since `_rate_limit_reply`
    the user is told it is the daily allowance and Groq's actual wait, and chat no
    longer retries a daily cap for 90s first.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
@@ -837,6 +870,10 @@ Windows Scheduled Task "IGOR memory backup" at 3am. Run on demand with
 - Alerts to a Discord webhook on: unreachable host, service not active, backup
   failure, or restart count jumping by 3 or more. A webhook is used rather than
   IGOR itself because the alert has to work when IGOR cannot.
+- Also extracts `memory/work/` from the pulled archive into
+  `%USERPROFILE%\Documents\IGOR Work` (the overnight loop's papers and proposals).
+  A missing folder is not an error, and a failed extraction only warns, so the
+  health checks and alerts still run. `-WorkOnly <archive>` runs just that step.
 - Sends one all-clear on Sundays, so prolonged silence means the task stopped
   running rather than everything being fine.
 
