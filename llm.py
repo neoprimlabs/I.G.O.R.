@@ -27,6 +27,8 @@ from typing import Optional, Union
 
 import openai
 
+import usage
+
 logger = logging.getLogger(__name__)
 
 # Doubling has to stay inside the model's TPM bucket, since prompt + max_tokens is
@@ -113,6 +115,7 @@ async def complete(
             max_tokens=budget,
             **extra,
         )
+        usage.record(model, response, who)
         choice = response.choices[0]
         content = (choice.message.content or "").strip()
         truncated = choice.finish_reason == "length"

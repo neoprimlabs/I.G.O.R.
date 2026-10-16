@@ -144,7 +144,9 @@ A Discord DM travels this path every time:
    auth check in the system; everything downstream trusts it.
 3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
    `file:` request skips the router entirely and goes to React, because it is
-   document work regardless of what it asks for.
+   document work regardless of what it asks for. Run-together clock times are
+   then spelled out in code (`100am` -> `1:00am`, `_spell_out_times`); models read
+   the digits as a number and scheduled "100am" for 10:00.
 4. **`orchestrator._classify`** - fast paths first, no model call:
 
    ```
@@ -520,6 +522,15 @@ The router is alone on qwen because it is the only model that answers inside a
 10-token budget, and because it is the newest model here and so the likeliest to be
 deprecated next - a router outage falls back to React, while a chat outage reaches
 the user.
+
+**Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
+reports it only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the ones measured:
+`gpt-oss-120b` is 200000 (2026-10-16), shared by Direct and React. `usage.record`
+adds every response's exact token count to `memory/token_ledger.json` in hourly
+buckets per model and per agent - called from `llm.complete`, React's loop and
+final answer, and the router. Monitor's status shows the last 24h against the cap,
+so "how much budget is left" is answerable. It is IGOR's own count: spend from
+anything that bypasses `record` is invisible to it.
 
 `max_tokens` counts against TPM at request time: prompt plus reservation is what
 Groq bills against the bucket. Never configure a call where the sum can exceed

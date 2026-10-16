@@ -9,6 +9,7 @@ import openai
 
 import config
 import llm
+import usage
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ _ROUTER_PROMPT = """Classify the user message into exactly one word from this li
 CHAT - greetings, small talk, opinions, what you think about something, how you are doing, anything social
 SELF - questions ABOUT how IGOR is built or what it can do: its agents, models, routing, tools, memory, scheduler, architecture, design, limits. Also asking what IGOR can or cannot do, or how one of its capabilities could be used or extended
 TASK - requests to DO work: search, write, analyze, code, read files, produce documents, calculations
-MONITOR - asking for a current value: schedule times, watchlist contents, digest contents, system health
+MONITOR - asking for a current value: schedule times, watchlist contents, digest contents, system health, token or rate-limit budget
 CONFIG - requests to CHANGE a saved setting: add or remove a digest section, change a schedule time, edit the watchlist
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
@@ -235,6 +236,18 @@ def _write_skill(agent_name: str, content: str) -> None:
 CallClaude = Callable[..., Awaitable[str]]
 
 
+# 2026-10-14: "message me around 100am" was scheduled for 10:00. Run-together clock
+# times are unambiguous once the am/pm is there - 100am can only be 1:00 - but a
+# model reads "100" as a number first, and it misread this three runs out of three.
+# Spelled out in code before any model sees it. Hours 1-12 and minutes 00-59 only,
+# so "2100am" or "1260pm" are left exactly as typed.
+_RUN_TOGETHER_TIME = re.compile(r"\b(1[0-2]|0?[1-9])([0-5]\d)(\s?)([ap]\.?m\.?)(?![a-z])", re.IGNORECASE)
+
+
+def _spell_out_times(text: str) -> str:
+    return _RUN_TOGETHER_TIME.sub(lambda m: f"{int(m.group(1))}:{m.group(2)}{m.group(3)}{m.group(4)}", text)
+
+
 # 2026-10-16: the daily cap on gpt-oss-120b ran out and every reply said "Wait a
 # minute and try again" while Groq's own 429 said 16 to 24 minutes. The two caps
 # need different answers, and the 429 body is the only place the daily one shows -
@@ -333,6 +346,7 @@ class Orchestrator:
 
         file_mode = content.lower().startswith("file:")
         task = content[5:].strip() if file_mode else content
+        task = _spell_out_times(task)
 
         # A "file:" request is always document work regardless of what it asks
         # for, so it skips the router and goes straight to the tool agent.
@@ -433,6 +447,7 @@ class Orchestrator:
                 ),
                 timeout=_ROUTER_TIMEOUT_S,
             )
+            usage.record(config.MODELS["router"], response, "Router")
             raw = (response.choices[0].message.content or "").strip().upper()
         except Exception as e:
             logger.warning("Router unavailable (%s: %s) - defaulting to React", type(e).__name__, e)

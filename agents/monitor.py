@@ -44,6 +44,7 @@ When queried directly, report:
 - Scheduler status (running / not running, next scheduled jobs)
 - Current watchlist (what is being monitored)
 - Messages scheduled for the user, exactly as the status block lists them. You cannot change them; the user can ask I.G.O.R. to change or cancel one
+- Groq token use over the last 24 hours against the daily cap, exactly as the status block gives it. Where a cap is "not measured", say so - never estimate one
 - Any system health issues you're aware of
 
 IMPORTANT CONSTRAINTS:
@@ -1003,6 +1004,8 @@ async def handle(
     except Exception as e:
         logger.error("Could not read scheduled messages - %s: %s", type(e).__name__, e)
         status_lines.append("Messages scheduled for the user: could not be read, so this is unknown.")
+    import usage
+    status_lines.append(usage.summary())
     try:
         from agents import stock
         status_lines.append(stock.status())
