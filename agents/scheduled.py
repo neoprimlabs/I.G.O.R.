@@ -5,7 +5,8 @@ job checks that file every minute and sends whatever is due.
 
 An entry carries either content, the exact words, fixed when scheduled and free to
 deliver; or a brief, a few words about what the message is for, with the words
-written at delivery by agents/compose.py. A brief costs one small model call and can
+written at delivery by agents/compose.py. React can only give a brief (run_tool);
+content remains for callers in code. A brief costs one small model call and can
 mention things that happened after it was scheduled, which is the difference between
 a check-in and a replayed string. If composing fails the brief is sent as plain text,
 because a check-in that arrives plainly beats one that vanishes.
@@ -282,8 +283,30 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
     return delivered
 
 
+def status() -> str:
+    """For Monitor. Asked "what messages are scheduled?" with nothing to read, it
+    answered "No other messages are currently scheduled" while one was pending."""
+    try:
+        entries = _load()
+    except _Unreadable:
+        return "Messages scheduled for the user: the store is unreadable, so this is unknown."
+    if not entries:
+        return "Messages scheduled for the user: none."
+    lines = []
+    for e in sorted(entries, key=lambda e: e["due"]):
+        state = " (failed to send)" if e.get("failed") else ""
+        lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or '')[:80]}")
+    return "Messages scheduled for the user:\n" + "\n".join(lines)
+
+
 def run_tool(inputs: dict) -> str:
-    """React's entry point. Models send "" for unused fields and numbers as strings."""
+    """React's entry point. Models send "" for unused fields and numbers as strings.
+
+    React can only give a brief. With a content field on offer it pre-wrote the
+    message three times out of three in a live test (2026-10-16), once replacing a
+    correct brief, so the user got words they had already read. Hermes stores only a
+    prompt for the same reason. A stray content still arrives as a brief.
+    """
     action = inputs.get("action")
     if action == "add":
         at = inputs.get("at") or None
@@ -293,8 +316,8 @@ def run_tool(inputs: dict) -> str:
             in_minutes = None
         elif isinstance(in_minutes, str) and in_minutes.strip().isdigit():
             in_minutes = int(in_minutes.strip())
-        return add(inputs.get("content", ""), at=at, in_minutes=in_minutes,
-                   window=window, brief=inputs.get("brief") or None)
+        brief = inputs.get("brief") or inputs.get("content") or None
+        return add(at=at, in_minutes=in_minutes, window=window, brief=brief)
     if action == "list":
         return list_pending()
     if action == "cancel":
