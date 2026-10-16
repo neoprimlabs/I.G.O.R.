@@ -123,6 +123,32 @@ def _human(due: datetime, now: datetime) -> str:
     return day + " at " + clock_time
 
 
+def _due(at: Optional[str], in_minutes: Optional[int], window: Optional[str],
+         now: datetime) -> tuple[Optional[datetime], str]:
+    """The UTC due time for whichever one of at, in_minutes, window was given,
+    or None and what is wrong with it."""
+    if at is not None:
+        try:
+            due = datetime.strptime(at.strip(), _AT_FORMAT).replace(tzinfo=clock.USER_TZ)
+        except ValueError:
+            return None, f"could not read {at!r}. Use local time as YYYY-MM-DD HH:MM."
+    elif window is not None:
+        due = _pick_in_window(window, now)
+        if due is None:
+            return None, f"{window!r} is not a window. Use morning, afternoon, evening or tomorrow."
+    elif isinstance(in_minutes, bool) or not isinstance(in_minutes, int) or in_minutes < 1:
+        return None, "in_minutes must be a whole number of at least 1."
+    else:
+        due = now + timedelta(minutes=in_minutes)
+    due = due.astimezone(timezone.utc).replace(microsecond=0)
+
+    if due <= now:
+        return None, f"{_local(due.isoformat())} has already passed. It is now {clock.time_line(now)}."
+    if due - now > _MAX_AHEAD:
+        return None, "messages can be scheduled at most 30 days ahead."
+    return due, ""
+
+
 def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] = None,
         window: Optional[str] = None, brief: Optional[str] = None,
         now: Optional[datetime] = None) -> str:
@@ -142,26 +168,9 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
                 "(what the message is about, written when it sends).")
     if sum(x is not None for x in (at, in_minutes, window)) != 1:
         return "Not scheduled: give exactly one of at, in_minutes or window."
-
-    if at is not None:
-        try:
-            due = datetime.strptime(at.strip(), _AT_FORMAT).replace(tzinfo=clock.USER_TZ)
-        except ValueError:
-            return f"Not scheduled: could not read {at!r}. Use local time as YYYY-MM-DD HH:MM."
-    elif window is not None:
-        due = _pick_in_window(window, now)
-        if due is None:
-            return f"Not scheduled: {window!r} is not a window. Use morning, afternoon, evening or tomorrow."
-    elif isinstance(in_minutes, bool) or not isinstance(in_minutes, int) or in_minutes < 1:
-        return "Not scheduled: in_minutes must be a whole number of at least 1."
-    else:
-        due = now + timedelta(minutes=in_minutes)
-    due = due.astimezone(timezone.utc).replace(microsecond=0)
-
-    if due <= now:
-        return f"Not scheduled: {_local(due.isoformat())} has already passed. It is now {clock.time_line(now)}."
-    if due - now > _MAX_AHEAD:
-        return "Not scheduled: messages can be scheduled at most 30 days ahead."
+    due, problem = _due(at, in_minutes, window, now)
+    if problem:
+        return f"Not scheduled: {problem}"
 
     try:
         entries = _load()
@@ -200,7 +209,8 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     if others:
         reply += ("\nAlso pending, ids are internal and not for the user:\n" + _lines(others)
                   + "\nIf the new message replaces one of these, cancel the old one now"
-                  " or both will send.")
+                  " or both will send. To change a pending message, use update on its id"
+                  " instead of adding.")
     return reply
 
 
@@ -235,6 +245,49 @@ def cancel(entry_id: str) -> str:
     _save(kept)
     logger.info("Cancelled scheduled message %s", entry_id)
     return f"Cancelled {entry_id}."
+
+
+def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = None,
+           window: Optional[str] = None, brief: Optional[str] = None,
+           now: Optional[datetime] = None) -> str:
+    """Change a pending message in place: its time, its brief, or both.
+
+    A correction used to be cancel-then-add, two calls, and React did the add and
+    skipped the cancel often enough that both messages sent (2026-10-14, and again
+    in a live replay on 2026-10-16). Hermes edits a job in place for the same
+    reason, so a correction here is one call.
+    """
+    now = now or datetime.now(timezone.utc)
+    entry_id = (entry_id or "").strip()
+    brief = (brief or "").strip()
+    times = sum(x is not None for x in (at, in_minutes, window))
+    if times > 1:
+        return "Not updated: give at most one of at, in_minutes or window."
+    if not times and not brief:
+        return "Not updated: give a new time, a new brief, or both."
+    due = None
+    if times:
+        due, problem = _due(at, in_minutes, window, now)
+        if problem:
+            return f"Not updated: {problem}"
+
+    try:
+        entries = _load()
+    except _Unreadable:
+        return "Not updated: the scheduled message store is unreadable. Nothing was changed."
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if entry is None:
+        return f"Not updated: no scheduled message with id {entry_id!r}. List them to find it."
+    if due is not None:
+        entry["due"] = due.isoformat()
+        entry["attempts"] = 0
+        entry.pop("failed", None)
+    if brief:
+        entry["brief"] = brief
+        entry["content"] = ""
+    _save(entries)
+    logger.info("Updated scheduled message %s, due %s", entry_id, entry["due"])
+    return f"Okay, now {_human(datetime.fromisoformat(entry['due']), now)}."
 
 
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
@@ -325,7 +378,7 @@ def run_tool(inputs: dict) -> str:
     prompt for the same reason. A stray content still arrives as a brief.
     """
     action = inputs.get("action")
-    if action == "add":
+    if action in ("add", "update"):
         at = inputs.get("at") or None
         window = inputs.get("window") or None
         in_minutes = inputs.get("in_minutes")
@@ -334,9 +387,12 @@ def run_tool(inputs: dict) -> str:
         elif isinstance(in_minutes, str) and in_minutes.strip().isdigit():
             in_minutes = int(in_minutes.strip())
         brief = inputs.get("brief") or inputs.get("content") or None
+        if action == "update":
+            return update(inputs.get("id", ""), at=at, in_minutes=in_minutes,
+                          window=window, brief=brief)
         return add(at=at, in_minutes=in_minutes, window=window, brief=brief)
     if action == "list":
         return list_pending()
     if action == "cancel":
         return cancel(inputs.get("id", ""))
-    return "Unknown action. Use add, list or cancel."
+    return "Unknown action. Use add, update, list or cancel."

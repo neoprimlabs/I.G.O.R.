@@ -268,16 +268,16 @@ _TOOLS = [
     },
     {
         "name": "scheduled_message",
-        "description": "Send the user a Discord message at a later time. add: schedule one. list: show pending. cancel: remove one by id.",
+        "description": "Send the user a Discord message at a later time. add: schedule one. update: change the time or brief of a pending one by id. list: show pending. cancel: remove one by id.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["add", "list", "cancel"]},
-                "brief": {"type": "string", "description": "add: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If the user dictated exact words, put them in double quotes"},
-                "at": {"type": "string", "description": "add: local time, YYYY-MM-DD HH:MM"},
-                "in_minutes": {"type": "integer", "description": "add: minutes from now"},
-                "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add: let IGOR pick a varied time inside this window"},
-                "id": {"type": "string", "description": "cancel: id from list"},
+                "action": {"type": "string", "enum": ["add", "update", "list", "cancel"]},
+                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If the user dictated exact words, put them in double quotes"},
+                "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM"},
+                "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
+                "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
+                "id": {"type": "string", "description": "update, cancel: id from list"},
             },
             "required": ["action"],
         },
@@ -319,7 +319,7 @@ When to use tools:
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - memory_write: when the user asks you to remember, add, store, or update something
-- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want, the new entry replaces the old one: cancel the old id, which the add result lists, so only one sends
+- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
