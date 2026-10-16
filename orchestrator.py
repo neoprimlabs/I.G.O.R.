@@ -244,6 +244,25 @@ CallClaude = Callable[..., Awaitable[str]]
 _RUN_TOGETHER_TIME = re.compile(r"\b(1[0-2]|0?[1-9])([0-5]\d)(\s?)([ap]\.?m\.?)(?![a-z])", re.IGNORECASE)
 
 
+# Scheduling requests go straight to React, in code. The router rule saying so did
+# not hold: live on 2026-10-16, "actually make it 11:30", "every weekday at 9am send
+# me..." and "pause that one" all routed CONFIG, and ConfigEdit spent a call
+# declining each before React got it. Unlike the self-description regex removed
+# above, a wrong match here costs nothing: it sends to React, which has every tool
+# and is where an unclassifiable message goes anyway. Narrow on purpose - a request
+# shape, not a noun - and digest or watchlist changes are left to the router.
+_SCHEDULING = re.compile(
+    r"\b(remind|message|text|ping|send) me\b.*\b(at|around|by|in|on|every|tomorrow|tonight|this "
+    r"(morning|afternoon|evening)|later|daily|weekly|weekdays?)\b"
+    r"|\bevery (day|weekday|week|morning|evening|night|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday)\b"
+    r"|\b(make|move|push|change) it (to )?(\d|noon|midnight)"
+    r"|\b(pause|resume|unpause|cancel|stop) (that|it|the|this|my)\b.*\b(message|reminder|one|"
+    r"check-?in|series)\b"
+    r"|^(pause|resume|cancel) (that|it)( one)?\b")
+_NOT_SCHEDULING = re.compile(r"\b(digest|watchlist|watch list|schedule_config|price watch|stock watch|job watch)\b")
+
+
 def _spell_out_times(text: str) -> str:
     return _RUN_TOGETHER_TIME.sub(lambda m: f"{int(m.group(1))}:{m.group(2)}{m.group(3)}{m.group(4)}", text)
 
@@ -405,6 +424,8 @@ class Orchestrator:
             return "StopResearch"
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
+        if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
+            return "React"
 
         # No fast path for self-referential questions. A regex over nouns cannot tell
         # "tell me about your shell tool" from "use your shell tool" - same tokens,
