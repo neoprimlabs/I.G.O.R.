@@ -1,6 +1,6 @@
 # Overnight Work Loop - Design
 
-Status: draft for the user's approval, 2026-10-16. Nothing here is built.
+Status: **approved by the user 2026-10-16** ("let's build the overnight loop").
 
 ## Intent
 
@@ -163,14 +163,25 @@ digest section text; that a session's code path has no way to write outside
 `memory/work/`. Then **one** live night, its spend read from the ledger, before
 leaving it running.
 
-## Open - only the user can answer
+## Answered
 
-1. **The income feature and the spec.** `IGOR_SPEC.md` says IGOR is "not a
-   public-facing product". Researching an income feature is within the spec;
-   building one that customers use would be a deviation. Ratify now, or decide when
-   a feature is chosen?
-2. **Conversation history.** The spec says "no hoarding of conversation history".
-   On 2026-10-16 retention went from 200 to 10000 messages for `search_history`
-   without that being flagged. Keep 10000, or set a limit such as 90 days?
-3. **Overnight budget.** 60000 tokens on 20b per night until its cap is measured -
-   more, less, or fine?
+1. **The income feature and the spec.** Answered by the clone decision (GAMEPLAN
+   Phase K): the user's IGOR stays private as the spec says, and anything
+   public-facing is a clone with its own spec section. This loop only researches.
+2. **Conversation history retention** is out of scope here; it stays open as a
+   flagged deviation in STATE.md for the user to decide.
+3. **Overnight budget:** 60000 tokens on 20b per night [call, taken as the default
+   when the user said to build], adjustable in config.
+
+## Clone-ready (GAMEPLAN Phase K)
+
+Built so a clone can run it unchanged: goals come from `goals.md`, the voice papers
+are written in comes from the agent's persona, nothing about the user is in code,
+and the work folder lives in the agent's own `memory/`.
+
+## Goals file format
+
+Uses GAMEPLAN A.1's specified format rather than a new one: id, one-line statement,
+status, created, last_reviewed, next_action; finished goals move to
+`goals_archive.md`. A.1's prompt injection is not part of this build - the loop
+reads the file directly.
