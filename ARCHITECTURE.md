@@ -379,14 +379,19 @@ dates.
 
 ### Scheduled messages and presence
 
-React can only give a `brief`: the words are written at delivery by
-`agents/compose.py`, and words the user dictated go in double quotes inside it,
-which compose keeps verbatim. Offered a fixed-text field, React pre-wrote the
-message 3 times out of 3 in a live test. `content` (fixed words) remains for code
-callers. Every add returns the other pending entries with their ids, so a
-corrected time can cancel the one it replaces instead of both sending. Monitor's
-status lists what is pending. Asking for a message later, or changing one, routes
-`TASK`.
+React can only give a `brief`, written to be self-contained. When it is due,
+`compose.write` runs React fresh - no history, read-only tools (`search`,
+`fetch_url`, `memory_read`, `search_memory`), 180s timeout - the way Hermes runs a
+job when it fires. If that fails or returns nothing, the tool-less `compose()`
+writes it; if that fails too, the brief itself is sent. Words the user dictated go
+in double quotes and are kept verbatim. Offered a fixed-text field, React pre-wrote
+the message 3 times out of 3 in a live test; `content` remains for code callers.
+
+A second brief due within 5 minutes of a pending one is merged into it, so one
+message sends. Every add returns the other pending entries with their ids, so a
+corrected time can cancel the old one. Monitor's status lists what is pending.
+Asking for a message later, or changing one, routes `TASK`. A long agent run holds
+the 60s delivery job, so the next ticks are skipped, not lost.
 
 Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
