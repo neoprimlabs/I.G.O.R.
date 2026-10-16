@@ -23,8 +23,8 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.** Also
   no voice and no image reading.
 
-**React's 17 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`search_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
+**React's 18 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
 `send_message`, `memory_write`, `scheduled_message`. There are no others.
 
@@ -37,7 +37,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 17 |
+| React | `TASK`, router failure | 120b | all 18 |
 | Monitor | `MONITOR`, digest | 20b | none |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -48,8 +48,8 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 Groq model check, an advocacy draft (Mondays), presence (every 10 min) and a 60s
 check for due scheduled messages. Retiming one needs a deploy.
 
-**Watchers** for prices, restocks and job postings each read a file in `memory/`
-and stay silent unless something changed.
+**Watchers** for prices, restocks and job postings each read a file in `memory/`,
+stay silent unless something changed, and log what they saw to `history.db`.
 
 **Scheduled messages** are what the user can schedule by asking:
 `scheduled_message` adds, updates, pauses, lists or cancels messages, once or
@@ -179,7 +179,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 17 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 18 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -249,11 +249,11 @@ its own message.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 17 tools attach unless
+`[system] + context window + user message`. All 18 tools attach unless
 `allowed_tools` narrows them.
 
-**The 17 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
-`search_files`, `delegate_task`, `task_update`,
+**The 18 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
+`watch_history`, `search_files`, `delegate_task`, `task_update`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
 
@@ -270,40 +270,29 @@ too, and unparseable quoting fails closed. Any part blocked means nothing runs.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`).
 
-**Price watch, in full.** Listings the product judge rejects are marked seen so
-they are not judged twice. Every failure of that call fails open and sends
-unfiltered, because an unreadable reply arrives as a 200 OK and would otherwise
-swallow a real price drop in silence. `monitor._watcher_status` reports what is
-watched, each target, when the check last actually ran (flagged STALE past 6 hours)
-and the cheapest keyword match, labelled as not product-checked - a registered job
-and a working watch look identical from the scheduler alone, which is how the job
-watch once sat silent for five days.
+**Price watch, in full.** Listings the product judge rejects are marked seen; any
+failure of that judge fails open and sends unfiltered, since an unreadable reply is
+a 200 OK that would otherwise swallow a real drop. `monitor._watcher_status` shows
+each watch, its target, when it last really ran (STALE past 6h) and the cheapest
+keyword match, labelled unchecked - a registered job and a working watch look the
+same from the scheduler, which is how the job watch once sat silent for five days.
 
-**Stock watch, in full.** Shopify exposes `/products/<handle>.js`: variants with an
-`available` boolean and a price in cents. Structured, keyless, no model call, so a
-check costs nothing. It answers the question the price watch cannot - Slickdeals only
-knows about discounts somebody posted, and a vendor refilling a shelf is not a posted
-discount.
+**Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
+`available` boolean and a price in cents: keyless, no model call. `aoostar.com`
+blocks the Oracle IP range (429 in 150ms, even on the bare storefront), so the
+fetch falls back to the `r.jina.ai` relay - a third-party dependency on the critical
+path, sent only public product URLs. Each a test: a failed fetch carries the old
+state forward rather than recording "unavailable" (or the next success fakes a
+restock); state is kept twice, raw and available-AND-under-ceiling, so an
+over-target restock cannot suppress the alert when the price later drops; the
+variant filter is anchored to the region option, since `variant: us` once matched
+"warehouse".
 
-`aoostar.com` refuses this server: 429 within 150ms, including the bare storefront on
-the fourth request ever, still refusing after a 60s wait. An IP-level block on the
-Oracle range, not a rate limit we tripped. So the fetch tries direct and falls back
-to `r.jina.ai`. **That relay is a third-party dependency on the critical path and the
-weakest part of this** - if it goes, restock checks stop and the log says so. Only
-public product URLs are sent to it.
-
-Three things that are not obvious and are each a test:
-
-- **A failed fetch must not record "unavailable."** Otherwise the next successful
-  check looks like a restock and sends a message about nothing. Both failure paths
-  carry the previous state forward.
-- **State is tracked twice**: raw availability for the status line, and an
-  "alertable" flag of available-AND-under-ceiling for transitions. Recording an
-  over-target restock as merely available would suppress the alert when the price
-  later dropped while it was still in stock.
-- **The variant filter is anchored to the region option**, not a substring of the
-  title. `variant: us` matched `EU（Shipped from GE warehouse）` on the first live
-  run, because "warehouse" contains "us".
+**Watch history** (`history.py`, `memory/history.db`) keeps every successful
+observation: stock availability and price per variant, the price watch's cheapest
+match, each new matching job posting. A failed fetch writes nothing, for the same
+reason as above. About 130 rows a day, no model calls. React's `watch_history`
+returns changes only, newest first, so a week of hourly "available" is one row.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
 editing in place. React could already reach the file through `memory_write`, which

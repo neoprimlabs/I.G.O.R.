@@ -272,6 +272,7 @@ def check(fetch=None) -> list[dict]:
     # removed from price_watch.md an hour earlier, and reported it as still watched.
     closest: dict = {}
     state["closest"] = closest
+    observed = []
     for item in items:
         try:
             deals = fetch(item["query"])
@@ -293,9 +294,13 @@ def check(fetch=None) -> list[dict]:
         if best is not None:
             best["under"] = item["under"]
             closest[item["name"]] = best
+        observed.append((item["name"], "cheapest_match",
+                         f"{best['price']:.2f}" if best else "none", best["url"] if best else ""))
     state["last_checked"] = now.isoformat()
     _save_state(state)
     _write_status(items, closest, now)
+    import history
+    history.record("price", observed, now)
     logger.info("Price watch: %d items watched, %d under target", len(items), len(hits))
     return hits
 
