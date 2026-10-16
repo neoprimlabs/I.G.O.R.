@@ -23,10 +23,10 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.** Also
   no voice and no image reading.
 
-**React's 18 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+**React's 19 tools, the complete list:** `search`, `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`, `scheduled_message`. There are no others.
+`send_message`, `memory_write`, `scheduled_message`, `goal`. There are no others.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React switch to
 `gpt-oss-20b` until Groq's stated reset, and the reply says so.
@@ -261,7 +261,7 @@ System prompt is rebuilt on every call from the current local and UTC time
 **The 18 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
 `watch_history`, `search_files`, `delegate_task`, `task_update`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
-`fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
+`fetch_url`, `send_message`, `memory_write`, `scheduled_message`, `goal`.
 
 `search_history` finds every word of a query in `context.db` (10000 messages,
 both sides plus proactive sends) and returns dated excerpts, newest first. A LIKE
@@ -274,7 +274,7 @@ split on `; && || |` and quote-stripped with `shlex`, `sh -c` strings are checke
 too, and unparseable quoting fails closed. Any part blocked means nothing runs.
 `python_run` is not covered.
 `scheduled_message` is switched off after a web read, like the other tools that
-change state (`agents/scheduled.py`).
+change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 
 **Price watch, in full.** Listings the product judge rejects are marked seen; any
 failure of that judge fails open and sends unfiltered, since an unreadable reply is

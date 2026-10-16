@@ -148,7 +148,7 @@ def test_forbidden_tools_are_stripped() -> None:
     # means the next state-changing tool cannot be forgotten the same way.
     _check("the forbidden set is exactly what is intended",
            react._WORKER_FORBIDDEN == frozenset({
-               "delegate_task", "send_message", "scheduled_message", "restart_self",
+               "delegate_task", "goal", "send_message", "scheduled_message", "restart_self",
                "memory_write", "task_update"}),
            str(sorted(react._WORKER_FORBIDDEN)))
 
