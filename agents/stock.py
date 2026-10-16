@@ -186,6 +186,7 @@ def check(fetch=None, now: Optional[datetime] = None) -> list[dict]:
     previous = state.get("alertable") or {}
     previous_raw = state.get("available") or {}
     current, current_raw, restocked = {}, {}, []
+    observed = []
 
     for item in items:
         try:
@@ -224,6 +225,9 @@ def check(fetch=None, now: Optional[datetime] = None) -> list[dict]:
         for v in found:
             key = f"{item['name']}|{v['title']}"
             current_raw[key] = v["available"]
+            observed.append((key, "available", int(v["available"]), item["url"]))
+            if v["price"] is not None:
+                observed.append((key, "price", f"{v['price']:.2f}", item["url"]))
 
             over = (item["under"] is not None and v["price"] is not None
                     and v["price"] > item["under"])
@@ -251,6 +255,8 @@ def check(fetch=None, now: Optional[datetime] = None) -> list[dict]:
     state["available"] = current_raw
     state["last_checked"] = now.isoformat()
     _save_state(state)
+    import history
+    history.record("stock", observed, now)
     logger.info("Stock watch: %d item(s), %d variant(s) tracked, %d back in stock",
                 len(items), len(current_raw), len(restocked))
     return restocked

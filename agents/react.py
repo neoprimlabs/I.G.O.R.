@@ -186,6 +186,18 @@ _TOOLS = [
         },
     },
     {
+        "name": "watch_history",
+        "description": "What the price, stock and job watchers have seen over time - each change of availability or price, and each new matching job posting, with dates. Use for 'when was it last in stock', 'has the price moved', 'how many matching jobs this month'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "item": {"type": "string", "description": "Words in the watched item's name, e.g. 'AG01' or 'engineer'"},
+                "days": {"type": "integer", "description": "How far back, default 30"},
+            },
+            "required": ["item"],
+        },
+    },
+    {
         "name": "python_run",
         "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (exa_py, httpx, requests) and the standard library.",
         "input_schema": {
@@ -332,6 +344,7 @@ When to use tools:
 - read_file on memory/resume.md: the user's resume is on file and you CAN read it, including to answer which jobs suit him. The moment you do, search and fetch_url close for the rest of the turn - private data and the open web never share a turn - so read it first, or not at all in a turn that needs the web. If you have already searched, say it is on file, that you cannot open it in this turn, and offer to look in a new message. Never say it is missing and never ask him to paste it
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
+- watch_history: what the watchers saw over time - when something was last in stock, how a price moved, which jobs matched. price_watch_status.md is only the latest check
 - search_history: anything said in an earlier conversation - "what did we decide about X", "when did I mention Y". Your context holds only the last few turns, so search before saying you do not know
 - memory_write: when the user asks you to remember, add, store, or update something
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
@@ -1232,6 +1245,12 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 
     if name == "search_history":
         return _search_history(inputs.get("query", ""))
+
+    if name == "watch_history":
+        import history
+        days = inputs.get("days")
+        days = int(days) if isinstance(days, (int, str)) and str(days).strip().isdigit() else 30
+        return history.describe(inputs.get("item", ""), days)
 
     if name == "task_update":
         return await _task_update(inputs.get("action", ""), inputs.get("text", ""))

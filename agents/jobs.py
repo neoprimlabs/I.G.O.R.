@@ -313,6 +313,9 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
                 continue
             by_url.add(url)
             found.append(job)
+    import history
+    history.record("jobs", [(f"{j.get('title', '')} - {j.get('company', '')}".strip(" -"),
+                             "posted", j.get("source", ""), j.get("url", "")) for j in found], now)
     logger.info("Job watch: %d new matching postings", len(found))
     return found
 
