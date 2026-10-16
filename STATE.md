@@ -52,7 +52,11 @@ Last updated: **2026-10-16**
    conversation. Now the scheduling route requires the tool (`tool_choice`, measured
    on 120b and 20b) and Monitor gets no history. **Retest: the user resends the same
    message, then "what's scheduled?" - and check `scheduled.json` on the server, not
-   the reply.**
+   the reply.** **Retest passed 21:22 UTC**, checked on the server: the log shows the
+   tool required and called (list, then add), and `scheduled.json` holds a055d1,
+   weekdays, Mon 2026-10-19 10:00 EDT. Monitor reported it from its status block. One
+   new defect from that reply, fixed after: React said "Monday, October 23" for the
+   19th because the tool's confirmation gave no date - it now always does.
 3. **The SelfDescribe eval, and one real defect it found.** Four of ten cases were
    run on gpt-oss-120b on 2026-09-12, no 429:
    - Pass: "What tools can you use?", "Where is the digest schedule configured?",
