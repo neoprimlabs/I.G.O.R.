@@ -235,6 +235,42 @@ def _write_skill(agent_name: str, content: str) -> None:
 CallClaude = Callable[..., Awaitable[str]]
 
 
+# 2026-10-16: the daily cap on gpt-oss-120b ran out and every reply said "Wait a
+# minute and try again" while Groq's own 429 said 16 to 24 minutes. The two caps
+# need different answers, and the 429 body is the only place the daily one shows -
+# the x-ratelimit headers look healthy while it is gone.
+_TRY_AGAIN = re.compile(r"try again in ((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)")
+_WAIT_PART = re.compile(r"([\d.]+)([hms])")
+
+
+def _is_daily_cap(e: Exception) -> bool:
+    text = str(e)
+    return "tokens per day" in text or "(TPD)" in text
+
+
+def _wait_in_words(e: Exception) -> str | None:
+    match = _TRY_AGAIN.search(str(e))
+    if not match or not match.group(1):
+        return None
+    seconds = sum(float(n) * {"h": 3600, "m": 60, "s": 1}[unit]
+                  for n, unit in _WAIT_PART.findall(match.group(1)))
+    minutes = max(1, -(-int(seconds) // 60))
+    if minutes < 60:
+        return "about a minute" if minutes == 1 else f"about {minutes} minutes"
+    hours, rest = divmod(minutes, 60)
+    return f"about {hours} hour{'s' if hours > 1 else ''}" + (f" {rest} minutes" if rest else "")
+
+
+def _rate_limit_reply(e: Exception) -> str:
+    wait = _wait_in_words(e)
+    if _is_daily_cap(e):
+        return ("I.G.O.R. has used its daily token allowance on this model. It frees up "
+                "gradually" + (f" - try again in {wait}." if wait else ", so try again later."))
+    if wait:
+        return f"Groq rate limit hit. Try again in {wait}."
+    return "Groq rate limit hit. Wait a minute and try again - shorter requests recover faster."
+
+
 async def call_claude(
     client: openai.AsyncOpenAI,
     notify: Callable[[str], Awaitable[None]],
@@ -254,7 +290,11 @@ async def call_claude(
                 max_tokens=max_tokens,
                 label="Chat",
             )
-        except openai.RateLimitError:
+        except openai.RateLimitError as e:
+            if _is_daily_cap(e):
+                # Retrying a daily cap only makes the user wait 90s for the same answer.
+                logger.error("Daily token cap reached on %s", model or config.MODELS["chat"])
+                return _rate_limit_reply(e)
             if attempt < max_retries - 1:
                 wait = 30 * (2 ** attempt)
                 logger.error("Rate limit hit (attempt %d/%d), retrying in %ds", attempt + 1, max_retries, wait)
@@ -262,7 +302,7 @@ async def call_claude(
                 await asyncio.sleep(wait)
             else:
                 logger.error("Rate limit exhausted after %d attempts", max_retries)
-                return "Rate limit exhausted. Please try again in a few minutes."
+                return _rate_limit_reply(e)
         except (openai.APIStatusError, openai.APIConnectionError) as e:
             logger.error("Groq API error %s: %s", type(e).__name__, e)
             raise
@@ -315,9 +355,9 @@ class Orchestrator:
 
         try:
             response = await self._route(destination, task, file_mode=file_mode)
-        except openai.RateLimitError:
+        except openai.RateLimitError as e:
             logger.error("Route to %s rate limited after all retries", destination)
-            return "Groq free tier rate limit hit. Wait a minute and try again - shorter requests recover faster.", False
+            return _rate_limit_reply(e), False
         except openai.APIStatusError as e:
             if "rate_limit_exceeded" in str(e) or "Request too large" in str(e):
                 logger.error("Route to %s request too large for TPM budget: %s", destination, str(e)[:200])
