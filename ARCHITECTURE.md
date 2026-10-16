@@ -17,14 +17,19 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
   human publishes. It never buys anything and never applies for a job.
 - **No self-restart.** `restart_self` writes a sentinel, but the watchdog has no
   sudo rights, so nothing restarts. Only the deploy script below restarts IGOR.
-- **No sandbox.** `shell` and `python_run` run as `igor` on the live host.
+- **No sandbox.** `shell` and `python_run` run as `igor` on the live host. The
+  shell refuses a fixed blocklist in code (wipes, disk writes, pipe-to-shell,
+  force-push, the deploy machinery); a policy, not a sandbox.
 - **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.** Also
   no voice and no image reading.
 
-**React's 16 tools, the complete list:** `search`, `memory_read`, `search_memory`,
-`search_files`, `delegate_task`, `task_update`, `python_run`, `read_file`,
-`patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`, `send_message`,
-`memory_write`, `scheduled_message`. There are no others.
+**React's 17 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+`search_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
+`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
+`send_message`, `memory_write`, `scheduled_message`. There are no others.
+
+**Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React switch to
+`gpt-oss-20b` until Groq's stated reset, and the reply says so.
 
 **Routing.** Four exact-match fast paths, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
@@ -32,7 +37,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 16 |
+| React | `TASK`, router failure | 120b | all 17 |
 | Monitor | `MONITOR`, digest | 20b | none |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -47,8 +52,8 @@ check for due scheduled messages. Retiming one needs a deploy.
 and stay silent unless something changed.
 
 **Scheduled messages** are what the user can schedule by asking:
-`scheduled_message` adds, updates, lists or cancels one-off messages in
-`memory/scheduled.json`, up to 30 days ahead, in America/New_York time.
+`scheduled_message` adds, updates, pauses, lists or cancels messages, once or
+repeating, in `memory/scheduled.json`, in America/New_York time.
 
 **Presence**: one check-in a day at a code-picked time, behind gates checked in
 code. Off unless `memory/presence_config.md` says `state: on`.
@@ -65,45 +70,19 @@ import, restart, wait for Discord, roll back on failure.
 
 ## History moved out of the summary
 
-Kept here because the summary has a hard size limit and IGOR reads it to describe
-itself. None of this is needed to answer "how does IGOR work".
-
-- The model check was weekly until 2026-08-17, when Groq removed the Llama family
-  and four roles returned 404 for a day before anything reported it. The run at
-  startup is what turns a deprecation into an alert on the next restart.
-- Until 2026-09-27 the private-file rule was an intention, not a control:
-  `memory_read` had an allowlist, but `search_memory` globbed every `*.md` and
-  `read_file` accepted any path inside the root, so `corrections.md` and `drafts.md`
-  were readable two ways.
-- Indeed's Publisher API was retired in 2023 and its Job Search API is closed to new
-  developers; current access is an NDA-gated partner programme. The remaining route
-  is scraping against its terms, so it is not a source.
-
+- Groq removed the Llama family on 2026-08-17 and four roles returned 404 for a day
+  before anything noticed; the model check runs at startup for that reason.
+- Indeed is not a job source: its APIs are closed or NDA-gated, leaving scraping
+  against its terms.
 
 ---
 
 Describes the system **as it exists today**, verified against the source on
-2026-10-16. Nothing aspirational appears here.
-
-- `IGOR_SPEC.md` is the vision. Some of it has never been built.
-- `GAMEPLAN.md` is the plan. All of it is unbuilt by definition.
-- **This file is reality.** If it disagrees with the code, the code wins and this
-  file is wrong - fix it in the same commit.
-
-> That last rule was broken once already. Between 2026-08-02 and 2026-08-03 this
-> file went 24 commits without an update while R2.0 through R3.3 changed most of
-> what it describes. IGOR reads this file to answer questions about itself, so it
-> confidently told the user it used keyword routing days after the model router
-> shipped. **Updating this file is part of the change, not a follow-up to it.**
->
-> On 2026-08-13 it failed the other way: the file was correct but 23KB, and
-> `read_file` capped at 4000 chars with no way to page, so IGOR received 17% of it
-> and invented the rest - including a content filter it has never had. Hence the
-> summary above. **Keep it inside one `read_file` window - 3700 characters.** The
-> old figure here was 3400, from before `read_file` could page. It can now, but on
-> 2026-08-13 React invented content rather than paging, so one window is the number
-> that actually protects it. Measured 6426 on 2026-09-27 after a week of additions;
-> trimmed the same day, with history moved below the marker.
+2026-10-16. `IGOR_SPEC.md` is the vision and `GAMEPLAN.md` the plan; **this file is
+reality**, and when it disagrees with the code it is wrong - fix it in the same
+commit. IGOR reads it to describe itself, and twice repeated a stale or unread
+version as fact (2026-08-03, 2026-08-13). **Keep the summary above inside one
+`read_file` window, 3700 characters**, and the whole file inside ten.
 
 ---
 
@@ -200,7 +179,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 16 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 17 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -270,13 +249,24 @@ its own message.
 System prompt is rebuilt on every call from the current local and UTC time
 (`clock.time_line()`) plus
 `prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 16 tools attach unless
+`[system] + context window + user message`. All 17 tools attach unless
 `allowed_tools` narrows them.
 
-**The 16 tools:** `search`, `memory_read`, `search_memory`, `search_files`,
-`delegate_task`, `task_update`,
+**The 17 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
+`search_files`, `delegate_task`, `task_update`,
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`.
+
+`search_history` finds every word of a query in `context.db` (10000 messages,
+both sides plus proactive sends) and returns dated excerpts, newest first. A LIKE
+scan, not FTS5: milliseconds at this size, no index to keep in step. Read-only.
+
+`shell` checks `_hardline_refusal` before anything runs: Hermes' floor (root or
+home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell)
+plus the repo, memory, sudoers, the deploy machinery and force-push. Commands are
+split on `; && || |` and quote-stripped with `shlex`, `sh -c` strings are checked
+too, and unparseable quoting fails closed. Any part blocked means nothing runs.
+`python_run` is not covered.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`).
 
@@ -393,7 +383,15 @@ the message 3 times out of 3 in a live test; `content` remains for code callers.
 A second brief due within 5 minutes of a pending one is merged into it, so one
 message sends. A correction is `update`, which edits a pending message in place by
 id, as Hermes does; cancel-then-add was two calls and React kept skipping the
-cancel. Every add also lists the other pending entries with their ids. Monitor's status lists what is pending.
+cancel. Every add also lists the other pending entries with their ids. Monitor's
+status lists what is pending.
+
+`repeat` (daily, weekdays, weekly) keeps a message after delivery and moves it to
+the next occurrence, stepped on the local calendar so 09:00 stays 09:00 across a
+daylight-saving change. After downtime it sends one late message, then the next
+future one - never a backlog. `pause` and `resume` keep the entry; resuming skips
+what was missed. Repeating messages are never merged. Each delivery is a fresh
+agent run, so a daily message spends daily tokens on 120b.
 Asking for a message later, or changing one, routes `TASK`. A long agent run holds
 the 60s delivery job, so the next ticks are skipped, not lost.
 
@@ -436,25 +434,9 @@ truncation check was missing until 2026-08-10 and two findings in a 20-iteration
 were written to `research.md` cut mid-sentence, because a clipped response is a
 valid 200 OK.
 
-**Both calls run at `reasoning_effort` low.** Measured on the live API 2026-08-10
-with these exact prompts, completion tokens:
-
-| | low | unset (previous behaviour) | high |
-|---|---|---|---|
-| PLAN, n=4 | 42-72, median **47** | 164-441, median 355 | 937-997, median 957 |
-| DISTILL, n=3 | 418-565, median **419** | 1328-1771, median 1734 | not sampled at n>1 |
-
-4x to 7x fewer tokens. Output held: PLAN returned a valid query 4/4 at low, and
-DISTILL returned 5 findings with all 5 sourced on every run at both settings.
-
-Two caveats, both against earlier drafts of this section. Unset does not behave like
-high, so the pipeline was never running at maximum. And a first single sample where
-high returned empty did not replicate at n=4 - variance, not a property. This is an
-efficiency win on a TPM-bound free tier, not a bug fix, and it does not explain
-`_MIN_REASONING_BUDGET` or the empty-content retries, which stay.
-
-"5 findings, 5 sourced" is a format check rather than a judgement that the findings
-are equally good. The next real run is the test that matters.
+**Both calls run at `reasoning_effort` low**, measured 2026-08-10 at 4x to 7x fewer
+completion tokens than unset with output holding (PLAN median 47 tokens, DISTILL
+419). Unset is not the same as high.
 
 Gathering and synthesis are deliberately in separate contexts. The previous design
 handed one ReAct loop a batch of searches plus a write instruction, and ReAct
@@ -523,6 +505,16 @@ The router is alone on qwen because it is the only model that answers inside a
 deprecated next - a router outage falls back to React, while a chat outage reaches
 the user.
 
+**Fallback model.** `llm.create` is the one place a Groq chat completion is made
+for `llm.complete` and React. On a 429 that survived the client's retries it
+benches the model until the reset Groq names in the body (60s if none) and
+retries once on `config.FALLBACK_MODELS` - 120b to 20b, a separate bucket.
+While benched, calls go straight to the fallback. The orchestrator scopes a turn
+(`start_turn`/`end_turn`, a ContextVar) and appends a one-line notice to any
+reply that used the fallback. 20b has no fallback, so if it is limited too the
+user gets `_rate_limit_reply`. This is Hermes' documented pattern. The router
+is not covered - its failure already falls through to React.
+
 **Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
 reports it only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the ones measured:
 `gpt-oss-120b` is 200000 (2026-10-16), shared by Direct and React. `usage.record`
@@ -559,7 +551,7 @@ on either end (2026-10-16), so that archive is the only other copy.
 **Read per call, immediate effect:** `digest_config.md`, `watchlist.md`,
 `prompt_*.md`
 
-**Data:** `context.db` (SQLite rolling context, `CONTEXT_WINDOW = 6`, 200 rows
+**Data:** `context.db` (SQLite rolling context, `CONTEXT_WINDOW = 6`, 10000 rows
 retained on disk), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
 
@@ -662,12 +654,9 @@ that starts and never reaches Discord is not a working assistant - the gap in
 "Known broken" item 3. The probe is anchored to a timestamp taken before the
 restart, or the previous run's `online` line satisfies it and every deploy passes.
 
-Verified on 2026-08-10 by deploying a commit that imports cleanly and hangs before
-`bot.start`. Both gates passed correctly, the gateway missed its window, the deploy
-rolled back and IGOR was healthy again 7 seconds later. The webhook alert failed on
-the first run - the URL file, copied from Windows, carried a UTF-8 BOM and a CR that
-survive `$(cat)` - so the script now strips both and `--test-alert` exercises that
-path without breaking anything.
+Verified 2026-08-10 by deploying a commit that hangs before `bot.start`: it rolled
+back and IGOR was healthy 7 seconds later. `--test-alert` exercises the webhook,
+whose URL file once carried a BOM and CR from Windows.
 
 **Still not covered:** a crash that happens later, after a healthy deploy. That is
 `Restart=always` plus the backup script's crash-loop alert, same as before.

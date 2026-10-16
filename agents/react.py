@@ -1,12 +1,13 @@
 import asyncio
 import logging
 import re
+import shlex
 from typing import Awaitable, Callable, Optional
 
 import openai
 
 import config
-import usage
+import llm
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,17 @@ _TOOLS = [
         },
     },
     {
+        "name": "search_history",
+        "description": "Search the stored conversation with the user - their messages, your replies, and messages sent proactively - for every word of a query. Returns dated excerpts, newest first. Your context holds only the last few turns; use this for earlier ones.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Words that should all appear, e.g. 'eGPU dock price'"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "python_run",
         "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (exa_py, httpx, requests) and the standard library.",
         "input_schema": {
@@ -269,16 +281,17 @@ _TOOLS = [
     },
     {
         "name": "scheduled_message",
-        "description": "Send the user a Discord message at a later time. add: schedule one. update: change the time or brief of a pending one by id. list: show pending. cancel: remove one by id.",
+        "description": "Send the user a Discord message at a later time, once or repeating. add: schedule one. update: change the time, brief or repeat of a pending one by id. pause / resume: stop and restart one without losing it. list: show pending. cancel: remove one by id.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "enum": ["add", "update", "list", "cancel"]},
+                "action": {"type": "string", "enum": ["add", "update", "pause", "resume", "list", "cancel"]},
                 "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If the user dictated exact words, put them in double quotes"},
                 "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM"},
                 "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
-                "id": {"type": "string", "description": "update, cancel: id from list"},
+                "repeat": {"type": "string", "enum": ["daily", "weekdays", "weekly", "none"], "description": "add, update: send again at the same local time. none stops repeating"},
+                "id": {"type": "string", "description": "update, pause, resume, cancel: id from list"},
             },
             "required": ["action"],
         },
@@ -319,8 +332,9 @@ When to use tools:
 - read_file on memory/resume.md: the user's resume is on file and you CAN read it, including to answer which jobs suit him. The moment you do, search and fetch_url close for the rest of the turn - private data and the open web never share a turn - so read it first, or not at all in a turn that needs the web. If you have already searched, say it is on file, that you cannot open it in this turn, and offer to look in a new message. Never say it is missing and never ask him to paste it
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
+- search_history: anything said in an earlier conversation - "what did we decide about X", "when did I mention Y". Your context holds only the last few turns, so search before saying you do not know
 - memory_write: when the user asks you to remember, add, store, or update something
-- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids
+- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 - write_file: only for modifying IGOR's own code, or when the user explicitly asks for a file saved on the server. Documents, papers, and summaries for the user go in your response text - never write them to disk, and never tell the user to restart for content files. Restarts apply to code changes only.
 
@@ -638,6 +652,26 @@ async def _read_server_file(path: str, offset: int = 0, allow_private: bool = Fa
             f"Do not describe anything you have not read.]"
         )
     return window
+
+
+def _search_history(query: str) -> str:
+    """Dated excerpts from context.db around the first match, newest first."""
+    import clock
+    import context_store
+    from datetime import datetime, timezone
+    rows = context_store.search(query)
+    if not rows:
+        return f"Nothing in the stored conversation contains all of: {query!r}."
+    first = (query or "").lower().split()[0]
+    out = []
+    for ts, role, content in rows:
+        when = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
+        at = max(content.lower().find(first), 0)
+        start = max(at - 150, 0)
+        excerpt = " ".join(content[start:start + 400].split())
+        who = "user" if role == "user" else "IGOR"
+        out.append(f"{when:%a %Y-%m-%d %H:%M} {who}: {'...' if start else ''}{excerpt}...")
+    return "\n".join(out)
 
 
 async def _search_memory_files(query: str) -> str:
@@ -997,8 +1031,87 @@ async def _write_server_file(path: str, content: str) -> str:
         return f"[write error: {type(e).__name__}: {e}]"
 
 
+# Commands refused in code before anything runs, whatever the turn or the prompt
+# says. Hermes' "hardline blocklist" floor (filesystem wipes, fork bombs, mkfs, dd
+# onto a disk, a download piped into a shell), plus what only IGOR has to protect:
+# the deploy machinery that judges it, sudoers, the repo and memory as a whole,
+# and origin's history. A policy on the shell tool, not a sandbox - python_run can
+# still do anything the igor user can. Unparseable quoting fails closed, as in
+# Hermes, so quote tricks cannot hide a pattern.
+_SHELL_SPLIT = frozenset({";", "&&", "||", "|", "&", "\n"})
+_LAUNCHERS = frozenset({"sudo", "env", "command", "nohup", "nice", "time", "exec", "xargs"})
+_WIPE_TARGETS = frozenset({"/", "/*", "~", "~/", "~/*", "$home", "$home/", ".", "./", "*", "..",
+                           "/opt/igor", "/opt/igor/", "/opt/igor/*", "memory", "memory/",
+                           "memory/*", "/opt/igor/memory", "/opt/igor/memory/",
+                           "/opt/igor/memory/*"})
+_PROTECTED_PATHS = ("/usr/local/lib/igor-deploy", "/var/log/igor-deploy", "/etc/sudoers")
+_PIPE_TO_SHELL = re.compile(r"\b(curl|wget)\b[^|;&]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b")
+_FORK_BOMB = re.compile(r":\s*\(\s*\)\s*\{")
+
+
+def _hardline_refusal(command: str) -> Optional[str]:
+    """Why a shell command is refused, or None if it may run."""
+    raw = (command or "").lower()
+    try:
+        lexer = shlex.shlex(raw, posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return "its quoting cannot be parsed, so what it would run cannot be checked"
+
+    if _FORK_BOMB.search(raw):
+        return "it is a fork bomb"
+    if _PIPE_TO_SHELL.search(raw):
+        return "it pipes a download straight into a shell"
+    if any(p in raw for p in _PROTECTED_PATHS):
+        return "it touches the deploy machinery or sudoers, which IGOR may never change"
+
+    segments, current = [], []
+    for tok in tokens:
+        if tok in _SHELL_SPLIT or set(tok) <= set(";&|"):
+            segments.append(current)
+            current = []
+        else:
+            current.append(tok)
+    segments.append(current)
+
+    for words in segments:
+        while words and (words[0] in _LAUNCHERS or "=" in words[0] or words[0].startswith("-")):
+            words = words[1:]
+        if not words:
+            continue
+        cmd, args = words[0].rsplit("/", 1)[-1], words[1:]
+        flags = [a for a in args if a.startswith("-")]
+        if cmd in ("sh", "bash", "zsh", "dash") and "-c" in args:
+            inner = args[args.index("-c") + 1:args.index("-c") + 2]
+            nested = _hardline_refusal(inner[0]) if inner else None
+            if nested:
+                return nested
+        if cmd == "rm":
+            recursive = any(f == "--recursive" or (not f.startswith("--") and "r" in f)
+                            for f in flags)
+            if (recursive or "--no-preserve-root" in flags) and any(
+                    a in _WIPE_TARGETS for a in args if not a.startswith("-")):
+                return "it recursively deletes the filesystem root, home, the repo or memory"
+        if cmd.startswith("mkfs") or (cmd in ("wipefs", "shred") and any("/dev/" in a for a in args)):
+            return "it formats or wipes a disk"
+        if cmd == "dd" and any(a.startswith("of=/dev/") for a in args):
+            return "it writes straight onto a device"
+        if cmd == "git" and "push" in args and any(
+                a in ("--force", "-f", "--force-with-lease") or a.startswith("+") for a in args):
+            return "it force-pushes, which rewrites origin's history"
+    return None
+
+
 async def _run_shell(command: str, timeout: int = 10) -> str:
     import subprocess
+
+    refusal = _hardline_refusal(command)
+    if refusal:
+        logger.warning("ReAct shell BLOCKED (%s): %s", refusal, command[:120])
+        return (f"BLOCKED: refused in code because {refusal}. Nothing ran. This cannot be "
+                "overridden - do not retry or rephrase it. Tell the user what you were "
+                "trying to do and let them run it themselves if it is really needed.")
 
     timeout = min(max(timeout, 1), 30)
 
@@ -1116,6 +1229,9 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 
     if name == "search_memory":
         return await _search_memory_files(inputs.get("query", ""))
+
+    if name == "search_history":
+        return _search_history(inputs.get("query", ""))
 
     if name == "task_update":
         return await _task_update(inputs.get("action", ""), inputs.get("text", ""))
@@ -1252,13 +1368,8 @@ async def handle(
             )
             break
         try:
-            response = await client.chat.completions.create(
-                model=use_model,
-                messages=messages,
-                tools=tools,
-                max_tokens=max_tokens,
-            )
-            usage.record(use_model, response, label)
+            response = await llm.create(client, use_model, label, params=False,
+                                        messages=messages, tools=tools, max_tokens=max_tokens)
         except openai.BadRequestError as e:
             if "tool_use_failed" in str(e) and tool_failures < 3:
                 tool_failures += 1
@@ -1378,12 +1489,8 @@ async def handle(
     # results. Arriving here over budget would 413 and lose the whole turn.
     messages, _ = _trim_to_budget(messages, max_tokens, keep_recent=0)
     try:
-        final = await client.chat.completions.create(
-            model=use_model,
-            messages=messages,
-            max_tokens=max_tokens,
-        )
-        usage.record(use_model, final, label)
+        final = await llm.create(client, use_model, label, params=False,
+                                 messages=messages, max_tokens=max_tokens)
         # Deliberately not routed through llm.complete. Returning the partial is
         # already the right behaviour here, and a retry at double budget is unsafe:
         # _trim_to_budget fit this prompt against max_tokens, so doubling can push

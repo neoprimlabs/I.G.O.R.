@@ -534,6 +534,97 @@ def test_update_in_place() -> None:
     _check("React reaches update through the tool", reply.startswith("Okay, now"), reply)
 
 
+async def test_repeating() -> None:
+    """Repeating messages, as Hermes' recurring jobs. Every expected time is worked
+    out by hand: US daylight time ends 2026-11-01 at 02:00, so 09:00 local is 13:00
+    UTC before it and 14:00 UTC after."""
+    from agents import scheduled
+
+    async def writer(brief, now):
+        return f"written: {brief}"
+
+    fri = _utc(2026, 10, 30, 12, 0)   # Fri 08:00 EDT
+    path = _fresh_store()
+    reply = scheduled.add(brief="a question to think about", at="2026-10-30 09:00",
+                          repeat="daily", now=fri)
+    _check("a daily message says it repeats", "every day" in reply, reply)
+
+    send = _Sender()
+    await scheduled.deliver_due(send, now=_utc(2026, 10, 30, 13, 0, 30), compose=writer)
+    entries = _stored(path)
+    _check("a delivered daily message stays, due tomorrow at the same local time",
+           len(send.sent) == 1 and len(entries) == 1
+           and entries[0]["due"] == "2026-10-31T13:00:00+00:00", str(entries))
+    await scheduled.deliver_due(send, now=_utc(2026, 10, 31, 13, 0, 30), compose=writer)
+    _check("across the daylight-saving change it stays at 09:00 local (14:00 UTC)",
+           _stored(path)[0]["due"] == "2026-11-01T14:00:00+00:00", str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.add(brief="standup", at="2026-10-30 09:00", repeat="weekdays", now=fri)
+    await scheduled.deliver_due(_Sender(), now=_utc(2026, 10, 30, 13, 1), compose=writer)
+    _check("a weekday message sent on Friday is next due Monday",
+           _stored(path)[0]["due"] == "2026-11-02T14:00:00+00:00", str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.add(brief="standup", at="2026-10-31 09:00", repeat="weekdays", now=fri)
+    _check("a weekday message asked for on a Saturday starts on Monday",
+           _stored(path)[0]["due"] == "2026-11-02T14:00:00+00:00", str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.add(brief="weekly review", at="2026-10-30 09:00", repeat="weekly", now=fri)
+    await scheduled.deliver_due(_Sender(), now=_utc(2026, 10, 30, 13, 1), compose=writer)
+    _check("a weekly message is next due a week later, local time kept",
+           _stored(path)[0]["due"] == "2026-11-06T14:00:00+00:00", str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.add(brief="a question", at="2026-10-30 09:00", repeat="daily", now=fri)
+    send = _Sender()
+    await scheduled.deliver_due(send, now=_utc(2026, 11, 2, 15, 0), compose=writer)
+    _check("down for three days: one late message, not a backlog of three",
+           len(send.sent) == 1 and "delivered late" in send.sent[0], str(send.sent))
+    _check("and the next one is in the future", _stored(path)[0]["due"] == "2026-11-03T14:00:00+00:00",
+           str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.add(brief="a question", at="2026-10-30 09:00", repeat="daily", now=fri)
+    eid = _stored(path)[0]["id"]
+    _check("pause keeps the message", scheduled.set_paused(eid, True).startswith("Paused"))
+    send = _Sender()
+    await scheduled.deliver_due(send, now=_utc(2026, 11, 2, 15, 0), compose=writer)
+    _check("a paused message does not send", send.sent == [] and len(_stored(path)) == 1, str(send.sent))
+    reply = scheduled.set_paused(eid, False, now=_utc(2026, 11, 2, 15, 0))
+    _check("resuming does not fire the occurrences missed while paused",
+           _stored(path)[0]["due"] == "2026-11-03T14:00:00+00:00" and not _stored(path)[0]["paused"],
+           f"{reply} {_stored(path)}")
+
+    path = _fresh_store()
+    scheduled.add(brief="a question", at="2026-10-30 09:00", repeat="daily", now=fri)
+    eid = _stored(path)[0]["id"]
+    scheduled.update(eid, repeat="none", now=fri)
+    await scheduled.deliver_due(_Sender(), now=_utc(2026, 10, 30, 13, 1), compose=writer)
+    _check("update repeat=none makes it one-off, so it is removed once sent", _stored(path) == [],
+           str(_stored(path)))
+
+    path = _fresh_store()
+    reply = scheduled.add(brief="x", at="2026-10-30 09:00", repeat="hourly", now=fri)
+    _check("an unknown repeat is refused", reply.startswith("Not scheduled") and _stored(path) == [], reply)
+
+    path = _fresh_store()
+    scheduled.add(brief="daily question", at="2026-10-30 09:00", repeat="daily", now=fri)
+    scheduled.add(brief="call the bank", at="2026-10-30 09:00", now=fri)
+    _check("a one-off at the same time is not merged into a repeating message",
+           len(_stored(path)) == 2, str(_stored(path)))
+
+    path = _fresh_store()
+    scheduled.run_tool({"action": "add", "in_minutes": 60, "brief": "x", "repeat": "weekly"})
+    eid = _stored(path)[0]["id"]
+    _check("React reaches repeat, pause and resume through the tool",
+           _stored(path)[0]["repeat"] == "weekly"
+           and scheduled.run_tool({"action": "pause", "id": eid}).startswith("Paused")
+           and scheduled.run_tool({"action": "resume", "id": eid}).startswith("Resumed"),
+           str(_stored(path)))
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -561,6 +652,7 @@ if __name__ == "__main__":
     test_same_slot_merges()
     asyncio.run(test_write_at_delivery())
     test_update_in_place()
+    asyncio.run(test_repeating())
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

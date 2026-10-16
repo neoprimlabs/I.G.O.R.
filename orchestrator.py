@@ -252,26 +252,13 @@ def _spell_out_times(text: str) -> str:
 # minute and try again" while Groq's own 429 said 16 to 24 minutes. The two caps
 # need different answers, and the 429 body is the only place the daily one shows -
 # the x-ratelimit headers look healthy while it is gone.
-_TRY_AGAIN = re.compile(r"try again in ((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)")
-_WAIT_PART = re.compile(r"([\d.]+)([hms])")
-
-
 def _is_daily_cap(e: Exception) -> bool:
-    text = str(e)
-    return "tokens per day" in text or "(TPD)" in text
+    return llm.is_daily_cap(e)
 
 
 def _wait_in_words(e: Exception) -> str | None:
-    match = _TRY_AGAIN.search(str(e))
-    if not match or not match.group(1):
-        return None
-    seconds = sum(float(n) * {"h": 3600, "m": 60, "s": 1}[unit]
-                  for n, unit in _WAIT_PART.findall(match.group(1)))
-    minutes = max(1, -(-int(seconds) // 60))
-    if minutes < 60:
-        return "about a minute" if minutes == 1 else f"about {minutes} minutes"
-    hours, rest = divmod(minutes, 60)
-    return f"about {hours} hour{'s' if hours > 1 else ''}" + (f" {rest} minutes" if rest else "")
+    seconds = llm.wait_seconds(e)
+    return llm.in_words(seconds) if seconds else None
 
 
 def _rate_limit_reply(e: Exception) -> str:
@@ -367,6 +354,7 @@ class Orchestrator:
         if destination == "StopResearch":
             file_mode = True
 
+        turn = llm.start_turn()
         try:
             response = await self._route(destination, task, file_mode=file_mode)
         except openai.RateLimitError as e:
@@ -382,6 +370,9 @@ class Orchestrator:
             logger.error("Route to %s failed - %s: %s", destination, type(e).__name__, e)
             return f"Something went wrong ({type(e).__name__}). Details have been logged.", False
 
+        finally:
+            backup_notice = llm.end_turn(turn)
+
         if destination in ("ResearchLoop", "StopResearch"):
             return response, file_mode
 
@@ -396,6 +387,8 @@ class Orchestrator:
             parts.append("`[Monitor]`")
         if skill_captured:
             parts.append("`[Skill captured]`")
+        if backup_notice:
+            parts.append(backup_notice)
         suffix = "\n\n" + " ".join(parts) if parts else ""
         return f"{response}{suffix}", file_mode
 

@@ -26,12 +26,6 @@ MODELS = {
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
 }
 
-# Groq tokens-per-day caps, only where measured from a 429 body - the cap appears
-# nowhere else. 120b read 2026-10-16. Never fill in a guess: usage.py reports a
-# model without an entry as "not measured", which is the truth.
-DAILY_TOKEN_CAPS = {
-    "openai/gpt-oss-120b": 200000,
-}
 # Delegated workers run on 20b, NOT on react's 120b. A worker starts while the
 # parent is mid-turn, so putting both on one 8000 TPM bucket means the parent's
 # next call contends with its own worker. 20b shares with research, evaluator and
@@ -48,6 +42,21 @@ DAILY_TOKEN_CAPS = {
 # router outage already falls back to React, while a chat outage reaches the user.
 # If qwen goes, the router can move to gpt-oss-20b only by also raising its
 # max_tokens in orchestrator._classify to at least 1024.
+
+# Groq tokens-per-day caps, only where measured from a 429 body - the cap appears
+# nowhere else. 120b read 2026-10-16. Never fill in a guess: usage.py reports a
+# model without an entry as "not measured", which is the truth.
+DAILY_TOKEN_CAPS = {
+    "openai/gpt-oss-120b": 200000,
+}
+
+# Where a rate-limited model's calls go instead (llm.create). 120b carries Direct
+# and React and is the one that ran dry on 2026-10-16; 20b is a separate bucket and
+# already runs delegated workers through the same tool loop. 20b has no entry, so
+# when it is limited too the call fails as before.
+FALLBACK_MODELS = {
+    "openai/gpt-oss-120b": "openai/gpt-oss-20b",
+}
 
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

@@ -23,10 +23,14 @@ dispatch and tool_use_failed retries, and it is already correct.
 """
 
 import logging
+import re
+import time
+from contextvars import ContextVar
 from typing import Optional, Union
 
 import openai
 
+import config
 import usage
 
 logger = logging.getLogger(__name__)
@@ -87,6 +91,109 @@ def model_params(model: str, **overrides: Optional[str]) -> dict:
     return params
 
 
+# Fallback, on the pattern Hermes documents: a rate limit that survives the
+# client's retries benches the model until the reset time Groq names, and the call
+# is retried once on the fallback. Turn-scoped notice, so the user knows which
+# model answered. 2026-10-16: the daily cap on 120b ran out and Direct and React
+# went dark for ~25 minutes while 20b, a separate bucket, sat idle.
+_TRY_AGAIN = re.compile(r"try again in ((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)")
+_WAIT_PART = re.compile(r"([\d.]+)([hms])")
+_BENCH_DEFAULT_S = 60
+
+_benched: dict[str, tuple[float, bool]] = {}
+_turn: ContextVar[Optional[dict]] = ContextVar("llm_turn", default=None)
+
+
+def is_daily_cap(e: Exception) -> bool:
+    text = str(e)
+    return "tokens per day" in text or "(TPD)" in text
+
+
+def wait_seconds(e: Exception) -> Optional[float]:
+    """The reset Groq names in a 429 body ("try again in 16m2.064s"), in seconds."""
+    match = _TRY_AGAIN.search(str(e))
+    if not match or not match.group(1):
+        return None
+    return sum(float(n) * {"h": 3600, "m": 60, "s": 1}[unit]
+               for n, unit in _WAIT_PART.findall(match.group(1)))
+
+
+def in_words(seconds: float) -> str:
+    minutes = max(1, -(-int(seconds) // 60))
+    if minutes < 60:
+        return "about a minute" if minutes == 1 else f"about {minutes} minutes"
+    hours, rest = divmod(minutes, 60)
+    return f"about {hours} hour{'s' if hours > 1 else ''}" + (f" {rest} minutes" if rest else "")
+
+
+def bench(model: str, e: Exception, now: Optional[float] = None) -> None:
+    now = time.time() if now is None else now
+    wait = wait_seconds(e) or _BENCH_DEFAULT_S
+    _benched[model] = (now + wait, is_daily_cap(e))
+    logger.error("%s rate-limited (%s), benched for %ds", model,
+                 "daily cap" if is_daily_cap(e) else "per-minute", int(wait))
+
+
+def choose(model: str, now: Optional[float] = None) -> str:
+    """The model to call: the fallback while the primary is benched."""
+    now = time.time() if now is None else now
+    until = _benched.get(model, (0.0, False))[0]
+    fallback = config.FALLBACK_MODELS.get(model)
+    if fallback and now < until:
+        _note(model)
+        return fallback
+    return model
+
+
+def _note(primary: str) -> None:
+    turn = _turn.get()
+    if turn is not None:
+        turn[primary] = _benched.get(primary, (0.0, False))
+
+
+def start_turn():
+    return _turn.set({})
+
+
+def end_turn(token, now: Optional[float] = None) -> Optional[str]:
+    """One line for the user if anything this turn ran on a fallback, else None."""
+    turn = _turn.get() or {}
+    _turn.reset(token)
+    if not turn:
+        return None
+    now = time.time() if now is None else now
+    primary, (until, daily) = next(iter(turn.items()))
+    why = "its daily allowance is used up" if daily else "it is rate-limited"
+    return (f"`[Answered on the backup model ({config.FALLBACK_MODELS.get(primary, '?')}): "
+            f"the main model is back in {in_words(max(until - now, 1))}, {why}]`")
+
+
+async def create(client: openai.AsyncOpenAI, model: str, label: str, *,
+                 params: bool = True, reasoning_effort: Optional[str] = None, **kwargs):
+    """chat.completions.create, recorded in the token ledger, with fallback.
+
+    params=False skips model_params for the caller that deliberately leaves
+    reasoning_effort unset (React). Raises what the last attempt raised.
+    """
+    use = choose(model)
+    for attempt in range(2):
+        extra = model_params(use, reasoning_effort=reasoning_effort) if params else {}
+        try:
+            response = await client.chat.completions.create(model=use, **kwargs, **extra)
+        except openai.RateLimitError as e:
+            bench(use, e)
+            fallback = config.FALLBACK_MODELS.get(use)
+            if attempt or not fallback:
+                raise
+            _note(use)
+            logger.warning("%s falling back from %s to %s", label or use, use, fallback)
+            use = fallback
+            continue
+        usage.record(use, response, label)
+        return response
+    raise RuntimeError("unreachable")
+
+
 async def complete(
     client: openai.AsyncOpenAI,
     model: str,
@@ -103,19 +210,12 @@ async def complete(
     else:
         messages.extend(user)
 
-    extra = model_params(model, reasoning_effort=reasoning_effort)
-
     who = label or model
     budget = max_tokens
 
     for attempt in range(2):
-        response = await client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=budget,
-            **extra,
-        )
-        usage.record(model, response, who)
+        response = await create(client, model, who, reasoning_effort=reasoning_effort,
+                                messages=messages, max_tokens=budget)
         choice = response.choices[0]
         content = (choice.message.content or "").strip()
         truncated = choice.finish_reason == "length"

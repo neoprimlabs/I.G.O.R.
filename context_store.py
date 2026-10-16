@@ -5,7 +5,11 @@ from pathlib import Path
 import config
 
 _DB_PATH = config.MEMORY_DIR / "context.db"
-_MAX_STORED = 200
+# Was 200, about a week, and nothing could search it. Raised for search_history
+# (2026-10-16): rows are capped at 20000 chars by the orchestrator, so even a full
+# table is well under a few hundred MB, against 39 GB free, and a LIKE scan of it
+# is milliseconds. Prompts never see more than CONTEXT_WINDOW of it.
+_MAX_STORED = 10000
 
 
 def _conn() -> sqlite3.Connection:
@@ -97,6 +101,27 @@ def last_timestamp():
         return datetime.fromtimestamp(row[0], timezone.utc) if row else None
     except Exception:
         return None
+
+
+def search(query: str, limit: int = 8) -> list[tuple[int, str, str]]:
+    """Messages containing every word of the query, newest first: (ts, role, content).
+
+    A LIKE scan rather than FTS5: at 10000 rows it is milliseconds, needs no index to
+    keep in step, and matches word fragments ("deploy" finds "deployed").
+    """
+    words = [w for w in (query or "").lower().split() if w][:6]
+    if not words:
+        return []
+    escaped = [w.replace("!", "!!").replace("%", "!%").replace("_", "!_") for w in words]
+    where = " AND ".join("lower(content) LIKE ? ESCAPE '!'" for _ in escaped)
+    try:
+        with _conn() as conn:
+            return conn.execute(
+                f"SELECT ts, role, content FROM messages WHERE {where} ORDER BY id DESC LIMIT ?",
+                [f"%{w}%" for w in escaped] + [limit],
+            ).fetchall()
+    except Exception:
+        return []
 
 
 def clear() -> None:

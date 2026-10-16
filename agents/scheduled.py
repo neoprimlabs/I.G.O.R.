@@ -50,6 +50,8 @@ _WINDOWS = {
 }
 _EARLIEST_AHEAD = timedelta(minutes=5)
 _SAME_SLOT = timedelta(minutes=5)
+_REPEATS = ("daily", "weekdays", "weekly")
+_REPEAT_WORDS = {"daily": "every day", "weekdays": "every weekday", "weekly": "every week"}
 
 
 class _Unreadable(Exception):
@@ -149,9 +151,44 @@ def _due(at: Optional[str], in_minutes: Optional[int], window: Optional[str],
     return due, ""
 
 
+def _repeat(value: Optional[str]) -> tuple[Optional[str], str]:
+    """(repeat, problem). "" means one-off; None means not given."""
+    if value is None:
+        return None, ""
+    value = value.strip().lower()
+    if value in ("", "none", "once", "off"):
+        return "", ""
+    if value not in _REPEATS:
+        return None, "repeat must be daily, weekdays or weekly, or none to stop repeating."
+    return value, ""
+
+
+def _next_occurrence(due: datetime, repeat: str, now: datetime) -> datetime:
+    """The next local-clock occurrence after now. Stepping the local calendar, not
+    adding 24h in UTC, keeps 9:00 at 9:00 across a daylight-saving change, and
+    skipping past now means a restart sends one late message, not a backlog."""
+    local = due.astimezone(clock.USER_TZ)
+    wall, day = local.time(), local.date()
+    step = timedelta(days=7 if repeat == "weekly" else 1)
+    while True:
+        day += step
+        if repeat == "weekdays" and day.weekday() >= 5:
+            continue
+        nxt = datetime.combine(day, wall, tzinfo=clock.USER_TZ).astimezone(timezone.utc)
+        if nxt > now:
+            return nxt.replace(microsecond=0)
+
+
+def _onto_weekday(due: datetime) -> datetime:
+    local = due.astimezone(clock.USER_TZ)
+    while local.weekday() >= 5:
+        local = datetime.combine(local.date() + timedelta(days=1), local.time(), tzinfo=clock.USER_TZ)
+    return local.astimezone(timezone.utc)
+
+
 def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] = None,
         window: Optional[str] = None, brief: Optional[str] = None,
-        now: Optional[datetime] = None) -> str:
+        now: Optional[datetime] = None, repeat: Optional[str] = None) -> str:
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
     brief = (brief or "").strip()
@@ -171,6 +208,12 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     due, problem = _due(at, in_minutes, window, now)
     if problem:
         return f"Not scheduled: {problem}"
+    repeat, problem = _repeat(repeat)
+    if problem:
+        return f"Not scheduled: {problem}"
+    repeat = repeat or ""
+    if repeat == "weekdays":
+        due = _onto_weekday(due)
 
     try:
         entries = _load()
@@ -182,9 +225,10 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     # said to cancel. Two messages minutes apart are never what was meant. Merging
     # rather than replacing, because "pills at 9" and "call mom at 9" are two real
     # requests and replacing would drop one.
-    if brief:
+    if brief and not repeat:
         for e in entries:
             if (e.get("brief") and not e.get("content") and not e.get("failed")
+                    and not e.get("repeat")
                     and abs(datetime.fromisoformat(e["due"]) - due) <= _SAME_SLOT):
                 e["brief"] = (f"{brief} (This updates or adds to an earlier request for the "
                               f"same time: {e['brief']})")
@@ -198,12 +242,12 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
         return f"Not scheduled: {_MAX_PENDING} messages are already pending. Cancel one first."
 
     entry = {"id": secrets.token_hex(3), "due": due.isoformat(), "content": content,
-             "brief": brief, "created": now.isoformat(), "attempts": 0}
+             "brief": brief, "created": now.isoformat(), "attempts": 0, "repeat": repeat}
     others = list(entries)
     entries.append(entry)
     _save(entries)
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
-    reply = f"Okay, {_human(due, now)}."
+    reply = f"Okay, {_human(due, now)}" + (f", then {_REPEAT_WORDS[repeat]}." if repeat else ".")
     # 2026-10-14: "I said 1am" added a second entry and left the misread 10am one in
     # place, and both sent. The model never saw it - nothing showed what was pending.
     if others:
@@ -218,6 +262,8 @@ def _lines(entries: list[dict]) -> str:
     lines = []
     for e in sorted(entries, key=lambda e: e["due"]):
         state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
+        state += f"  repeats {e['repeat']}" if e.get("repeat") else ""
+        state += "  PAUSED" if e.get("paused") else ""
         summary = (e.get("content") or e.get("brief") or "")[:80]
         lines.append(f"{e['id']}  {_local(e['due'])}{state}  {summary}")
     return "\n".join(lines)
@@ -249,7 +295,7 @@ def cancel(entry_id: str) -> str:
 
 def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = None,
            window: Optional[str] = None, brief: Optional[str] = None,
-           now: Optional[datetime] = None) -> str:
+           now: Optional[datetime] = None, repeat: Optional[str] = None) -> str:
     """Change a pending message in place: its time, its brief, or both.
 
     A correction used to be cancel-then-add, two calls, and React did the add and
@@ -263,8 +309,11 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     times = sum(x is not None for x in (at, in_minutes, window))
     if times > 1:
         return "Not updated: give at most one of at, in_minutes or window."
-    if not times and not brief:
-        return "Not updated: give a new time, a new brief, or both."
+    repeat, problem = _repeat(repeat)
+    if problem:
+        return f"Not updated: {problem}"
+    if not times and not brief and repeat is None:
+        return "Not updated: give a new time, a new brief, a repeat, or a mix."
     due = None
     if times:
         due, problem = _due(at, in_minutes, window, now)
@@ -285,9 +334,37 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     if brief:
         entry["brief"] = brief
         entry["content"] = ""
+    if repeat is not None:
+        entry["repeat"] = repeat
+        if repeat == "weekdays":
+            entry["due"] = _onto_weekday(datetime.fromisoformat(entry["due"])).isoformat()
     _save(entries)
     logger.info("Updated scheduled message %s, due %s", entry_id, entry["due"])
-    return f"Okay, now {_human(datetime.fromisoformat(entry['due']), now)}."
+    every = f", then {_REPEAT_WORDS[entry['repeat']]}" if entry.get("repeat") else ""
+    return f"Okay, now {_human(datetime.fromisoformat(entry['due']), now)}{every}."
+
+
+def set_paused(entry_id: str, paused: bool, now: Optional[datetime] = None) -> str:
+    """Pause or resume one message without losing it, as Hermes' pause/resume."""
+    now = now or datetime.now(timezone.utc)
+    entry_id = (entry_id or "").strip()
+    try:
+        entries = _load()
+    except _Unreadable:
+        return "Not changed: the scheduled message store is unreadable."
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if entry is None:
+        return f"No scheduled message with id {entry_id!r}. List them to find it."
+    entry["paused"] = paused
+    if not paused and entry.get("repeat") and datetime.fromisoformat(entry["due"]) <= now:
+        # Resuming must not fire every occurrence missed while paused.
+        entry["due"] = _next_occurrence(datetime.fromisoformat(entry["due"]), entry["repeat"],
+                                        now).isoformat()
+    _save(entries)
+    logger.info("%s scheduled message %s", "Paused" if paused else "Resumed", entry_id)
+    if paused:
+        return f"Paused {entry_id}. It stays listed and will not send until resumed."
+    return f"Resumed {entry_id}. Next: {_local(entry['due'])}."
 
 
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
@@ -297,7 +374,8 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
     now = now or datetime.now(timezone.utc)
     try:
         due = [e for e in _load()
-               if not e.get("failed") and datetime.fromisoformat(e["due"]) <= now]
+               if not e.get("failed") and not e.get("paused")
+               and datetime.fromisoformat(e["due"]) <= now]
     except (_Unreadable, ValueError) as e:
         logger.error("scheduled.json is unreadable, nothing delivered - %s", e)
         return 0
@@ -336,8 +414,15 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
 
         if ok:
             delivered += 1
-            entries = [x for x in entries if x["id"] != entry["id"]]
-            logger.info("Scheduled message %s delivered", entry["id"])
+            kept = next((x for x in entries if x["id"] == entry["id"]), None)
+            if kept is not None and kept.get("repeat"):
+                kept["due"] = _next_occurrence(datetime.fromisoformat(kept["due"]),
+                                               kept["repeat"], now).isoformat()
+                kept["attempts"] = 0
+                logger.info("Scheduled message %s delivered, next %s", entry["id"], kept["due"])
+            else:
+                entries = [x for x in entries if x["id"] != entry["id"]]
+                logger.info("Scheduled message %s delivered", entry["id"])
         else:
             for x in entries:
                 if x["id"] != entry["id"]:
@@ -365,6 +450,8 @@ def status() -> str:
     lines = []
     for e in sorted(entries, key=lambda e: e["due"]):
         state = " (failed to send)" if e.get("failed") else ""
+        state += f" (repeats {e['repeat']})" if e.get("repeat") else ""
+        state += " (paused)" if e.get("paused") else ""
         lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or '')[:80]}")
     return "Messages scheduled for the user:\n" + "\n".join(lines)
 
@@ -387,12 +474,15 @@ def run_tool(inputs: dict) -> str:
         elif isinstance(in_minutes, str) and in_minutes.strip().isdigit():
             in_minutes = int(in_minutes.strip())
         brief = inputs.get("brief") or inputs.get("content") or None
+        repeat = inputs.get("repeat") or None
         if action == "update":
             return update(inputs.get("id", ""), at=at, in_minutes=in_minutes,
-                          window=window, brief=brief)
-        return add(at=at, in_minutes=in_minutes, window=window, brief=brief)
+                          window=window, brief=brief, repeat=repeat)
+        return add(at=at, in_minutes=in_minutes, window=window, brief=brief, repeat=repeat)
     if action == "list":
         return list_pending()
     if action == "cancel":
         return cancel(inputs.get("id", ""))
-    return "Unknown action. Use add, update, list or cancel."
+    if action in ("pause", "resume"):
+        return set_paused(inputs.get("id", ""), action == "pause")
+    return "Unknown action. Use add, update, pause, resume, list or cancel."
