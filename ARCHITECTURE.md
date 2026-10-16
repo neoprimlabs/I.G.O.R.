@@ -136,10 +136,8 @@ A Discord DM travels this path every time:
    regex       _SCHEDULING              -> React
    ```
 
-   `_SCHEDULING` is a request shape ("message me at", "every weekday", "make it
-   11:30", "pause that"), not a noun, and never fires on digest or watch changes.
-   The router rule for these did not hold live. A wrong match only sends a
-   message to React, where unclassifiable messages go anyway.
+   `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
+   it 11:30"), never digest or watch changes; the router rule for them did not hold.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
