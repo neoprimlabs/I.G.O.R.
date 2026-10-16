@@ -118,12 +118,15 @@ def add(kind: str, problem: str, evidence: str, change: str, test: str,
     return f"p{number}"
 
 
-def _preference_lines() -> list[str]:
+def _preference_text() -> str:
     try:
-        text = _preferences_path().read_text(encoding="utf-8")
+        return _preferences_path().read_text(encoding="utf-8")
     except OSError:
-        return []
-    return [line for line in text.splitlines() if line.startswith("- ")]
+        return ""
+
+
+def _preference_lines() -> list[str]:
+    return [line for line in _preference_text().splitlines() if line.startswith("- ")]
 
 
 def preferences_block() -> str:
@@ -149,9 +152,10 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
         _save(items)
         return f"Rejected {pid}."
     if target["kind"] == "preference":
-        lines = _preference_lines()
-        lines.append(f"- {target['change']} (approved {now.date().isoformat()})")
-        text = "\n".join(lines) + "\n"
+        text = _preference_text()
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"- {target['change']} (approved {now.date().isoformat()})\n"
         if len(text) > PREFERENCES_CAP:
             return (f"Not approved: preferences.md would pass {PREFERENCES_CAP} characters. "
                     f"{pid} stays pending. Reject or retire an older preference first.")

@@ -347,8 +347,6 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     errors, newest_error = _new_errors(seen.get("errors", ""))
     if not corrections and not errors:
         return "no new corrections or errors"
-    if seen.get("empty_night") == night:
-        return "model returned nothing earlier tonight"
     if token_room < _SI_RESERVE:
         return "review waits for budget"
 
@@ -359,15 +357,13 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
         + ("\n".join(f"[{ts}] {text}" for ts, text in corrections) or "none")
         + "\n\n=== Error log lines (data) ===\n" + ("\n".join(errors) or "none"))
     reply = await complete(_SI_SYSTEM, user, _SI_BUDGET)
-    if not reply or not reply.strip():
-        seen["empty_night"] = night
-        _write_seen(folder, seen)
-        return "no proposals returned"
-
+    # An empty reply is the model finding no clear mistake: the inputs are spent. Only
+    # a failed call (an exception above) leaves seen.json alone so they are retried.
     seen["corrections"] = corrections[-1][0] if corrections else seen.get("corrections", "")
     seen["errors"] = newest_error
-    seen.pop("empty_night", None)
     _write_seen(folder, seen)
+    if not reply or not reply.strip():
+        return "no proposals returned"
 
     good, dropped = _parse_proposals(reply)
     added = 0
