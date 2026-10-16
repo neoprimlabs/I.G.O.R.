@@ -17,8 +17,8 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs `7738f9e` (scheduled messages written by an agent at send
-  time), deployed through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+- Server `/opt/igor` runs `09fd411` (scheduled_message update action), deployed
+  through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -639,9 +639,13 @@ marked failed for a human.
   3 of 3 times when offered fixed text); an agent with read-only tools writes the
   message at send time, falling back to compose and then the brief; Monitor lists
   pending messages; same-time briefs merge. Isolated live test passed on the
-  writer, Monitor, dictated words and the 11pm -> 11:30 correction. **Still open:**
-  in the 10-14 replay React left the misread 10am entry beside the new 1am one -
-  the add result told it to cancel and it did not. "100am" still reads as 10:00.
+  writer, Monitor, dictated words and the 11pm -> 11:30 correction.
+- **`09fd411`: `update` action**, so a correction is one call, as Hermes does it -
+  added because the 10-14 replay left the misread 10am entry beside the new 1am
+  one. Unit-tested; **the live replay is untested**: it ran into the daily cap
+  (item 2 under Known broken). In the one live correction that ran, React still
+  used add-then-cancel, which worked but did not use update. Re-run the replay
+  once, after the daily budget resets. "100am" still reads as 10:00.
 - **Known detour, now narrower:** scheduling requests used to route CONFIG and
   usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
   did not decline - see Known broken 7. The new router rule should stop the detour.
@@ -697,12 +701,12 @@ user, not made quietly.
 
    Remaining gap: a crash *after* a healthy deploy. Covered only by
    `Restart=always` and the backup script's crash-loop alert.
-2. **The daily token budget exists, bites, and is completely unmeasured.** A
-   tokens-per-DAY cap appears ONLY in the 429 body - the `x-ratelimit-*` headers
-   report healthy per-minute state while the daily budget is gone. The one number
-   ever measured, 100000/day, was on `llama-3.3-70b-versatile`, which Groq deleted on
-   2026-08-17. No per-day limit is known for any model IGOR now runs on. Re-measure
-   from a 429 body before planning anything around a daily budget.
+2. **The daily token budget bites, and is now measured for one model.**
+   `gpt-oss-120b` (Direct and React) is **200000 TPD**, read from a 429 body on
+   2026-10-16 when a day of live testing exhausted it - roughly 55 React calls a day.
+   The cap appears ONLY in the 429 body; the `x-ratelimit-*` headers look healthy
+   while it is gone. 20b and qwen are still unmeasured. The orchestrator's 429 reply
+   says "wait a minute", which is wrong for a daily cap with a 20-minute wait.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 4. Monitoring detects a dead process, not a dead gateway. If IGOR is running and

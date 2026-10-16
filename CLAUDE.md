@@ -30,12 +30,15 @@ The runtime is the server. There is no local run.
   report per-minute state and look perfectly healthy while the daily budget is gone.
   A single agent sending a 27KB document per call once spent 93204 tokens in one
   afternoon and locked out Direct, ConfigEdit and the evaluator, which shared a model.
-  **No current model's TPD is known.** The only figure ever measured, 100000/day, was
-  measured on `llama-3.3-70b-versatile` on 2026-08-13, and Groq deleted that model on
-  2026-08-17. Do not carry it forward onto gpt-oss or qwen. Before designing anything
-  that sends a large fixed prompt on every call, measure the cap from a 429 body
-  first, then divide it by that prompt size and ask whether the answer is a usable
-  number of requests per day.
+  **Measured 2026-10-16 from a 429 body: `openai/gpt-oss-120b` is 200000 TPD.** That
+  one bucket serves Direct AND React. A React request asks for ~3500 tokens, so the
+  whole day is roughly 55 React calls. One afternoon of live tests through the real
+  orchestrator spent it and locked IGOR out of chat for ~25 minutes. **Live tests
+  spend the user's daily budget: keep them to the cases that need the real model,
+  and do not repeat a passing one.** The other models' TPD (20b, qwen) is still
+  unmeasured - do not assume 200000 carries over. Before designing anything that
+  sends a large fixed prompt on every call, divide the cap by that prompt size and
+  ask whether the answer is a usable number of requests per day.
 - **Rate limits are PER MODEL and independent buckets.** Different models = separate
   buckets (that is why roles are assigned different models). Same model for two roles
   = SHARED bucket. Re-measured 2026-08-18 after the Llama removal: every
