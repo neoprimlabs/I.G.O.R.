@@ -45,7 +45,14 @@ Last updated: **2026-10-16**
    list (server copy; backup `job_search.md.bak-20261016`). **Not applied, needs the
    user:** "nothing senior" - the 10-15 feed still recommended a "Lead Enterprise
    Revenue Architect". `lead` is not excluded.
-2. **Ask the user for a Discord test** of 2026-10-16's routing and repeat changes.
+2. **Discord test, 2026-10-16 21:14 UTC: failed, fixed in `2f0d9a7`, retest pending.**
+   "every weekday at 10am send me one practical idea for IGOR" took the new code
+   route, but React answered "Scheduled..." from one call without using the tool -
+   the store stayed empty - and Monitor then repeated the false claim from the
+   conversation. Now the scheduling route requires the tool (`tool_choice`, measured
+   on 120b and 20b) and Monitor gets no history. **Retest: the user resends the same
+   message, then "what's scheduled?" - and check `scheduled.json` on the server, not
+   the reply.**
 3. **The SelfDescribe eval, and one real defect it found.** Four of ten cases were
    run on gpt-oss-120b on 2026-09-12, no 429:
    - Pass: "What tools can you use?", "Where is the digest schedule configured?",
