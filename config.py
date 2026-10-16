@@ -58,6 +58,10 @@ FALLBACK_MODELS = {
     "openai/gpt-oss-120b": "openai/gpt-oss-20b",
 }
 
+# Overnight loop budget per night, on gpt-oss-20b whose daily cap is unmeasured, so kept modest.
+OVERNIGHT_TOKENS = 60000
+OVERNIGHT_SEARCHES = 12
+
 DISCORD_BOT_TOKEN: str = os.getenv("DISCORD_BOT_TOKEN", "")
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
