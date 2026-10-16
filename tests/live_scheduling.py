@@ -21,6 +21,7 @@ daily cap on gpt-oss-120b. Keep it this small.
 
 import asyncio
 import json
+import os
 import logging
 import sys
 import tempfile
@@ -142,4 +143,9 @@ async def main() -> int:
     return 1 if _failures else 0
 
 
-sys.exit(asyncio.run(main()))
+# os._exit, not sys.exit: on 2026-10-16 the process printed its summary and then
+# hung for 90 minutes on leftover client connections, and the SSH session waiting
+# on it lost the first run's output entirely.
+code = asyncio.run(main())
+sys.stdout.flush()
+os._exit(code)
