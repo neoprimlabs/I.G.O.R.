@@ -26,33 +26,26 @@ Last updated: **2026-10-16**
 
 ## Next action
 
-**Pick up here.** Two checks that need the user, then the SelfDescribe eval, then V.1:
+**Pick up here.** The SelfDescribe eval, then V.1:
 
-1. **Fix ConfigEdit overwriting the digest schedule** - Known broken 7. Asked to
-   move a check-in, it silently rewrote `schedule_config.md` instead. Restored by
-   hand on 2026-09-16; the cause is untouched and it will happen again.
-2. **A.2 answered 2026-09-16: the machinery works, the corpus is empty because the
-   user does not correct IGOR in those words.** Measured, not guessed. The detector
-   scores 7/7 on explicit corrections with 0 false positives on ordinary messages,
-   and the writer produces a correct entry - both exercised offline, with no staged
-   message sent to IGOR. Running the detector over the real `context.db`: **73 user
-   messages from 2026-08-08 to 2026-09-14, zero matches.** Nothing was broken and
-   nothing was ever going to be captured.
-
-   What the user does instead is restate the request seconds after IGOR acts - "Will
-   you message me at some random times tomorrow?" then, 18 seconds later, "Do it
-   later.. around 11:40". Reformulation is a known implicit dissatisfaction signal
-   and a known noisy one (EMNLP 2025, arXiv 2507.23158, "A Lens to Understand Users
-   But Noisy as a Learning Signal"), so it is now captured under `Signal:
-   reformulation`, never merged with `Signal: explicit`. Capture-only as before.
-
-   **Still unverified: nothing has been captured live yet.** The next reformulation
-   in Discord creates `corrections.md`. Check it exists, then read what landed in it
-   before V.1 consumes any of it - the noise is the known risk, and the labels exist
-   so a human can weigh the two signals differently.
-
-   Do not widen `_CORRECTION_PATTERNS` to compensate. They are accurate; the problem
-   was never their precision.
+1. **The corrections corpus was reviewed 2026-10-16** (the old item 1, ConfigEdit
+   rewriting the digest schedule, was fixed 2026-09-16 - Known broken 7). 43 entries
+   from 2026-09-24 to 10-16: 42 `Signal: reformulation`, 1 `explicit`. Read one by
+   one, roughly 15 to 18 are real corrections - the resume-access failures, the 1am
+   scheduling sequence, "That doesn't exist?", a dubious retailer - and **six are
+   standing preferences**: no language-specific jobs, nothing senior ("most of these
+   seem above my head"), uses Claude for all code, solo computer work, keep those in
+   mind when suggesting roles. The rest are ordinary follow-ups (health chat, next
+   questions) that the reformulation detector cannot tell apart.
+   **Consequence for V.1: reformulation is about one-third signal, so nothing derived
+   from it may be auto-approved.** Explicit corrections are rare (1 in a month).
+   **One preference applied the same day:** "no language jobs" was in `user.md` since
+   10-01 but the job watch rules out from `job_search.md`, so five language roles
+   still reached the user. Added `speaking`, `bilingual`, `fluent` to its Exclude
+   list (server copy; backup `job_search.md.bak-20261016`). **Not applied, needs the
+   user:** "nothing senior" - the 10-15 feed still recommended a "Lead Enterprise
+   Revenue Architect". `lead` is not excluded.
+2. **Ask the user for a Discord test** of 2026-10-16's routing and repeat changes.
 3. **The SelfDescribe eval, and one real defect it found.** Four of ten cases were
    run on gpt-oss-120b on 2026-09-12, no 429:
    - Pass: "What tools can you use?", "Where is the digest schedule configured?",
