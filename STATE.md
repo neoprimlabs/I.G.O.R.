@@ -17,8 +17,8 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs `b6b086c` (ARCHITECTURE.md trimmed and corrected, after
-  `d045db3`'s scheduled-message fixes), deployed through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+- Server `/opt/igor` runs `7738f9e` (scheduled messages written by an agent at send
+  time), deployed through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -634,8 +634,14 @@ marked failed for a human.
   and corrections to TASK (live test: all three replayed messages route React, 26/27
   overall - the one miss, "We could have you use your autonomous scheduled system",
   misroutes identically under the old prompt); Direct may not promise actions or
-  deny capabilities. **Not yet confirmed in Discord** - the next real correction of
-  a scheduled time is the test of whether React cancels the old id.
+  deny capabilities.
+- **Same day, `37bbf3c` and `7738f9e`:** React can only give a brief (it pre-wrote
+  3 of 3 times when offered fixed text); an agent with read-only tools writes the
+  message at send time, falling back to compose and then the brief; Monitor lists
+  pending messages; same-time briefs merge. Isolated live test passed on the
+  writer, Monitor, dictated words and the 11pm -> 11:30 correction. **Still open:**
+  in the 10-14 replay React left the misread 10am entry beside the new 1am one -
+  the add result told it to cancel and it did not. "100am" still reads as 10:00.
 - **Known detour, now narrower:** scheduling requests used to route CONFIG and
   usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
   did not decline - see Known broken 7. The new router rule should stop the detour.
