@@ -736,13 +736,24 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase I - Interface
 
-- [ ] **I.1 Web or Flutter UI.** Spec Phase 2. projects.md already tracks this as
-  "I.G.O.R. App (Front-End)" with phone location enabling location-aware digests.
+- [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** Spec Phase 2. Decided
+  with the user 2026-10-16: a desktop dashboard application, coming soon, that takes
+  over from Discord as the main interface - more control and quality-of-life
+  improvements. Its first data source is A.4's work folder and status. Separate
+  design when it starts. projects.md tracks it as "I.G.O.R. App (Front-End)".
 - [ ] **I.2 Voice** via Groq: Whisper for speech to text, Orpheus for text to
   speech, both already on the key. Not qwen3-tts, which Groq does not serve, and not
   local, which the host cannot fit. Measure both rate limits first. After I.1.
 
 ## Phase A - Autonomy and learning
+
+- [ ] **A.4 Overnight work loop.** IN PROGRESS 2026-10-16. Design, approved by the
+  user: `docs/superpowers/specs/2026-10-16-overnight-work-loop-design.md`. Standing
+  goals worked hourly 00:00-07:00 local on 20b only, in fixed pipelines with no
+  tools that act; results as files in `memory/work/`; an Overnight section in the
+  morning digest; self-improvement as proposals the user approves. Uses A.1's
+  `goals.md` format. Starting goals: research towards an income feature (which will
+  likely be a clone, Phase K), and self-improvement.
 
 Specced 2026-08-08 after the user set the direction: a fully autonomous, self
 improving assistant. Revised the same day after auditing the spec against its own
@@ -1142,6 +1153,34 @@ merits regardless of either.
   Verify: py_compile, startup checks pass, tool count drops from 12 to 9, and a
   React turn still reads ARCHITECTURE.md correctly. Commit:
   `Remove self-modification machinery after deciding against it (S.3)`
+
+## Phase K - Clones (decided with the user 2026-10-16)
+
+The user's IGOR stays theirs and private, as the spec says. A **base version** - a
+skeleton with none of the user's information - can be cloned, each clone with its
+own personality, tone and specialty. **Public-facing AI comes from clones, never
+from the user's IGOR.** The proven pattern is Hermes' profile distributions: one
+shared engine, and an agent is a package on top of it (personality, settings,
+scheduled jobs) in its own repo, never carrying secrets or personal memory.
+
+**Rule from now on:** build new features clone-ready - personality, names and
+personal details in config or memory, never in code.
+
+- [ ] **K.1 Clone skeleton.** Separate the engine from what makes it this user's
+  IGOR: the persona and "Creator" in prompts, resume handling, the job search,
+  watcher choices. Personal data already lives in `memory/` (gitignored) and keys in
+  `.env`; what remains is moving persona and user facts out of the code.
+- [ ] **K.2 A clone for the user, with a different feel** - personality and tone
+  unlike IGOR's protocol droid. First clone.
+- [ ] **K.3 A clone close to IGOR for the user's brother to test.** Requirements:
+  his own Discord bot, **his own Groq key** (on the user's key he would eat into
+  the 200000-token daily budget), and memory completely separate from the user's -
+  the first time someone else's data lives in this system. Hosting is unsolved:
+  IGOR uses ~400 of 956 MB, so a second copy may not fit; check whether Oracle's
+  free tier allows a second machine before choosing.
+- [ ] **K.4 A public-facing clone.** Needs what the user's IGOR deliberately lacks:
+  many users, a sandbox, paid model capacity, content screening. Needs its own
+  spec section, ratified by the user.
 
 ## Phase X - Containerisation
 

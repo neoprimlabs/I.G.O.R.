@@ -26,7 +26,15 @@ Last updated: **2026-10-16**
 
 ## Next action
 
-**Pick up here.** The SelfDescribe eval, then V.1:
+**Pick up here.** Building A.4, the overnight work loop (design approved
+2026-10-16). Then the SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop
+dashboard) are committed to GAMEPLAN as the near-term work after this.
+
+**Flagged spec deviation, the user's call:** `IGOR_SPEC.md` says "no hoarding of
+conversation history"; on 2026-10-16 `context.db` retention went from 200 to 10000
+messages for `search_history` without that being flagged at the time. Keep it, or
+set a limit.
+
 
 1. **The corrections corpus was reviewed 2026-10-16** (the old item 1, ConfigEdit
    rewriting the digest schedule, was fixed 2026-09-16 - Known broken 7). 43 entries
