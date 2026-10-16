@@ -17,9 +17,8 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs the 2026-10-16 gap closures (fallback model, shell
-  blocklist, conversation search, repeating messages), deployed through the S.1
-  gate. Check with `git -C /opt/igor log -1`.
+- Server `/opt/igor` runs `a9d9883` (watch history), deployed through the S.1 gate
+  on 2026-10-16. Check with `git -C /opt/igor log -1`.
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -657,6 +656,21 @@ marked failed for a human.
   resume. **None of the four has run live.** Fallback only fires on a real 429, so
   it will prove itself the next time 120b runs dry - check journalctl for "falling
   back". The rest belong in tomorrow's live pass.
+- **Live pass, 2026-10-16 19:21 UTC (`tests/live_scheduling.py`), 7 of 8 checks:**
+  "around 100am" scheduled for 01:00; "draft something new" merged into one entry;
+  "make it 11:30" left one entry at 23:30; `search_history` found the 10-14 request
+  with its date; "every weekday at 9am" made one weekday entry, rolled from Saturday
+  to Monday, and "pause that" paused it. **Fallback fired for real**: 120b hit its
+  daily cap mid-run, was benched, React answered on 20b, and the reply carried the
+  notice. **The one failure:** the correction still went add-then-cancel, not
+  `update` - the outcome was right, the mechanism was not.
+- **Open from that run:** (1) on 20b, React wrote one specific idea into a repeating
+  message's brief instead of describing the series, so every weekday would get the
+  same idea - Hermes' answer is `continuity`, feeding a job its own recent output.
+  (2) Scheduling messages still route CONFIG and cost ConfigEdit a wasted call
+  before reaching React, despite the router rule. (3) The ledger's headroom figure
+  does not know spend from before it existed, so it read 82650 left when Groq said 0.
+- A run costs ~48k tokens on 120b. Do not repeat it without a code change to test.
 - **Known detour, now narrower:** scheduling requests used to route CONFIG and
   usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
   did not decline - see Known broken 7. The new router rule should stop the detour.
