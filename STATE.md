@@ -17,8 +17,8 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs `d045db3` (scheduled-message fixes), deployed through the
-  S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
+- Server `/opt/igor` runs `b6b086c` (ARCHITECTURE.md trimmed and corrected, after
+  `d045db3`'s scheduled-message fixes), deployed through the S.1 gate on 2026-10-16. Check with `git -C /opt/igor log -1`. `origin/master` may be ahead by documentation-only
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
