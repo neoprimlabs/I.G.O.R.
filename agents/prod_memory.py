@@ -19,7 +19,7 @@ _CONFIG_EDITABLE = {
 # Monitor gates sections with an exact string match, so an invented name is
 # silently ignored rather than erroring. Validate before writing.
 _VALID_DIGEST_SECTIONS = frozenset({
-    "tasks", "projects", "daily_forecast", "ai_news", "unreal_news",
+    "tasks", "projects", "daily_forecast", "ai_news", "unreal_news", "overnight",
 })
 
 _CONFIG_SYSTEM_PROMPT = """You edit configuration files for I.G.O.R., a personal assistant. The user describes a change in plain language and you produce the complete new file.
@@ -27,7 +27,7 @@ _CONFIG_SYSTEM_PROMPT = """You edit configuration files for I.G.O.R., a personal
 You may edit exactly these three files:
 
 1. digest_config.md - which sections appear in the morning digest.
-   Sections must come from this list, spelled exactly: tasks, projects, daily_forecast, ai_news, unreal_news.
+   Sections must come from this list, spelled exactly: tasks, projects, daily_forecast, ai_news, unreal_news, overnight.
    Any other name is silently ignored by the digest, so never invent one.
 
 2. watchlist.md - a plain list of things the monitor keeps an eye on. Free text, one item per line, each starting with "- ".

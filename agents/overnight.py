@@ -10,6 +10,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import openai
@@ -438,3 +439,57 @@ def _log_failure(goal: Optional[dict], state: dict, start_tokens: int, now: date
                          state["files"], state["finished"], stopped, now=now)
     except Exception as e:
         logger.error("Could not log the failed session - %s: %s", type(e).__name__, e)
+
+
+def _paper_title(path: Path) -> str:
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("# "):
+                return line[2:].strip() or path.name
+    except OSError:
+        pass
+    return path.name
+
+
+def digest_section(night: str) -> tuple[str, list[Path]]:
+    """The morning digest's account of one night, built from the log with no model call.
+
+    Returns ("", []) when nothing was produced, so a quiet night adds no section.
+    """
+    try:
+        entries = [e for e in work._load() if e.get("night") == night]
+        papers: list[Path] = []
+        drafts: list[str] = []
+        produced = False
+        root = config.MEMORY_DIR.resolve()
+        for e in entries:
+            for rel in e.get("finished") or []:
+                path = (config.MEMORY_DIR / str(rel)).resolve()
+                if root in path.parents and path.is_file() and path not in papers:
+                    papers.append(path)
+            for rel in e.get("files") or []:
+                name = Path(str(rel)).name
+                if name.startswith("draft-") and name not in drafts:
+                    drafts.append(name)
+            if e.get("files") or e.get("finished"):
+                produced = True
+        if not produced:
+            return "", []
+        tokens, searches = work.spent(night)
+        lines = []
+        if papers:
+            lines.append("Papers finished:")
+            lines.extend(f"- {_paper_title(p)} ({p.name})" for p in papers)
+        if drafts:
+            lines.append("Drafts in progress: " + ", ".join(drafts))
+        waiting = len(proposals.pending())
+        if waiting:
+            lines.append(f"{waiting} proposal{'s' if waiting != 1 else ''} waiting for your review")
+        lines.append(f"Spent: {tokens} tokens, {searches} searches")
+        reason = work.stopped(night)
+        if reason:
+            lines.append(f"Stopped early: {reason}")
+        return "\n".join(lines), papers
+    except Exception as e:
+        logger.error("Overnight digest section failed - %s: %s", type(e).__name__, e)
+        return "", []
