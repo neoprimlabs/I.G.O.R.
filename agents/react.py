@@ -273,7 +273,7 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "list", "cancel"]},
-                "brief": {"type": "string", "description": "add: what the message is for, in a few words. The words are written when it sends, so it fits the moment. If the user dictated exact words, put them in double quotes inside the brief"},
+                "brief": {"type": "string", "description": "add: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If the user dictated exact words, put them in double quotes"},
                 "at": {"type": "string", "description": "add: local time, YYYY-MM-DD HH:MM"},
                 "in_minutes": {"type": "integer", "description": "add: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add: let IGOR pick a varied time inside this window"},

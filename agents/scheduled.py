@@ -5,11 +5,10 @@ job checks that file every minute and sends whatever is due.
 
 An entry carries either content, the exact words, fixed when scheduled and free to
 deliver; or a brief, a few words about what the message is for, with the words
-written at delivery by agents/compose.py. React can only give a brief (run_tool);
-content remains for callers in code. A brief costs one small model call and can
-mention things that happened after it was scheduled, which is the difference between
-a check-in and a replayed string. If composing fails the brief is sent as plain text,
-because a check-in that arrives plainly beats one that vanishes.
+written at delivery by compose.write: an agent run with read-only tools, as Hermes
+runs a job when it fires. React can only give a brief (run_tool); content remains
+for callers in code. If writing fails the brief is sent as plain text, because a
+message that arrives plainly beats one that vanishes.
 
 A polled file rather than one APScheduler job per message, because APScheduler
 3.11.3 silently drops a date job more than one second late (measured on the server,
@@ -50,6 +49,7 @@ _WINDOWS = {
     "tomorrow": (10, 23),
 }
 _EARLIEST_AHEAD = timedelta(minutes=5)
+_SAME_SLOT = timedelta(minutes=5)
 
 
 class _Unreadable(Exception):
@@ -168,6 +168,23 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     except _Unreadable as e:
         logger.error("scheduled.json is unreadable, refusing to add - %s", e)
         return "Not scheduled: the scheduled message store is unreadable. Nothing was changed."
+    # 2026-10-16, live: told to "draft something new at the scheduled time", React
+    # added a second 1am entry beside the first, though the add result listed it and
+    # said to cancel. Two messages minutes apart are never what was meant. Merging
+    # rather than replacing, because "pills at 9" and "call mom at 9" are two real
+    # requests and replacing would drop one.
+    if brief:
+        for e in entries:
+            if (e.get("brief") and not e.get("content") and not e.get("failed")
+                    and abs(datetime.fromisoformat(e["due"]) - due) <= _SAME_SLOT):
+                e["brief"] = (f"{brief} (This updates or adds to an earlier request for the "
+                              f"same time: {e['brief']})")
+                _save(entries)
+                logger.info("Merged a new brief into scheduled message %s", e["id"])
+                when = _human(datetime.fromisoformat(e["due"]), now)
+                return (f"Okay, {when}. Merged with the message already set for then, "
+                        "so one message will send, covering both.")
+
     if len(entries) >= _MAX_PENDING:
         return f"Not scheduled: {_MAX_PENDING} messages are already pending. Cancel one first."
 
@@ -241,7 +258,7 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
             # plain words beats one that vanishes, so the brief is the fallback.
             writer = compose
             if writer is None:
-                from agents.compose import compose as writer
+                from agents.compose import write as writer
             try:
                 written = await writer(brief, now)
             except Exception as e:

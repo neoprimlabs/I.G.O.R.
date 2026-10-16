@@ -427,6 +427,71 @@ def test_monitor_sees_pending() -> None:
            "Sat 2026-09-12 23:30 EDT" in status and "thought-provoking" in status, status)
 
 
+def test_same_slot_merges() -> None:
+    """2026-10-16, live: React added a second 1am entry beside the first, though the
+    add result listed it and said to cancel. Both would have sent."""
+    from agents import scheduled
+
+    oct14 = _utc(2026, 10, 14, 22, 11)
+    path = _fresh_store()
+    scheduled.add(brief="a philosophical prompt", at="2026-10-15 01:00", now=oct14)
+    reply = scheduled.add(brief="a deeper one, written fresh", at="2026-10-15 01:00", now=oct14)
+    entries = _stored(path)
+    _check("a second request for the same time becomes one message", len(entries) == 1, str(entries))
+    _check("and the merged brief keeps both requests",
+           bool(entries) and "deeper" in entries[0]["brief"] and "philosophical" in entries[0]["brief"],
+           str(entries))
+    _check("and the user is told one message will send", "one message" in reply, reply)
+
+    scheduled.add(brief="call mom", at="2026-10-15 09:00", now=oct14)
+    _check("a request for a different time stays separate", len(_stored(path)) == 2, str(_stored(path)))
+
+
+async def test_write_at_delivery() -> None:
+    """The writer runs an agent like Hermes does at fire time, and every failure of
+    that falls back - to compose, and past that to the brief - rather than losing
+    the message."""
+    from agents import compose, react
+
+    seen = {}
+    real_handle, real_compose = react.handle, compose.compose
+
+    async def agent_ok(message, context, **kw):
+        seen.update(kw, message=message, context=context)
+        return "What would you keep if every belief you hold were replaced one by one?"
+
+    async def agent_raises(*a, **kw):
+        raise RuntimeError("groq down")
+
+    async def agent_empty(*a, **kw):
+        return "   "
+
+    async def compose_stub(brief, now=None):
+        return "composed fallback"
+
+    try:
+        compose.compose = compose_stub
+        react.handle = agent_ok
+        text = await compose.write("a deep philosophical question")
+        _check("the agent's message is what sends", text.startswith("What would you keep"), text)
+        _check("the agent gets the brief", "a deep philosophical question" in seen.get("message", ""), str(seen))
+        _check("with no conversation history", seen.get("context") == [], str(seen.get("context")))
+        banned = {"shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
+                  "send_message", "scheduled_message", "delegate_task", "task_update"}
+        tools = set(seen.get("allowed_tools") or [])
+        _check("and only read-only tools - nobody is watching when it runs",
+               bool(tools) and not tools & banned, str(tools))
+
+        react.handle = agent_raises
+        _check("an agent that raises falls back to compose",
+               await compose.write("x") == "composed fallback")
+        react.handle = agent_empty
+        _check("an agent that returns nothing falls back to compose",
+               await compose.write("x") == "composed fallback")
+    finally:
+        react.handle, compose.compose = real_handle, real_compose
+
+
 if __name__ == "__main__":
     print("clock")
     test_clock()
@@ -451,6 +516,8 @@ if __name__ == "__main__":
     test_the_1am_message()
     test_react_cannot_prewrite()
     test_monitor_sees_pending()
+    test_same_slot_merges()
+    asyncio.run(test_write_at_delivery())
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
