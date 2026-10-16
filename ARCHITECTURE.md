@@ -6,25 +6,20 @@ window on purpose; the rest is reachable with `offset`. Describe nothing unread.
 ## The whole system, in one page
 
 A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
-`VM.Standard.E2.1.Micro` (1 OCPU / 956 MB), root `/opt/igor`, systemd `igor` and
-`igor-watchdog`. Groq free tier via the `openai` SDK, Exa for search, markdown plus
-SQLite for persistence. No database server, no web UI, no admin panel.
+`VM.Standard.E2.1.Micro` (1 OCPU / 956 MB), `/opt/igor`, systemd. Groq free tier
+via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 
 ## What does NOT exist
 
-Say so plainly, do not describe these as working:
-
-- **No content filter, moderation pipeline, or safety classifier** over what any
-  agent generates. Nothing screens output for accuracy or harm; `sanitize.clean`
-  only maps typography. Two exceptions: `presence._tidy` drops a check-in claiming
-  work IGOR never did or over 400 chars, and `digest_config.md` filters news by
-  keyword. The models refuse things on their own - that is Groq's, not IGOR's.
-- **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.**
-- **No connection to any external platform.** No posting, no email, no social or
-  publishing accounts. IGOR drafts; a human publishes.
-- **No self-deployment.** `restart_self` does work - the watchdog acts on its
-  sentinel - but IGOR cannot pull, gate or roll back its own code.
-- **No sandbox.** `shell` and `python_run` run as the `igor` user on the live host.
+- **No content filter or safety classifier** over output. `sanitize.clean` only
+  maps typography; refusals come from the models, not from IGOR.
+- **No external accounts.** No posting, email or social media. IGOR drafts; a
+  human publishes. It never buys anything and never applies for a job.
+- **No self-restart.** `restart_self` writes a sentinel, but the watchdog has no
+  sudo rights, so nothing restarts. Only the deploy script below restarts IGOR.
+- **No sandbox.** `shell` and `python_run` run as `igor` on the live host.
+- **No `scheduler.yaml`, no `run_agent()`, no `igor` module, no admin UI.** Also
+  no voice and no image reading.
 
 **React's 16 tools, the complete list:** `search`, `memory_read`, `search_memory`,
 `search_files`, `delegate_task`, `task_update`, `python_run`, `read_file`,
@@ -32,8 +27,7 @@ Say so plainly, do not describe these as working:
 `memory_write`, `scheduled_message`. There are no others.
 
 **Routing.** Four exact-match fast paths, then one router call
-(`qwen/qwen3.8-27b`, `max_tokens=10`) returning one of six words. Any router
-failure falls through to React.
+(`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
@@ -44,52 +38,28 @@ failure falls through to React.
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
-**Questions about IGOR go to SelfDescribe, not React.**
+**Scheduled jobs**, all registered in code in `monitor.setup()`: morning digest
+(13:00 UTC), job watch (14:30), price watch (2-hourly), stock watch (hourly), a
+Groq model check, an advocacy draft (Mondays), presence (every 10 min) and a 60s
+check for due scheduled messages. Retiming one needs a deploy.
 
-**Three watchers**, each driven by a markdown file in `memory/`, silent unless they
-have something, detailed below the summary. **Price watch**
-(`prices.py`, 2-hourly) reads Slickdeals RSS for a part under a target price.
-**Stock watch** (`stock.py`, hourly) reads a vendor's product JSON for per-variant
-availability, speaking only on a change to buyable - what a deal feed cannot see.
-**Job watch** (`jobs.py`, daily) reads RemoteOK, WWR, Greenhouse and Remotive;
-Indeed has no usable API. Code decides what it can be right about, a model judges
-the rest. **IGOR never applies for a job and never buys anything.**
+**Watchers** for prices, restocks and job postings each read a file in `memory/`
+and stay silent unless something changed.
 
-**Scheduling.** APScheduler, in-process. Eight recurring jobs plus three run-once
-startup jobs, all registered *in code* in `monitor.setup()`: the morning digest
-(13:00 UTC), a Groq model check, an advocacy draft (Mondays), a job watch (14:30), a
-price watch (2-hourly), a stock watch (hourly), a 60s check for due scheduled
-messages, and a presence tick every 10 minutes. No scheduler config file: retiming a
-job needs a code change and a deploy.
+**Scheduled messages** are what the user can schedule by asking:
+`scheduled_message` adds, lists or cancels one-off messages in
+`memory/scheduled.json`, up to 30 days ahead, in America/New_York time.
 
-**Scheduled messages** are the one thing the user can schedule by asking:
-`scheduled_message` adds, lists or cancels entries in `memory/scheduled.json`, up to
-30 days ahead. Timezone is `config.USER_TZ` (America/New_York). An entry holds
-either `content` (exact words) or a `brief` (words written at delivery by
-`agents/compose.py`); given both, the brief is kept. Every add returns the other
-pending entries with their ids, so a corrected time can cancel the one it replaces
-instead of both sending. Asking for a message later, or changing one, routes `TASK`.
+**Presence**: one check-in a day at a code-picked time, behind gates checked in
+code. Off unless `memory/presence_config.md` says `state: on`.
 
-**Presence** (`agents/presence.py`) is IGOR deciding whether to speak unprompted,
-usually deciding not to. One check-in a day at a code-picked time. Gates run in code
-before any model call: silent 03:00-10:00 local, 4h between messages, 2 a day, 6
-calls a day, never within 20 minutes of a live conversation. **Off unless
-`memory/presence_config.md` says `state: on`.**
+**Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
+`memory_write` take names from a fixed list. `corrections.md` and `drafts.md` are
+sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
+with no web content, and reading one closes the web for the rest of that turn.
 
-**Config and memory** are markdown files in `/opt/igor/memory/`, plus `context.db`.
-`memory_read` and `memory_write` each take a filename from a fixed list - that list
-is the authority on what exists, not this paragraph. `agents.md` holds **standing
-preferences only, NOT the agent list above.** `corrections.md` and `drafts.md` are
-**sealed in every turn**.
-`resume.md` and `memory/private/` are **guarded**: React may read them when no web
-content has entered the turn, and doing so closes `search` and `fetch_url` for the
-rest of it. **Private data and the open web never share a turn, in either
-direction.** No agent may write any of them, and `search_memory` skips them all.
-
-**Deployment** runs through a root-owned script at
-`/usr/local/lib/igor-deploy/deploy.sh`, outside `/opt/igor` and beyond IGOR's reach:
-it compile-checks, imports every module, restarts, waits for the gateway, reverts
-on failure.
+**Deployment** runs through a root-owned script outside `/opt/igor`: compile,
+import, restart, wait for Discord, roll back on failure.
 
 <!-- END SELF SUMMARY -->
 
@@ -113,7 +83,7 @@ itself. None of this is needed to answer "how does IGOR work".
 ---
 
 Describes the system **as it exists today**, verified against the source on
-2026-08-13. Nothing aspirational appears here.
+2026-10-16. Nothing aspirational appears here.
 
 - `IGOR_SPEC.md` is the vision. Some of it has never been built.
 - `GAMEPLAN.md` is the plan. All of it is unbuilt by definition.
@@ -212,9 +182,10 @@ A Discord DM travels this path every time:
    (2048 chat, 3072 file mode), dispatches to the destination.
 6. **Evaluator** - file mode only. One PASS/FAIL contract check, one retry with
    feedback, then delivers with an `[Evaluator warning: ...]` prefix. Fails open.
-7. **`orchestrator.process` tail** - critic (disabled), context update (both
-   sides truncated to 1500 chars, written to the in-memory list and SQLite),
-   `[Monitor]` suffix when applicable.
+7. **`orchestrator.process` tail** - critic (disabled), context update (each
+   side stored up to 20000 chars, in memory and in SQLite), `[Monitor]` suffix
+   when applicable. Each agent gets the last 6 entries within its own character
+   budget, newest in full and older ones shortened.
 8. **`discord_bot`** - `_sanitize` converts em dashes to spaced hyphens and maps
    remaining typographic punctuation to ASCII, then chunks to Discord's 2000-char
    limit, hard-splitting over-long single lines.
@@ -227,7 +198,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 12 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 16 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -350,7 +321,7 @@ guessed, and it shares `monitor._parse_tasks` with the digest so the two can nev
 disagree about what is open.
 
 `delegate_task` runs one isolated worker: `handle()` again with an empty context, a
-restricted tool list, 6 iterations and `MODELS["worker"]`. It is how a job stops
+restricted tool list, 8 iterations and `MODELS["worker"]`. It is how a job stops
 having to fit in the parent's context window. Three constraints make it safe rather
 than merely useful, each covered by `tests/test_delegation.py`:
 
@@ -405,6 +376,21 @@ have the date stripped, because the model writes its training-era year into
 queries despite the real date being in its prompt. A recency query with no
 `recency_days` gets a 180-day window automatically. Results carry `Published`
 dates.
+
+### Scheduled messages and presence
+
+An entry in `memory/scheduled.json` holds either `content` (exact words) or a
+`brief` (words written at delivery by `agents/compose.py`); given both, the brief
+is kept. Every add returns the other pending entries with their ids, so a
+corrected time can cancel the one it replaces instead of both sending. Asking for
+a message later, or changing one, routes `TASK`.
+
+Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
+between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
+conversation.
+
+The job watch reads RemoteOK, WWR, Greenhouse and Remotive. Code decides what it
+can be right about and a model judges the rest.
 
 ### ConfigEdit
 
@@ -516,6 +502,7 @@ this table used to list no longer exist (re-measured 2026-08-18):
 | `research` | `openai/gpt-oss-20b` | 8000, shared with `evaluator` and `summary` |
 | `evaluator` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
+| `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
 
 `chat` and `react` share a bucket deliberately: the router sends a message to one
 or the other and never both, so they alternate on the hot path instead of stacking.
@@ -591,7 +578,7 @@ default, so the prompt in the source is the prompt in play.
 `main._smoke_test()` runs after `_ensure_memory_files()` and exits 1 rather than
 raising, so `start.sh` crash recovery restores the last good commit. It verifies:
 
-- all six `config.MODELS` roles present and non-empty
+- six `config.MODELS` roles present and non-empty (`worker` is not checked)
 - `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
   at least 1
 - four routing fast paths resolve correctly (all on fast paths, so no API call)
@@ -664,8 +651,8 @@ path without breaking anything.
 
 **Consequence for self-modification:** React can write code and can write the
 restart sentinel, but the restart never happens. Changes sit on disk unloaded
-until someone restarts the service by hand. `restart_self` has never been called
-in 30 days, so this has been true without being noticed.
+until someone restarts the service by hand. Confirmed 2026-10-16: the `igor` user
+has no sudo rights. The deploy script is the only working restart.
 
 None of these operate below the host either. When Oracle terminated the instance
 in July 2026, every layer was irrelevant. `scripts/backup_memory.ps1` covers that
@@ -689,8 +676,9 @@ health check, alerting to a Discord webhook.
 1. **Monitoring detects a dead process, not a dead gateway.** If IGOR is running
    and systemd reports active but the Discord connection has silently dropped, the
    health check reports healthy while the green dot is out. GAMEPLAN C.5.
-2. **The router is an 8B model and misroutes at the margins.** 19 of 20 test cases
-   pass; "what tools do you have access to" lands on Direct rather than React.
+2. **The router misroutes at the margins.** 26 of 27 live test cases passed on
+   2026-10-16; "We could have you use your autonomous scheduled system" lands on
+   Direct rather than SelfDescribe.
    Structural guards exist where a misroute would be harmful (ConfigEdit's no-op
    check), and the rest degrade into a worse answer rather than a wrong action.
 3. **Still on Oracle Always Free.** An entitlement change can terminate the
@@ -707,6 +695,8 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 - **The improvement loop.** The critic is disabled and nothing writes learned
   skills, so IGOR cannot improve itself. GAMEPLAN V.1.
 - **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
-- **Voice.** qwen3-tts is planned, not started.
+- **Voice.** Not started. Groq serves Whisper (speech to text) and Orpheus (text
+  to speech) on the existing key. qwen3-tts is not on Groq, and local TTS does not
+  fit the host.
 - **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
   global, `context.db` has no user column. Single-user is assumed throughout.

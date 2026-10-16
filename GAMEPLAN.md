@@ -738,7 +738,9 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 - [ ] **I.1 Web or Flutter UI.** Spec Phase 2. projects.md already tracks this as
   "I.G.O.R. App (Front-End)" with phone location enabling location-aware digests.
-- [ ] **I.2 Voice** via qwen3-tts, local on the instance. After I.1.
+- [ ] **I.2 Voice** via Groq: Whisper for speech to text, Orpheus for text to
+  speech, both already on the key. Not qwen3-tts, which Groq does not serve, and not
+  local, which the host cannot fit. Measure both rate limits first. After I.1.
 
 ## Phase A - Autonomy and learning
 
@@ -1152,7 +1154,7 @@ merits regardless of either.
 
 - R4.1 Paid escape hatch: optional ANTHROPIC key for file-mode/research when the
   user funds it (per-agent map makes this a one-line change per role).
-- R4.2 Flutter or web UI (spec Phase 2), then qwen3-tts voice.
+- R4.2 Flutter or web UI (spec Phase 2), then voice (see I.2).
 - R4.3 Raw/wiki memory restructure + ingest pipelines (old 2.6/2.7).
 - R4.4 Improvement loop with sign-off buckets (old 2.3) - revisit once the
   harness is stable; the critic stays disabled until then.
