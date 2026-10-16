@@ -644,8 +644,11 @@ marked failed for a human.
   added because the 10-14 replay left the misread 10am entry beside the new 1am
   one. Unit-tested; **the live replay is untested**: it ran into the daily cap
   (item 2 under Known broken). In the one live correction that ran, React still
-  used add-then-cancel, which worked but did not use update. Re-run the replay
-  once, after the daily budget resets. "100am" still reads as 10:00.
+  used add-then-cancel, which worked but did not use update.
+- **Same day, offline:** "100am"-style times are spelled out in code before any
+  model sees them, and every Groq response's token count goes to a ledger Monitor
+  reports against the cap. **Next: run `tests/live_scheduling.py` once, tomorrow,**
+  when the 2026-10-16 spend has aged out of Groq's window. It checks all three.
 - **Known detour, now narrower:** scheduling requests used to route CONFIG and
   usually reached React after ConfigEdit declined (~600-700 wasted tokens); once it
   did not decline - see Known broken 7. The new router rule should stop the detour.
@@ -754,6 +757,14 @@ T.1 is started, not finished. Run all of them with `venv/bin/python` on the serv
   web-delegation closing the parent's turn. Injects a fake runner, so it proves the
   wiring and nothing about the worker - rerun the live check in `## Hermes tool
   parity` after changing the worker prompt or model.
+- `tests/test_usage.py` - stdlib, no API. The token ledger (summing, the 24h
+  window, pruning, never raising) and run-together times (`100am` -> `1:00am`, and
+  what must stay untouched).
+- `tests/test_rate_limit.py` - stdlib, no API. What the user is told on a 429,
+  from the real 2026-10-16 daily-cap text; chat does not retry a daily cap.
+- `tests/live_scheduling.py` - **spends real tokens**, ~4 React turns. The three
+  scheduling failures from 2026-10-14/16. Refuses to run when the ledger shows less
+  than 40000 left on 120b, and prints what it spent.
 - `tests/test_search_files.py` and `tests/test_task_tool.py` - stdlib, no API.
 - `tests/test_no_pii_committed.py` - stdlib, no API. **Run before any commit that
   adds a test fixture.** The repo is public.

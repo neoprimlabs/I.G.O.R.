@@ -127,6 +127,7 @@ async def write(brief: str, now: Optional[datetime] = None) -> Optional[str]:
                 max_tokens=_AGENT_MAX_TOKENS,
                 allowed_tools=_AGENT_TOOLS,
                 system_override=_AGENT_SYSTEM,
+                label="Scheduled",
             ),
             timeout=_AGENT_TIMEOUT_S,
         )

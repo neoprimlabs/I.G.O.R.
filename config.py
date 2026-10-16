@@ -25,6 +25,13 @@ MODELS = {
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
 }
+
+# Groq tokens-per-day caps, only where measured from a 429 body - the cap appears
+# nowhere else. 120b read 2026-10-16. Never fill in a guess: usage.py reports a
+# model without an entry as "not measured", which is the truth.
+DAILY_TOKEN_CAPS = {
+    "openai/gpt-oss-120b": 200000,
+}
 # Delegated workers run on 20b, NOT on react's 120b. A worker starts while the
 # parent is mid-turn, so putting both on one 8000 TPM bucket means the parent's
 # next call contends with its own worker. 20b shares with research, evaluator and

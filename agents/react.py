@@ -6,6 +6,7 @@ from typing import Awaitable, Callable, Optional
 import openai
 
 import config
+import usage
 
 logger = logging.getLogger(__name__)
 
@@ -851,6 +852,7 @@ async def _delegate(goal: str, tools, parent_tools, depth: int = 0, run=None) ->
                 allowed_tools=allowed,
                 system_override=_WORKER_SYSTEM,
                 _depth=depth + 1,
+                label="Worker",
             )
     except Exception as e:
         logger.error("Delegated worker failed - %s: %s", type(e).__name__, e)
@@ -1212,6 +1214,7 @@ async def handle(
     allowed_tools: list[str] | None = None,
     system_override: str | None = None,
     _depth: int = 0,
+    label: str = "React",
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -1255,6 +1258,7 @@ async def handle(
                 tools=tools,
                 max_tokens=max_tokens,
             )
+            usage.record(use_model, response, label)
         except openai.BadRequestError as e:
             if "tool_use_failed" in str(e) and tool_failures < 3:
                 tool_failures += 1
@@ -1379,6 +1383,7 @@ async def handle(
             messages=messages,
             max_tokens=max_tokens,
         )
+        usage.record(use_model, final, label)
         # Deliberately not routed through llm.complete. Returning the partial is
         # already the right behaviour here, and a retry at double budget is unsafe:
         # _trim_to_budget fit this prompt against max_tokens, so doubling can push
