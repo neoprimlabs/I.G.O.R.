@@ -70,8 +70,7 @@ waits for Discord and rolls back on failure.
 
 ## History moved out of the summary
 
-- Groq removed the Llama family on 2026-08-17 and four roles returned 404 for a day;
-  the model check runs at startup for that reason.
+- Groq removed the Llama family on 2026-08-17 (404s); hence the startup model check.
 - Indeed is not a job source: its APIs are closed or NDA-gated.
 
 ---
@@ -98,10 +97,9 @@ user.
 - **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
   1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
 
-The host was an ARM A1 until 2026-07, when Oracle cut the Always Free A1 allowance
-and terminated it; anything describing IGOR as ARM is out of date. Formerly
-Anthropic-powered (migrated 2026-06-22 for cost); `anthropic` is installed, imported
-by nothing, as the hook for GAMEPLAN R4.1.
+The host was an ARM A1 until Oracle terminated it in 2026-07; anything saying ARM
+is out of date. IGOR left Anthropic on 2026-06-22 for cost; `anthropic` stays
+installed, unused, as the hook for GAMEPLAN R4.1.
 
 **The runtime is the server.** There is no local run; discord.py is not installed
 locally. Test pure logic with standalone Python snippets instead.
@@ -227,8 +225,7 @@ daily cap, quoting the wait from Groq's 429 body (`_rate_limit_reply`), the eval
 section, the research loop stops and reports what it has.
 
 This module exists because the knowledge lived as prose in CLAUDE.md and every new
-call site re-derived it. Six of eight had no handling at all. Tested by
-`tests/test_llm.py`.
+call site re-derived it. Tested by `tests/test_llm.py`.
 
 ### Direct
 
@@ -271,11 +268,11 @@ change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 failure of that judge fails open and sends unfiltered, since an unreadable reply is
 a 200 OK that would otherwise swallow a real drop. `monitor._watcher_status` shows
 each watch, its target, when it last really ran (STALE past 6h) and the cheapest
-keyword match, labelled unchecked; the job watch once sat silent for five days.
+keyword match, labelled unchecked.
 
 **Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
 `available` boolean and a price in cents: keyless, no model call. `aoostar.com`
-blocks the Oracle IP range (429 in 150ms, even on the bare storefront), so the
+blocks the Oracle IP range (429s), so the
 fetch falls back to the `r.jina.ai` relay - a third-party dependency on the critical
 path, sent only public product URLs. A failed fetch carries the old state forward (or the next
 success fakes a restock); state is kept raw and available-AND-under-ceiling, so an
@@ -314,8 +311,7 @@ than merely useful, each covered by `tests/test_delegation.py`:
   mid-turn with the user waiting; fanning out 429s the hot path. Depth is capped at 1
   so workers cannot delegate, and at 3 delegations per turn. Workers never get
   `send_message`, `scheduled_message`, `restart_self`, `memory_write`,
-  `task_update` or `delegate_task`; `tests/test_delegation.py` asserts the whole set
-  (`task_update` was once missed).
+  `task_update` or `delegate_task`; `tests/test_delegation.py` asserts the whole set.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
 with an optional `context` of up to 6 surrounding lines. The context exists
@@ -339,14 +335,12 @@ On iteration exhaustion, one final tool-free call forces a real answer.
 `max_tokens` and, above 7000, blanks the oldest tool results (protecting the
 newest two) until it fits. Only tool results are touched. If it still does not
 fit, the loop breaks to the forced-final-answer path, which trims with
-`keep_recent=0`. Without this, long tool sessions crossed the model's TPM limit
-around iteration 7 and 413'd, losing the whole turn.
+`keep_recent=0`. Without this, long tool sessions 413'd around iteration 7.
 
 **Search behaviour.** Queries containing both a recency word and an absolute date
 have the date stripped, because the model writes its training-era year into
-queries despite the real date being in its prompt. A recency query with no
-`recency_days` gets a 180-day window automatically. Results carry `Published`
-dates.
+queries. A recency query with no `recency_days` gets a 180-day window
+automatically.
 
 ### Scheduled messages and presence
 
@@ -404,8 +398,8 @@ handles both silent failures of a reasoning model on a tight budget (empty and
 clipped output are valid 200 OKs). **Both calls run at `reasoning_effort` low**, 4x
 to 7x fewer completion tokens than unset with output holding (measured 2026-08-10).
 
-Gathering and synthesis are in separate contexts: one ReAct loop doing both spent
-all 8 iterations searching, twice, and recorded nothing.
+Gathering and synthesis stay in separate contexts: one loop doing both spent all 8
+iterations searching and recorded nothing.
 
 Findings are delivered as a **raw file attachment with no model pass over them**,
 followed by an offer to synthesize on request. A `synthesize research` fast path
@@ -429,22 +423,26 @@ missing a field is skipped with a warning and left as written. React's `goal` to
 `overnight.tick()` returns at once outside 00:00-06:59 local, after a stop, at the
 budget, or with no active goal. Otherwise it runs one session for the active goal
 reviewed longest ago, logs it, and saves `next_action`, so a restart loses at most
-one session. It never raises. A session is a fixed pipeline: model calls with no
-tools, web search done by code, files written by code only under `memory/work/`.
-Nothing it runs can message anyone, spend, or reach outside.
+one session. A failed session also marks its goal reviewed, so it cannot wedge the
+rotation. It never raises. A session is a fixed pipeline: model calls with no tools,
+web search done by code, files written by code only under `memory/work/`. Nothing it
+runs can message anyone or act outside `memory/work/`; its only outbound call is the
+code-run web search. All calls use `config.OVERNIGHT_MODEL`, which the budget counts.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (the ResearchLoop prompts)
 appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or
 3 sessions since the last paper, a WRITE call drafts a paper. `paper_is_finished`
 checks in code, not by a model: a "What I am unsure about" heading and 3 distinct
-source links. A pass goes to the Evaluator (its note is appended on a fail), is saved
-as `paper-<night>.md`, and `findings.md` is archived beside it. A paper that fails the
-code check stays `draft-<night>.md`. A failed write is not retried the same night.
+source links, all in the findings. A pass goes to the Evaluator; an explicit FAIL
+keeps a draft (an Evaluator error passes). A pass is saved as `paper-<night>.md` and
+`findings.md` is archived beside it. Anything else stays `draft-<night>.md` (`-2`
+for more). A failed write is not retried the same night. The write call never
+doubles its budget, to stay under 8000 TPM.
 
 **Self-improvement session**: reads `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json`, and asks for at most 5 JSON proposals. These
 inputs derive from untrusted text, so they go in as data and are flattened, capped
-and stored in `work/self-improvement/proposals.md` (30 pending, 40 decided kept).
+(12 corrections, 25 errors, `rate-limited` log lines skipped) and stored in `work/self-improvement/proposals.md` (30 pending, 40 decided kept).
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
 `preference`, `prompt`, `code`. Approving a `preference` appends one dated line to
@@ -453,17 +451,20 @@ adds those lines to the prompts of Direct and React (whichever prompt source) an
 the job ranking profile. Approving a `prompt` or `code` proposal only marks it for a
 Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
 turn the quarantine above closes `proposal` itself, so approval needs a fresh message.
+`goal list` (next_action is distilled from web text) and `read_file` under `memory/work/`
+count the same; `search_files` skips that folder.
 
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
-`Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night; a daily-cap 429 logs
+`Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night (not one that hits
+the Evaluator, which fails open); a daily-cap 429 logs
 `daily cap 20b: <limit>`. 20b's daily cap is unmeasured; that limit belongs in
 `config.DAILY_TOKEN_CAPS`.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
 `digest_config.md` adds finished papers (sent as attachments), drafts, pending proposals,
-tokens and searches spent, and any early stop. A night that produced nothing adds
-nothing.
+tokens and searches spent, and any early stop (a capped night reports even with no
+files). A night that produced nothing adds nothing.
 
 ---
 
@@ -499,9 +500,8 @@ heuristic and cannot guarantee prevention; the constraint is structural instead.
 ## Models and rate limits
 
 `config.MODELS` is the single source of truth. Groq TPM limits are **per model**
-and independent buckets. Groq removed the Llama family on 2026-08-17; every
-general-purpose model it still serves is 8000 TPM, so the 6000 and 12000 buckets
-this table used to list no longer exist (re-measured 2026-08-18):
+and independent buckets. Every general-purpose model Groq serves is 8000 TPM
+(re-measured 2026-08-18, after the Llama family was removed):
 
 | Role | Model | Bucket |
 |---|---|---|
@@ -516,7 +516,7 @@ this table used to list no longer exist (re-measured 2026-08-18):
 `chat` and `react` share a bucket deliberately: the router sends a message to one
 or the other and never both, so they alternate on the hot path instead of stacking.
 The router is alone on qwen because it is the only model that answers inside a
-10-token budget; a router outage falls back to React, a chat outage reaches the user.
+10-token budget; a router outage falls back to React.
 
 **Fallback model.** `llm.create` is the one place a Groq chat completion is made
 for `llm.complete` and React. On a 429 that survived the client's retries it
@@ -525,7 +525,7 @@ retries once on `config.FALLBACK_MODELS` - 120b to 20b, a separate bucket.
 While benched, calls go straight to the fallback. The orchestrator scopes a turn
 (`start_turn`/`end_turn`, a ContextVar) and appends a one-line notice to any
 reply that used the fallback. 20b has no fallback, so if it is limited too the
-user gets `_rate_limit_reply`. This is Hermes' documented pattern. The router
+user gets `_rate_limit_reply`. The router
 is not covered - its failure already falls through to React.
 
 **Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
@@ -553,8 +553,7 @@ under about 1024 returns empty content with a 200 OK.
 
 All live in `memory/` on the server and are **gitignored** - they exist only on the
 host, plus the daily off-host archive `scripts/backup_memory.ps1` pulls to the
-user's PC (30 kept). Syncthing used to sync this folder; it is no longer running
-on either end (2026-10-16), so that archive is the only other copy.
+user's PC (30 kept). Syncthing no longer runs (2026-10-16), so that archive is the only other copy.
 
 **Read at startup, restart required:** `schedule_config.md`
 
@@ -624,7 +623,7 @@ silently drop every message.
 **What executes today.** `igor.service` runs `main.py` directly, so `start.sh` (compile
 check, crash revert) never runs, and `watchdog.py` is active but powerless: user
 `igor` has no sudoers entry, so nothing restarts IGOR except the deploy script.
-Checked 2026-08-03 and 2026-10-16. What protects the system:
+Checked 2026-08-03; sudo rights re-confirmed 2026-10-16. What protects the system:
 
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start
