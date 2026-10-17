@@ -112,6 +112,24 @@ every URL (`...price-optimization】`). Fixed the same night in `_links` (URL en
 brackets, quotes, markdown marks; trailing slash trimmed both sides), with a test
 built from those exact citations. The session counts against the night of 10-17.
 
+**First full night (night of 2026-10-17):** 8 sessions alternating g1/g2, none failed,
+52733 tokens and all 12 searches (the search cap is what binds), no 429 - so 20b's
+daily cap is still unmeasured. Two papers finished with 21-22 sources each, all
+verified present in the findings. Three weaknesses, fixed the same day:
+- The second paper repeated 4 of the first's 6 topics (1 shared link of ~22): after a
+  paper, findings.md is emptied and the planner lost what was covered. PLAN now gets
+  earlier papers' titles and headings (`_covered_by_papers`, 1500 chars).
+- Both proposals were stale: p2 was the "100am" bug fixed on 10-16 (and misstated),
+  p1 an early check-in failure. The first night worked through the 43-entry backlog
+  from September with no idea what had been fixed. The session now gets 40 recent
+  non-docs commit subjects (`_recent_fixes`); docs-only commits are skipped, because
+  with them the "100am" fix ranked 35th of 108 and fell outside the list.
+- The digest listed the test session's superseded draft as in progress; a draft now
+  drops off once a later paper in its folder finished.
+Still open, the user's call: g1's statement is generic, so the papers are market
+summaries rather than something aimed at a solo builder on a free tier. And the
+user decides on p1/p2 (recommended: reject both).
+
 **Still to do:** when a night first stops with `daily cap 20b: <limit>`, put that
 limit in `config.DAILY_TOKEN_CAPS` and Known broken 2 - the first measurement of
 20b's cap. The 60000-token budget is a guess until then.

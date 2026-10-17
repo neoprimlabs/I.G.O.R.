@@ -434,14 +434,15 @@ appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findin
 checks in code, not by a model: a "What I am unsure about" heading and 3 distinct
 source links, all in the findings. A pass goes to the Evaluator; an explicit FAIL
 keeps a draft (an Evaluator error passes). A pass is saved as `paper-<night>.md` and
-`findings.md` is archived beside it. Anything else stays `draft-<night>.md` (`-2`
-for more). A failed write is not retried the same night. The write call never
-doubles its budget, to stay under 8000 TPM.
+`findings.md` is archived beside it; else `draft-<night>.md`. PLAN is told earlier
+papers' titles and headings, so a new paper does not repeat them. A failed write is
+not retried that night; the write never doubles its budget (8000 TPM).
 
-**Self-improvement session**: reads `corrections.md` entries and ERROR lines in
-`config.LOG_FILE` newer than `seen.json`, and asks for at most 5 JSON proposals. These
-inputs derive from untrusted text, so they go in as data and are flattened, capped
-(12 corrections, 25 errors, `rate-limited` log lines skipped) and stored in `work/self-improvement/proposals.md` (30 pending, 40 decided kept).
+**Self-improvement session**: `corrections.md` entries and ERROR lines in
+`config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
+`rate-limited` skipped), with 40 recent non-docs commit subjects so it does not
+re-propose fixed mistakes. At most 5 JSON proposals, stored in
+`work/self-improvement/proposals.md` (30 pending, 40 decided kept).
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
 `preference`, `prompt`, `code`. Approving a `preference` appends one dated line to
