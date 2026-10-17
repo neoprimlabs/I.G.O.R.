@@ -192,7 +192,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     elif triggered:
         body = text[-_WRITE_INPUT_CHARS:]
         write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
-        paper = await complete(_WRITE_SYSTEM, write_user, _WRITE_BUDGET)
+        paper = await complete(_WRITE_SYSTEM, write_user, _WRITE_BUDGET, cap=_WRITE_BUDGET)
         if paper:
             ok, why = paper_is_finished(paper)
             if ok:
@@ -226,13 +226,15 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
 
 
 _SI_BUDGET = 3072
-_SI_MAX_CORRECTIONS = 20
-_SI_MAX_ERRORS = 40
+_SI_MAX_CORRECTIONS = 12
+_SI_MAX_ERRORS = 25
 _SI_MAX_PROPOSALS = 5
 _SI_CORRECTION_CHARS = 400
 _SI_ERROR_CHARS = 120
 _SI_LOG_TAIL_BYTES = 200_000
-# 20b is an 8000 TPM bucket: the budget plus the largest prompt this session builds.
+# 20b is an 8000 TPM bucket. The largest prompt this session builds is about 13000
+# chars (4000 tokens at 3.5 chars a token) and the budget adds 3072, so ~7000 of 8000;
+# the reserve counts chars at 3 a token plus slack. test_overnight asserts the bound.
 _SI_RESERVE = _SI_BUDGET + 13000 // 3 + 500
 
 _SI_SYSTEM = """You review an AI assistant's recent mistakes and propose fixes.
@@ -312,7 +314,7 @@ def _new_errors(after: str) -> tuple[list[str], str]:
     newest = after
     for line in raw.splitlines():
         m = _LOG_ERROR.match(line)
-        if not m or m.group(1) <= after:
+        if not m or m.group(1) <= after or "rate-limited" in m.group(2):
             continue
         newest = max(newest, m.group(1))
         latest[m.group(2)] = m.group(1)
@@ -359,7 +361,7 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
         + "\n\n=== Corrections (data) ===\n"
         + ("\n".join(f"[{ts}] {text}" for ts, text in corrections) or "none")
         + "\n\n=== Error log lines (data) ===\n" + ("\n".join(errors) or "none"))
-    reply = await complete(_SI_SYSTEM, user, _SI_BUDGET)
+    reply = await complete(_SI_SYSTEM, user, _SI_BUDGET, cap=_SI_BUDGET)
     # An empty reply is the model finding no clear mistake: the inputs are spent. Only
     # a failed call (an exception above) leaves seen.json alone so they are retried.
     seen["corrections"] = corrections[-1][0] if corrections else seen.get("corrections", "")

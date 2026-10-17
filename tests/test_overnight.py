@@ -490,6 +490,52 @@ def test_overnight_model_is_one_pinned_name() -> None:
     tmp.cleanup()
 
 
+def test_self_improvement_call_fits_the_tpm_bucket() -> None:
+    import proposals
+    from agents import react
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Review recent mistakes", "self_improve")
+    for i in range(30):
+        proposals.add("code", "p", "e", "c" * 400, "t")
+    entries = "".join(f"## 2026-10-16 {10 + i // 60:02d}:{i % 60:02d} UTC\n" + ("word " * 400) + "\n"
+                      for i in range(40))
+    (config.MEMORY_DIR / "corrections.md").write_text(entries, encoding="utf-8")
+    log = Path(tmp.name) / "igor.log"
+    log.write_text("".join(
+        f"2026-10-16 03:{i // 60:02d}:{i % 60:02d},123 ERROR " + ("x" * 300) + f" {i}\n"
+        for i in range(120)) + "2026-10-16 03:59:00,1 ERROR llm model rate-limited (429) benched\n",
+        encoding="utf-8")
+    config.LOG_FILE = str(log)
+    seen = {}
+
+    async def spy(system, user, max_tokens, cap=None):
+        seen.update(chars=len(system) + len(user), max_tokens=max_tokens, cap=cap, user=user)
+        return ""
+
+    s = _Stubs()
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=spy))
+    _check("the review call was made", "chars" in seen, str(work._load()[-1:]))
+    est = int(seen.get("chars", 0) / react._CHARS_PER_TOKEN) + seen.get("max_tokens", 0)
+    _check("worst-case prompt plus max_tokens is under 8000", est < 8000, str(est))
+    _check("the reserve covers the worst case",
+           overnight._SI_RESERVE >= est, f"{overnight._SI_RESERVE} < {est}")
+    _check("no doubling retry: cap equals max_tokens",
+           seen.get("cap") == seen.get("max_tokens"), str(seen.get("cap")))
+    _check("rate-limit benching lines are not mistakes", "rate-limited" not in seen.get("user", ""))
+    tmp.cleanup()
+
+
+def test_write_call_does_not_double() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    s = _Stubs(findings_per_step=5)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    writes = [c for c in s.caps if c[1] == overnight._WRITE_BUDGET]
+    _check("the write call pins cap to its budget",
+           len(writes) == 1 and writes[0][2] == overnight._WRITE_BUDGET, str(writes))
+    tmp.cleanup()
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
