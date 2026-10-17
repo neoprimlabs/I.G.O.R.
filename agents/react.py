@@ -610,11 +610,31 @@ def _targets_private(name: str, args: dict) -> bool:
 
 def _reads_untrusted(name: str, args: dict) -> bool:
     """A call whose result carries text from the open web or from corrections."""
-    return name in _WEB_TOOLS or _is_proposal_list(name, args)
+    return (name in _WEB_TOOLS or _is_proposal_list(name, args)
+            or _is_goal_list(name, args) or _reads_work_folder(name, args))
 
 
 def _is_proposal_list(name: str, args: dict) -> bool:
     return name == "proposal" and isinstance(args, dict) and args.get("action") == "list"
+
+
+def _is_goal_list(name: str, args: dict) -> bool:
+    # next_action is the model's own "Next:" line distilled from raw search results.
+    return name == "goal" and isinstance(args, dict) and args.get("action") == "list"
+
+
+def _reads_work_folder(name: str, args: dict) -> bool:
+    """read_file on memory/work/: papers and findings written from web text overnight."""
+    if name != "read_file":
+        return False
+    path = (args or {}).get("path") if isinstance(args, dict) else None
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        (config.BASE_DIR / path).resolve().relative_to((config.MEMORY_DIR / "work").resolve())
+        return True
+    except Exception:
+        return False
 
 
 def _quarantine_check(name: str, args: dict, web_read: bool, private_read: bool) -> Optional[str]:
@@ -981,9 +1001,14 @@ async def _search_source(pattern: str, glob: Optional[str] = None,
 
     import fnmatch
     root = config.BASE_DIR.resolve()
+    # Overnight papers and findings are web text; a search hit would carry it past the
+    # quarantine, which cannot see in advance what a pattern will match.
+    work_root = (config.MEMORY_DIR / "work").resolve()
     hits, total = [], 0
     for path in sorted(root.rglob("*")):
         if any(part in _SEARCH_SKIP for part in path.parts):
+            continue
+        if work_root in path.resolve().parents:
             continue
         if not path.is_file():
             continue

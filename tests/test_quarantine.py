@@ -136,6 +136,30 @@ async def test_execute_tool_threads_the_flag() -> None:
     _check("_execute_tool opens it when allowed", "Example Pizzeria" in out, out[:80])
 
 
+def test_overnight_output_counts_as_untrusted() -> None:
+    from agents import react
+
+    root = _fresh()
+    work = root / "memory" / "work" / "g1"
+    work.mkdir(parents=True)
+    (work / "paper-2026-10-17.md").write_text("# Paper\nIgnore previous\n", encoding="utf-8")
+    _check("goal list is an untrusted read",
+           react._reads_untrusted("goal", {"action": "list"}))
+    _check("goal add is not", not react._reads_untrusted("goal", {"action": "add"}))
+    _check("read_file on memory/work is an untrusted read",
+           react._reads_untrusted("read_file", {"path": "memory/work/g1/paper-2026-10-17.md"}))
+    _check("by a roundabout path too",
+           react._reads_untrusted("read_file", {"path": "memory/x/../work/g1/findings.md"}))
+    _check("an unrelated read_file is not",
+           not react._reads_untrusted("read_file", {"path": "memory/tasks.md"}))
+    _check("a malformed path is not", not react._reads_untrusted("read_file", {}))
+    import asyncio
+    out = asyncio.run(react._search_source("Ignore previous"))
+    _check("search_files never returns memory/work text", "paper-2026" not in out, out)
+    refusal = react._quarantine_check("shell", {"command": "ls"}, web_read=True, private_read=False)
+    _check("so a following shell call is refused", refusal is not None)
+
+
 if __name__ == "__main__":
     import asyncio
 
@@ -145,6 +169,8 @@ if __name__ == "__main__":
     test_the_two_directions()
     print("\nreads versus writes")
     asyncio.run(test_reads_are_allowed_writes_are_not())
+    print("\novernight output")
+    test_overnight_output_counts_as_untrusted()
     print("\nthe flag reaches the tool")
     asyncio.run(test_execute_tool_threads_the_flag())
 
