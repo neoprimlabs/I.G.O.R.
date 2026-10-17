@@ -177,6 +177,36 @@ def test_react_wiring() -> None:
         _check("dispatch reaches goals", "g1" in reply, reply)
 
 
+def test_tool_dispatch_survives_bad_input() -> None:
+    import asyncio
+    from agents import react
+    goals, tmp = _fresh()
+    with tmp:
+        goals.add("S", "research")
+        for label, name, args in (
+                ("goal with an integer id", "goal", {"action": "retire", "id": 5}),
+                ("goal with a list statement", "goal", {"action": "add", "statement": ["a"], "kind": "research"}),
+                ("proposal with an integer id", "proposal", {"action": "approve", "id": 3})):
+            try:
+                out = asyncio.run(react._execute_tool(name, args))
+            except Exception as e:
+                out = None
+                _check(f"{label} does not raise", False, repr(e))
+            if out is not None:
+                _check(f"{label} returns text", isinstance(out, str) and out.startswith("["), str(out))
+
+        def boom(inputs):
+            raise OSError("disk full")
+
+        real = goals.run_tool
+        goals.run_tool = boom
+        try:
+            out = asyncio.run(react._execute_tool("goal", {"action": "list"}))
+        finally:
+            goals.run_tool = real
+        _check("an OSError becomes an error string", out.startswith("[goal failed: OSError"), str(out))
+
+
 def test_next_action_is_capped() -> None:
     goals, tmp = _fresh()
     with tmp:
@@ -196,6 +226,7 @@ if __name__ == "__main__":
     test_rewrites_keep_malformed_blocks()
     test_invalid_values_skipped()
     test_react_wiring()
+    test_tool_dispatch_survives_bad_input()
     test_next_action_is_capped()
 
     if _failures:

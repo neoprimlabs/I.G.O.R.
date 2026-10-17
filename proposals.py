@@ -163,7 +163,7 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
         target["status"] = "approved"
         _save(items)
         logger.info("Approved preference %s", pid)
-        return f"Approved {pid}. It is now a standing preference."
+        return f"Approved {pid}: '{target['change']}'. It is now a standing preference."
     target["status"] = "approved"
     _save(items)
     return (f"Approved {pid}. Nothing was changed: a {target['kind']} change is applied in a "

@@ -91,7 +91,7 @@ class _Stub:
         self.calls = []
         self.reply = reply if reply is not None else _lines(_prop())
 
-    async def complete(self, system, user, max_tokens):
+    async def complete(self, system, user, max_tokens, cap=None):
         self.calls.append({"system": system, "user": user, "max_tokens": max_tokens})
         return self.reply
 
@@ -204,8 +204,10 @@ def test_approve_preference_reaches_prompts() -> None:
                         now=datetime(2026, 10, 16))
     base_react = react._get_system_prompt()
     _check("pending is not in the prompt", "language-specific" not in base_react)
-    msg = proposals.decide(pid, approve=True)
+    msg = proposals.decide(pid, approve=True, now=datetime(2026, 10, 16))
     _check("approval is acknowledged", "approved" in msg.lower(), msg)
+    _check("approval echoes the text written",
+           "Approved p1: 'Never suggest language-specific jobs.'" in msg, msg)
     block = proposals.preferences_block()
     _check("block header", block.startswith("Standing preferences the user approved:\n- "), block)
     _check("block has the change", "Never suggest language-specific jobs." in block)
@@ -403,7 +405,7 @@ def test_empty_reply_advances_seen_but_a_failed_call_does_not() -> None:
     goals.add("Review recent mistakes", "self_improve")
 
     class _Boom(_Stub):
-        async def complete(self, system, user, max_tokens):
+        async def complete(self, system, user, max_tokens, cap=None):
             raise RuntimeError("model down")
 
     _tick(overnight, _Boom())
