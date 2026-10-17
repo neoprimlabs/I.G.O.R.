@@ -36,6 +36,11 @@ conversation history"; on 2026-10-16 `context.db` retention went from 200 to 100
 messages for `search_history` without that being flagged at the time. Keep it, or
 set a limit.
 
+**Flagged, the user's call:** `research.md` and `memory_read`/`search_memory` of
+`goals.md` carry web-derived text into React without the untrusted-read quarantine.
+This predates the overnight loop; the loop's own outputs (`goal list`, reads of
+`memory/work/`) are covered. Extend the quarantine to those too, or leave it.
+
 
 1. **The corrections corpus was reviewed 2026-10-16** (the old item 1, ConfigEdit
    rewriting the digest schedule, was fixed 2026-09-16 - Known broken 7). 43 entries
@@ -103,7 +108,10 @@ code-level paper check, self-improvement sessions, the digest section);
 approved preferences in `memory/preferences.md` read by Direct, React and the job
 ranking; `scripts/backup_memory.ps1` copying `memory/work/` to `Documents\IGOR Work`
 on the PC (tested against an archive with and without the folder, and a corrupt
-one). Offline suite: 32 suites, 0 not passing.
+one). The final review's fixes are in: a failed session rotates past its goal, one
+`config.OVERNIGHT_MODEL` for calls, evaluator and budget, `goal list` and reads of
+`memory/work/` quarantined, calls kept under 8000 TPM, papers with invented links or
+an Evaluator FAIL stay drafts, a capped night shows in the digest. Offline suite: 32 suites, 0 not passing.
 
 **Pending until the merge** (the deploy script pulls `origin/master`):
 
