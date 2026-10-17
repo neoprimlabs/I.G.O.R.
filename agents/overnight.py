@@ -56,11 +56,15 @@ Style:
 _SESSION_RE = re.compile(r"<!-- session (\d+) -->")
 _WRITTEN_MARK = "<!-- paper written -->"
 _LIMIT_RE = re.compile(r"Limit\s+(\d+)")
-_LINK_RE = re.compile(r"https?://[^\s)>\]\"']+")
+# A URL ends at whitespace, brackets, quotes and markdown marks. Live 2026-10-17,
+# gpt-oss glued its full-width citation bracket to every URL ("...price-optimization】"),
+# so all 10 real sources of the first paper read as invented and it stayed a draft.
+_LINK_RE = re.compile(r"https?://[^\s)>\]\"'`*【】{}<|]+")
 
 
 def _links(text: str) -> set[str]:
-    return {m.rstrip(".,;") for m in _LINK_RE.findall(text)}
+    # Trailing "/" is trimmed on both sides so "/x" and "/x/" are one link.
+    return {m.rstrip(".,;:!?/") for m in _LINK_RE.findall(text)}
 
 
 def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, str]:

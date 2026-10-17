@@ -747,7 +747,7 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase A - Autonomy and learning
 
-- [ ] **A.4 Overnight work loop.** BUILT ON BRANCH 2026-10-16, deploy pending (see STATE.md `## Overnight work loop`); tick this when live. Design, approved by the
+- [x] **A.4 Overnight work loop.** LIVE 2026-10-17 (see STATE.md `## Overnight work loop`). Design, approved by the
   user: `docs/superpowers/specs/2026-10-16-overnight-work-loop-design.md`. Standing
   goals worked hourly 00:00-07:00 local on 20b only, in fixed pipelines with no
   tools that act; results as files in `memory/work/`; an Overnight section in the
