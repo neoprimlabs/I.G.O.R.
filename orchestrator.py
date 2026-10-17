@@ -133,9 +133,9 @@ def _looks_like_correction(message: str) -> bool:
 _STORE_CAP = 20000
 _OLD_ENTRY_CAP = 700
 
-# Per-destination context budgets, in characters. React carries 13 tool schemas
-# (~2100 tokens) on an 8000 TPM model, so it has roughly 2300 tokens of room for
-# history. Direct carries no tools on a 12000 bucket and can afford far more.
+# Per-destination context budgets, in characters. React carries every schema in
+# react._TOOLS (20 of them, ~3700 tokens at 3.5 chars a token) on an 8000 TPM model,
+# so history gets only a few thousand characters. Direct carries no tools on a 12000 bucket and can afford far more.
 # One number cannot serve both.
 # 1500 chars paid for the approved-preferences block react appends to its system prompt.
 _CONTEXT_BUDGET_REACT = 7000

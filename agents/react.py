@@ -1394,11 +1394,19 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 
     if name == "goal":
         import goals
-        return goals.run_tool(inputs)
+        try:
+            return goals.run_tool(inputs)
+        except Exception as e:
+            logger.error("goal tool failed - %s: %s", type(e).__name__, e)
+            return f"[goal failed: {type(e).__name__}. Check the id and statement are plain text.]"
 
     if name == "proposal":
         import proposals
-        return proposals.run_tool(inputs)
+        try:
+            return proposals.run_tool(inputs)
+        except Exception as e:
+            logger.error("proposal tool failed - %s: %s", type(e).__name__, e)
+            return f"[proposal failed: {type(e).__name__}. Check the id is plain text.]"
 
     if name == "memory_write":
         from agents import prod_memory
