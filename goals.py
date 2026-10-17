@@ -16,6 +16,7 @@ import config
 logger = logging.getLogger(__name__)
 
 KINDS = ("research", "self_improve")
+_NEXT_ACTION_CAP = 200
 _SETTABLE = ("active", "paused")
 _FIELDS = ("kind", "status", "created", "last_reviewed", "next_action")
 
@@ -166,7 +167,7 @@ def note_progress(goal_id: str, next_action: str, now: Optional[datetime] = None
     for g in goals:
         if g["id"] == goal_id:
             g["last_reviewed"] = now.isoformat()
-            g["next_action"] = " ".join((next_action or "").split()) or "start"
+            g["next_action"] = " ".join((next_action or "").split())[:_NEXT_ACTION_CAP] or "start"
             _replace(g, g)
             return
     logger.warning("note_progress: no goal %s", goal_id)

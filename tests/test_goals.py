@@ -177,6 +177,15 @@ def test_react_wiring() -> None:
         _check("dispatch reaches goals", "g1" in reply, reply)
 
 
+def test_next_action_is_capped() -> None:
+    goals, tmp = _fresh()
+    with tmp:
+        goals.add("S", "research")
+        goals.note_progress("g1", "x" * 500)
+        got = goals.load()[0]["next_action"]
+        _check("next_action capped at 200", len(got) == 200, str(len(got)))
+
+
 if __name__ == "__main__":
     test_add_and_load()
     test_next_to_work_picks_oldest_active()
@@ -187,6 +196,7 @@ if __name__ == "__main__":
     test_rewrites_keep_malformed_blocks()
     test_invalid_values_skipped()
     test_react_wiring()
+    test_next_action_is_capped()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
