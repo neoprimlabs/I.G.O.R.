@@ -45,10 +45,11 @@ def _fresh():
     config.MEMORY_DIR = Path(tmp.name)
     calls = {"eval": 0}
 
-    async def _pass(task, response, label="Evaluator"):
+    async def _pass(task, response, label="Evaluator", model=None):
         calls["eval"] += 1
         calls["label"] = label
-        return True, ""
+        calls["model"] = model
+        return calls.get("verdict", (True, ""))
 
     evaluator.evaluate = _pass
     return overnight, goals, work, tmp, calls
@@ -61,14 +62,16 @@ class _Stubs:
             findings_per_step, unsure, links, raises)
         self.n = 0
         self.plan_users = []
+        self.caps = []
         self.empty_write = False
 
     async def search(self, query, max_results=5):
         self.queries.append(query)
         return [{"title": "t", "url": "https://e.example/a", "content": "c"}]
 
-    async def complete(self, system, user, max_tokens):
+    async def complete(self, system, user, max_tokens, cap=None):
         self.systems.append(system)
+        self.caps.append((system[:20], max_tokens, cap))
         if self.raises:
             raise self.raises
         if system.startswith("You plan one step"):
@@ -428,6 +431,62 @@ def test_digest_attaches_finished_papers() -> None:
     _check("a quiet night adds no section and attaches nothing",
            files == [] and "Overnight" not in sent[0], str(sent))
     monitor._send_fn = None
+    tmp.cleanup()
+
+
+def test_failing_session_does_not_wedge_rotation() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Alpha topic", "research")
+    goals.add("Beta topic", "research")
+    s = _Stubs()
+    real = s.complete
+
+    async def flaky(system, user, max_tokens, cap=None):
+        if "Alpha topic" in user:
+            raise RuntimeError("boom")
+        return await real(system, user, max_tokens, cap)
+
+    out1 = _run(overnight.tick(NIGHT_TIME, search=s.search, complete=flaky))
+    later = datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ)
+    out2 = _run(overnight.tick(later, search=s.search, complete=flaky))
+    _check("first tick fails on the first goal", out1.startswith("error"), out1)
+    _check("the next tick works the other goal", out2.startswith("g2:"), out2)
+    tmp.cleanup()
+
+
+def test_overnight_model_is_one_pinned_name() -> None:
+    import asyncio as _a
+    from agents import evaluator, research_loop
+    import llm
+    overnight, goals, work, tmp, calls = _fresh()
+    _check("not a fallback target",
+           config.OVERNIGHT_MODEL not in config.FALLBACK_MODELS)
+    _check("not the chat model", config.OVERNIGHT_MODEL != config.MODELS["chat"])
+    seen = {}
+
+    async def fake_complete(client, model, *a, **k):
+        seen["model"] = model
+        return "x"
+
+    real_c, real_cl = llm.complete, research_loop._get_client
+    llm.complete, research_loop._get_client = fake_complete, lambda: None
+    try:
+        _a.run(overnight._real_complete()("s", "u", 1024))
+    finally:
+        llm.complete, research_loop._get_client = real_c, real_cl
+    _check("_real_complete targets it", seen.get("model") == config.OVERNIGHT_MODEL, str(seen))
+
+    goals.add("Study autonomous systems", "research")
+    _run(overnight.tick(NIGHT_TIME, search=_Stubs().search, complete=_Stubs(findings_per_step=5).complete))
+    _check("the evaluator call targets it", calls.get("model") == config.OVERNIGHT_MODEL,
+           str(calls))
+    import usage
+    real_u = usage.last_24h
+    usage.last_24h = lambda: {config.OVERNIGHT_MODEL: {"Overnight": 77}}
+    try:
+        _check("overnight_tokens reads that model", work.overnight_tokens() == 77)
+    finally:
+        usage.last_24h = real_u
     tmp.cleanup()
 
 

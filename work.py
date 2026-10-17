@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_ENTRIES = 300
 _WINDOW_END_HOUR = 7
-_MODEL = "openai/gpt-oss-20b"
 
 
 def _root() -> Path:
@@ -102,4 +101,4 @@ def stopped(night: str) -> str:
 
 def overnight_tokens() -> int:
     import usage
-    return usage.last_24h().get(_MODEL, {}).get("Overnight", 0)
+    return usage.last_24h().get(config.OVERNIGHT_MODEL, {}).get("Overnight", 0)

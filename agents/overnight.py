@@ -77,10 +77,11 @@ def _real_search():
 def _real_complete():
     from agents import research_loop
 
-    async def call(system: str, user: str, max_tokens: int) -> str:
+    async def call(system: str, user: str, max_tokens: int, cap: Optional[int] = None) -> str:
+        extra = {} if cap is None else {"cap": cap}
         return await llm.complete(
-            research_loop._get_client(), config.MODELS["research"], system, user,
-            max_tokens=max_tokens, label="Overnight", reasoning_effort=_REASONING_EFFORT)
+            research_loop._get_client(), config.OVERNIGHT_MODEL, system, user,
+            max_tokens=max_tokens, label="Overnight", reasoning_effort=_REASONING_EFFORT, **extra)
 
     return call
 
@@ -198,7 +199,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 paper_path = _unique(folder, "paper", night)
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
-                passed, feedback = await evaluator.evaluate(task, paper, label="Overnight")
+                passed, feedback = await evaluator.evaluate(task, paper, label="Overnight",
+                                                              model=config.OVERNIGHT_MODEL)
                 if not passed and feedback:
                     paper = paper.rstrip() + f"\n\n## Reviewer note\n{feedback}\n"
                 paper_path.write_text(clean(paper) + "\n", encoding="utf-8")
@@ -426,6 +428,12 @@ async def tick(now: Optional[datetime] = None, search=None, complete=None) -> st
     except Exception as e:
         logger.error("Overnight tick failed - %s: %s", type(e).__name__, e, exc_info=True)
         _log_failure(goal, state, start_tokens, now, f"error: {type(e).__name__}", "")
+        if goal is not None:
+            try:
+                goals.note_progress(goal["id"], goal["next_action"], now=now)
+            except Exception as e2:
+                logger.error("Could not rotate past the failed goal - %s: %s",
+                             type(e2).__name__, e2)
         return f"error: {type(e).__name__}"
 
 
