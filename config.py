@@ -59,6 +59,7 @@ FALLBACK_MODELS = {
 }
 
 # Overnight loop budget per night, on gpt-oss-20b whose daily cap is unmeasured, so kept modest.
+OVERNIGHT_MODEL = "openai/gpt-oss-20b"
 OVERNIGHT_TOKENS = 60000
 OVERNIGHT_SEARCHES = 12
 

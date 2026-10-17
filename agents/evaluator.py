@@ -51,10 +51,12 @@ def _get_system_prompt() -> str:
     return _DEFAULT_SYSTEM_PROMPT
 
 
-async def evaluate(task: str, response: str, label: str = "Evaluator") -> tuple[bool, str]:
+async def evaluate(task: str, response: str, label: str = "Evaluator",
+                   model: Optional[str] = None) -> tuple[bool, str]:
     """Judge response against task contract. Returns (passed, feedback).
 
-    Runs on its own client and the evaluator model (config.MODELS["evaluator"]).
+    Runs on its own client and the evaluator model (config.MODELS["evaluator"]) unless
+    the caller pins another with `model`.
     Fails open: any error in the evaluator itself counts as a pass, so the
     evaluator can degrade IGOR's output quality checks but never its availability.
     """
@@ -76,7 +78,7 @@ async def evaluate(task: str, response: str, label: str = "Evaluator") -> tuple[
     try:
         verdict = await llm.complete(
             _get_client(),
-            config.MODELS["evaluator"],
+            model or config.MODELS["evaluator"],
             messages[0]["content"],
             messages[1:],
             max_tokens=1024,
