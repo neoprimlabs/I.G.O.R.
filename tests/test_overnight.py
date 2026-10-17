@@ -17,6 +17,9 @@ import openai
 import clock
 import config
 
+from agents import evaluator as _evaluator_module
+
+_REAL_EVALUATE = _evaluator_module.evaluate
 _failures: list[str] = []
 NIGHT_TIME = datetime(2026, 10, 17, 2, 0, tzinfo=clock.USER_TZ)
 NIGHT = "2026-10-17"
@@ -56,7 +59,8 @@ def _fresh():
 
 
 class _Stubs:
-    def __init__(self, findings_per_step=5, unsure=True, links=3, raises=None):
+    def __init__(self, findings_per_step=5, unsure=True, links=3, raises=None, invent=False):
+        self.invent = invent
         self.queries, self.systems, self.writes = [], [], 0
         self.findings_per_step, self.unsure, self.links, self.raises = (
             findings_per_step, unsure, links, raises)
@@ -86,7 +90,9 @@ class _Stubs:
         if self.empty_write:
             return ""
         body = "# Paper\n\n## Findings\n" + "".join(
-            f"Claim {i} ([src](https://e.example/p{i})).\n" for i in range(self.links))
+            (f"Claim {i} ([src](https://invented.example/p{i})).\n" if self.invent
+             else f"Claim {i} ([src](https://e.example/1/{i})).\n")
+            for i in range(self.links))
         if self.unsure:
             body += "\n## What I am unsure about\nMuch.\n"
         return body
@@ -533,6 +539,85 @@ def test_write_call_does_not_double() -> None:
     writes = [c for c in s.caps if c[1] == overnight._WRITE_BUDGET]
     _check("the write call pins cap to its budget",
            len(writes) == 1 and writes[0][2] == overnight._WRITE_BUDGET, str(writes))
+    tmp.cleanup()
+
+
+def test_invented_link_keeps_paper_a_draft() -> None:
+    overnight, goals, work, tmp, calls = _fresh()
+    goals.add("Study autonomous systems", "research")
+    gid = _first_id(goals)
+    s = _Stubs(findings_per_step=5, invent=True)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    folder = work.folder(gid)
+    _check("kept as a draft", (folder / f"draft-{NIGHT}.md").exists())
+    _check("not finished", not (folder / f"paper-{NIGHT}.md").exists())
+    _check("the log says why", "not in the findings" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    _check("evaluator skipped", calls["eval"] == 0)
+    ok, _ = overnight.paper_is_finished(
+        "x\n## What I am unsure about\n" + " ".join(f"https://a.example/{i}" for i in range(3)),
+        "- f (https://a.example/0) (https://a.example/1) (https://a.example/2)")
+    _check("links all present in the findings are finished", ok)
+    tmp.cleanup()
+
+
+def test_evaluator_verdicts() -> None:
+    import llm
+    overnight, goals, work, tmp, calls = _fresh()
+    goals.add("Study autonomous systems", "research")
+    gid = _first_id(goals)
+    calls["verdict"] = (False, "no sources for claim 2")
+    s = _Stubs(findings_per_step=5)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    folder = work.folder(gid)
+    _check("an evaluator FAIL keeps a draft", (folder / f"draft-{NIGHT}.md").exists())
+    _check("and no paper", not (folder / f"paper-{NIGHT}.md").exists())
+    _check("the reason is logged", "no sources for claim 2" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    _check("nothing finished", work._load()[-1]["finished"] == [])
+    tmp.cleanup()
+
+    overnight, goals, work, tmp, calls = _fresh()
+    goals.add("Study autonomous systems", "research")
+    gid = _first_id(goals)
+    _evaluator_module.evaluate = _REAL_EVALUATE
+    real_complete, real_client = llm.complete, _evaluator_module._get_client
+
+    async def boom(*a, **k):
+        raise RuntimeError("evaluator down")
+
+    llm.complete, _evaluator_module._get_client = boom, lambda: None
+    try:
+        s = _Stubs(findings_per_step=5)
+        _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    finally:
+        llm.complete, _evaluator_module._get_client = real_complete, real_client
+    _check("an evaluator error fails open and the paper is finished",
+           (work.folder(gid) / f"paper-{NIGHT}.md").exists())
+    tmp.cleanup()
+
+
+def test_second_draft_the_same_night_is_kept() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    gid = _first_id(goals)
+    s = _Stubs(findings_per_step=5, unsure=False)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    _run(overnight.tick(datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=s.complete))
+    names = sorted(p.name for p in work.folder(gid).glob("draft-*"))
+    _check("both drafts exist", names == [f"draft-{NIGHT}-2.md", f"draft-{NIGHT}.md"], str(names))
+    tmp.cleanup()
+
+
+def test_capped_night_shows_in_the_digest() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    work.log_session(_first_id(goals), "research", "stopped: rate limited", 0, 0, [], [],
+                     stopped="daily cap 20b: 200000", now=NIGHT_TIME)
+    text, papers = overnight.digest_section(NIGHT)
+    _check("a capped night with no files still reports",
+           "Stopped early: daily cap 20b: 200000" in text and papers == [], text)
     tmp.cleanup()
 
 
