@@ -425,9 +425,9 @@ budget, or with no active goal. Otherwise it runs one session for the active goa
 reviewed longest ago, logs it, and saves `next_action`, so a restart loses at most
 one session. A failed session also marks its goal reviewed, so it cannot wedge the
 rotation. It never raises. A session is a fixed pipeline: model calls with no tools,
-web search done by code, files written by code only under `memory/work/`. Nothing it
-runs can message anyone or act outside `memory/work/`; its only outbound call is the
-code-run web search. All calls use `config.OVERNIGHT_MODEL`, which the budget counts.
+web search done by code, files written by code only under `memory/work/` plus each
+goal's progress line in `memory/goals.md`. Nothing it runs can message anyone; its only
+outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`, which the budget counts.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (the ResearchLoop prompts)
 appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or
