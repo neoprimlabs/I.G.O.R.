@@ -38,3 +38,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Claude Code worktrees (isolated build branches)
+.claude/worktrees/
