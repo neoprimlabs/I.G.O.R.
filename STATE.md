@@ -26,7 +26,26 @@ Last updated: **2026-10-16**
 
 ## Next action
 
-**Pick up here.** A.4, the overnight work loop, is **live** since 2026-10-17. Read its
+**Pick up here (2026-10-17 evening):**
+1. **Rewriting research goal g1 with the user - in progress.** The current g1 ("a
+   feature the user could build that generates income") produced generic market
+   papers. The user's actual aim, in their words: use IGOR's ability to work
+   overnight to generate revenue - "a job of some sort that IGOR could do on its own
+   to generate income". Not yet settled: what kind of work, who pays, and how that
+   fits IGOR's hard limits (no external accounts, no spending, no posting, drafts
+   only) - earning on its own likely needs at least one outward channel, which would
+   be a spec decision for the user. Do not rewrite goals.md until the user agrees the
+   new statement.
+2. **Fix: approving/rejecting proposals must not go through the model.** On 10-17
+   the user said "Reject proposal P1 Reject proposal P2"; React called reject with
+   "P1" (ids are lowercase, case-sensitive, so it failed), then `list` (untrusted
+   read, which closed the tool), then replied that both were rejected - false. The
+   controller rejected both on the server. Planned fix: a code fast path for
+   "approve|reject p<N>" (case-insensitive, several ids) that calls proposals.decide
+   and replies with the exact result, like the digest commands; ids normalised to
+   lowercase in proposals and goals too.
+
+A.4, the overnight work loop, is **live** since 2026-10-17. Read its
 first morning: the Overnight section of the 13:00 UTC digest, `memory/work/log.json`,
 and whether a night stopped on `daily cap 20b` (see `## Overnight work loop`). Then
 the SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop dashboard) follow.
