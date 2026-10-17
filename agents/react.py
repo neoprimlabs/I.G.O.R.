@@ -611,7 +611,35 @@ def _targets_private(name: str, args: dict) -> bool:
 def _reads_untrusted(name: str, args: dict) -> bool:
     """A call whose result carries text from the open web or from corrections."""
     return (name in _WEB_TOOLS or _is_proposal_list(name, args)
-            or _is_goal_list(name, args) or _reads_work_folder(name, args))
+            or _is_goal_list(name, args) or _reads_work_folder(name, args)
+            or _reads_web_derived_memory(name, args))
+
+
+def _is_web_derived_memory(filename: str) -> bool:
+    """research*.md is distilled from web pages; goals.md carries the model's
+    web-distilled next_action. Hermes treats everything read as untrusted; these are
+    the memory files where that is plainly true (2026-10-17). jobs_found.md is web
+    text too, but locking it would refuse the resume read in "which of these suit me"."""
+    name = filename.lower()
+    return name == "goals.md" or (name.startswith("research") and name.endswith(".md"))
+
+
+def _reads_web_derived_memory(name: str, args: dict) -> bool:
+    if not isinstance(args, dict):
+        return False
+    if name == "memory_read":
+        target = args.get("file")
+        return isinstance(target, str) and _is_web_derived_memory(target)
+    if name != "read_file":
+        return False
+    path = args.get("path")
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        resolved = (config.BASE_DIR / path).resolve()
+    except Exception:
+        return False
+    return resolved.parent == config.MEMORY_DIR.resolve() and _is_web_derived_memory(resolved.name)
 
 
 def _is_proposal_list(name: str, args: dict) -> bool:
@@ -749,7 +777,9 @@ async def _search_memory_files(query: str) -> str:
     results = []
     query_lower = query.lower()
     for path in sorted(config.MEMORY_DIR.glob("*.md")):
-        if _is_private(path.resolve()):
+        # Skipped, not quarantined: a keyword search cannot know in advance which
+        # files it will hit. memory_read of these files closes the turn instead.
+        if _is_private(path.resolve()) or _is_web_derived_memory(path.name):
             continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()

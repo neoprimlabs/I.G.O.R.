@@ -8,7 +8,8 @@ _DB_PATH = config.MEMORY_DIR / "context.db"
 # Was 200, about a week, and nothing could search it. Raised for search_history
 # (2026-10-16): rows are capped at 20000 chars by the orchestrator, so even a full
 # table is well under a few hundred MB, against 39 GB free, and a LIKE scan of it
-# is milliseconds. Prompts never see more than CONTEXT_WINDOW of it.
+# is milliseconds. Prompts never see more than CONTEXT_WINDOW of it. Age is the real
+# limit (config.HISTORY_RETENTION_DAYS); the count is a backstop.
 _MAX_STORED = 10000
 
 
@@ -77,6 +78,10 @@ def append(role: str, content: str) -> None:
             conn.execute(
                 "INSERT INTO messages (role, content, ts) VALUES (?, ?, ?)",
                 (role, content, int(time.time())),
+            )
+            conn.execute(
+                "DELETE FROM messages WHERE ts < ?",
+                (int(time.time()) - config.HISTORY_RETENTION_DAYS * 86400,),
             )
             conn.execute(
                 "DELETE FROM messages WHERE id NOT IN "

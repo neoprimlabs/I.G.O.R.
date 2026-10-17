@@ -70,15 +70,14 @@ waits for Discord and rolls back on failure.
 
 ## History moved out of the summary
 
-- Groq removed the Llama family on 2026-08-17 (404s); hence the startup model check.
+- The startup model check exists because Groq removed Llama on 2026-08-17.
 - Indeed is not a job source: its APIs are closed or NDA-gated.
 
 ---
 
 Describes the system **as it exists today**, verified against the source on
-2026-10-16. `IGOR_SPEC.md` is the vision and `GAMEPLAN.md` the plan; **this file is
-reality**, and when it disagrees with the code it is wrong - fix it in the same
-commit. IGOR reads it to describe itself and has repeated a stale version as fact. **Keep the summary above inside one
+2026-10-17. **This file is reality**; when it disagrees with the code it is wrong -
+fix it in the same commit. IGOR quotes it. **Keep the summary above inside one
 `read_file` window, 3700 characters**, and the whole file inside ten.
 
 ---
@@ -251,9 +250,9 @@ System prompt is rebuilt on every call from the current local and UTC time
 `python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`.
 
-`search_history` finds every word of a query in `context.db` (10000 messages,
-both sides plus proactive sends) and returns dated excerpts, newest first. A LIKE
-scan, not FTS5: milliseconds at this size, no index to keep in step. Read-only.
+`search_history` finds every word of a query in `context.db` (90 days, at most 10000
+messages, both sides plus proactive sends): dated excerpts, newest first. A LIKE scan,
+milliseconds at this size. Read-only.
 
 `shell` checks `_hardline_refusal` before anything runs: Hermes' floor (root or
 home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell)
@@ -451,8 +450,9 @@ adds those lines to the prompts of Direct and React (whichever prompt source) an
 the job ranking profile. Approving a `prompt` or `code` proposal only marks it for a
 Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
 turn the quarantine above closes `proposal` itself, so approval needs a fresh message.
-`goal list` (next_action is distilled from web text) and `read_file` under `memory/work/`
-count the same; `search_files` skips that folder.
+`goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`
+count the same (Hermes: everything read is untrusted); `search_files` and
+`search_memory` skip those files.
 
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
@@ -563,8 +563,8 @@ user's PC (30 kept). Syncthing no longer runs (2026-10-16), so that archive is t
 **Overnight loop files:** `goals.md` and `goals_archive.md`, `preferences.md`
 (approved standing preferences, 1500 character cap, read per call) and `work/`.
 
-**Data:** `context.db` (SQLite rolling context, `CONTEXT_WINDOW = 6`, 10000 rows
-retained on disk), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
+**Data:** `context.db` (rolling context, `CONTEXT_WINDOW = 6`; kept 90 days,
+`HISTORY_RETENTION_DAYS`), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
 
 **Memory holds preferences, history and user facts. It does not hold
