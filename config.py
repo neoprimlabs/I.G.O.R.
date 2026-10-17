@@ -77,6 +77,9 @@ LOG_FILE = BASE_DIR / "igor.log"
 # Number of individual messages (user + assistant counted separately) kept in
 # rolling session context and passed with every API call.
 CONTEXT_WINDOW = 6
+# Stored conversation is kept by age, as Hermes prunes sessions inactive 90 days.
+# IGOR_SPEC: "no hoarding of conversation history" (ratified by the user 2026-10-17).
+HISTORY_RETENTION_DAYS = 90
 
 # Critic pass fires a second API call after every React turn to evaluate skill
 # capture. On the Groq free 8k-TPM tier this doubles per-turn token pressure and

@@ -31,15 +31,13 @@ first morning: the Overnight section of the 13:00 UTC digest, `memory/work/log.j
 and whether a night stopped on `daily cap 20b` (see `## Overnight work loop`). Then
 the SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop dashboard) follow.
 
-**Flagged spec deviation, the user's call:** `IGOR_SPEC.md` says "no hoarding of
-conversation history"; on 2026-10-16 `context.db` retention went from 200 to 10000
-messages for `search_history` without that being flagged at the time. Keep it, or
-set a limit.
-
-**Flagged, the user's call:** `research.md` and `memory_read`/`search_memory` of
-`goals.md` carry web-derived text into React without the untrusted-read quarantine.
-This predates the overnight loop; the loop's own outputs (`goal list`, reads of
-`memory/work/`) are covered. Extend the quarantine to those too, or leave it.
+**Decided by the user 2026-10-17, following Hermes:** conversation history is kept 90
+days (`config.HISTORY_RETENTION_DAYS`; Hermes prunes sessions inactive 90 days), with
+10000 messages as a backstop - this resolves the "no hoarding" spec deviation. And
+reading `research*.md` or `goals.md` now closes the turn's state-changing tools like a
+web read (Hermes: everything read is untrusted); `search_memory` skips those files.
+`jobs_found.md` is web text too but is deliberately left open: locking it would refuse
+the resume read in "which of these jobs suit me".
 
 
 1. **The corrections corpus was reviewed 2026-10-16** (the old item 1, ConfigEdit
