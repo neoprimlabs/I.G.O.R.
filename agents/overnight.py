@@ -59,12 +59,20 @@ _LIMIT_RE = re.compile(r"Limit\s+(\d+)")
 _LINK_RE = re.compile(r"https?://[^\s)>\]\"']+")
 
 
-def paper_is_finished(text: str) -> tuple[bool, str]:
+def _links(text: str) -> set[str]:
+    return {m.rstrip(".,;") for m in _LINK_RE.findall(text)}
+
+
+def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, str]:
     if not re.search(r"^##\s+What I am unsure about\s*$", text, re.IGNORECASE | re.MULTILINE):
         return False, "no 'What I am unsure about' section"
-    links = {m.rstrip(".,;") for m in _LINK_RE.findall(text)}
+    links = _links(text)
     if len(links) < 3:
         return False, f"only {len(links)} distinct source links, needs 3"
+    if findings is not None:
+        invented = links - _links(findings)
+        if invented:
+            return False, f"cites {len(invented)} links not in the findings"
     return True, ""
 
 
@@ -194,15 +202,16 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
         write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
         paper = await complete(_WRITE_SYSTEM, write_user, _WRITE_BUDGET, cap=_WRITE_BUDGET)
         if paper:
-            ok, why = paper_is_finished(paper)
+            ok, why = paper_is_finished(paper, body)
             if ok:
-                paper_path = _unique(folder, "paper", night)
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
                 passed, feedback = await evaluator.evaluate(task, paper, label="Overnight",
                                                               model=config.OVERNIGHT_MODEL)
-                if not passed and feedback:
-                    paper = paper.rstrip() + f"\n\n## Reviewer note\n{feedback}\n"
+                if not passed:
+                    ok, why = False, f"evaluator failed it: {feedback or 'contract not met'}"
+            if ok:
+                paper_path = _unique(folder, "paper", night)
                 paper_path.write_text(clean(paper) + "\n", encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)
@@ -211,7 +220,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 state["finished"].append(rel)
                 summary += f", paper finished ({paper_path.name})"
             else:
-                draft_path = folder / f"draft-{night}.md"
+                draft_path = _unique(folder, "draft", night)
                 draft_path.write_text(clean(paper) + "\n", encoding="utf-8")
                 with findings_path.open("a", encoding="utf-8") as f:
                     f.write(f"\n{_WRITTEN_MARK}\n")
@@ -481,7 +490,7 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
                 name = Path(str(rel)).name
                 if name.startswith("draft-") and name not in drafts:
                     drafts.append(name)
-            if e.get("files") or e.get("finished"):
+            if e.get("files") or e.get("finished") or e.get("stopped"):
                 produced = True
         if not produced:
             return "", []
