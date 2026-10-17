@@ -17,8 +17,8 @@ Last updated: **2026-10-16**
 
 ## Code
 
-- Server `/opt/igor` runs `a9d9883` (watch history), deployed through the S.1 gate
-  on 2026-10-16. Check with `git -C /opt/igor log -1`.
+- Server `/opt/igor` runs the overnight work loop (A.4), merged to master and deployed
+  through the S.1 gate on 2026-10-17. Check with `git -C /opt/igor log -1`.
   commits; those need no deploy, because nothing at runtime reads STATE.md or
   GAMEPLAN.md.
 - The server tree was copied off the rescued disk rather than cloned, but its
@@ -26,10 +26,10 @@ Last updated: **2026-10-16**
 
 ## Next action
 
-**Pick up here.** A.4, the overnight work loop, is built on branch
-`worktree-overnight-loop` and **not deployed**. After the final review and the merge
-to master, do the five pending steps in `## Overnight work loop` below. Then the
-SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop dashboard) follow.
+**Pick up here.** A.4, the overnight work loop, is **live** since 2026-10-17. Read its
+first morning: the Overnight section of the 13:00 UTC digest, `memory/work/log.json`,
+and whether a night stopped on `daily cap 20b` (see `## Overnight work loop`). Then
+the SelfDescribe eval, then V.1. Phase K (clones) and I.1 (desktop dashboard) follow.
 
 **Flagged spec deviation, the user's call:** `IGOR_SPEC.md` says "no hoarding of
 conversation history"; on 2026-10-16 `context.db` retention went from 200 to 10000
@@ -94,39 +94,29 @@ This predates the overnight loop; the loop's own outputs (`goal list`, reads of
    ARCHITECTURE.md's summary.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
-## Overnight work loop (A.4, built 2026-10-16, branch only)
+## Overnight work loop (A.4, live 2026-10-17)
 
-Built and offline-tested on `worktree-overnight-loop`; **nothing is deployed and the
-server is untouched.** `ARCHITECTURE.md` already describes it, so it describes the
-branch, not the running server, until the merge. Design:
-`docs/superpowers/specs/2026-10-16-overnight-work-loop-design.md`.
+Merged to master and deployed 2026-10-17 01:37 UTC. Design:
+`docs/superpowers/specs/2026-10-16-overnight-work-loop-design.md`; ARCHITECTURE.md
+describes the code. Built by subagent-driven development: six tasks each reviewed,
+a whole-branch review (opus), one fix wave of 12 items, all re-verified.
 
-Built: `goals.py` and React's `goal` tool; `work.py` (work folder, night log,
-budget); `agents/overnight.py` (hourly tick at minute 20, research sessions with a
-code-level paper check, self-improvement sessions, the digest section);
-`proposals.py` and React's `proposal` tool (untrusted-read quarantine on `list`);
-approved preferences in `memory/preferences.md` read by Direct, React and the job
-ranking; `scripts/backup_memory.ps1` copying `memory/work/` to `Documents\IGOR Work`
-on the PC (tested against an archive with and without the folder, and a corrupt
-one). The final review's fixes are in: a failed session rotates past its goal, one
-`config.OVERNIGHT_MODEL` for calls, evaluator and budget, `goal list` and reads of
-`memory/work/` quarantined, calls kept under 8000 TPM, papers with invented links or
-an Evaluator FAIL stay drafts, a capped night shows in the digest. Offline suite: 32 suites, 0 not passing.
+Live state on the server: `_overnight_tick` registered (hourly, minute 20);
+`overnight` added to `memory/digest_config.md` Sections (backup
+`digest_config.md.bak-20261017`); goals seeded - **g1** research towards an income
+feature, **g2** self-improvement.
 
-**Pending until the merge** (the deploy script pulls `origin/master`):
+**One live session, 2026-10-17 01:38 UTC (forced into the window), g1:** 7 calls on
+20b, **9164 tokens** (about 15% of the 60000 nightly budget), 3 searches, **13 sourced
+findings**, which triggered a paper. It stayed a draft - "cites 10 links not in the
+findings" - and all 10 were real: gpt-oss glues a full-width citation bracket to
+every URL (`...price-optimization】`). Fixed the same night in `_links` (URL ends at
+brackets, quotes, markdown marks; trailing slash trimmed both sides), with a test
+built from those exact citations. The session counts against the night of 10-17.
 
-1. Commit and push on master, deploy through the gate, expect `=== deploy OK`.
-2. On the server as `igor`: add `overnight` to the Sections line of
-   `memory/digest_config.md` (without it the digest says nothing about the loop).
-3. Seed the two goals with `goals.add` (research towards an income feature, and
-   self-improvement).
-4. Run **one** session by hand inside a forced window
-   (`overnight.tick(now=<local 01:00>)`), read its spend from the log and the files
-   it wrote, and record the spend here. Do not repeat it: it spends 20b's budget.
-5. When a night first stops with `daily cap 20b: <limit>`, put that limit in
-   `config.DAILY_TOKEN_CAPS` and in Known broken 2. It is the first measurement of
-   20b's daily cap, which is unmeasured today; the per-night budget of 60000 tokens
-   is a guess until then.
+**Still to do:** when a night first stops with `daily cap 20b: <limit>`, put that
+limit in `config.DAILY_TOKEN_CAPS` and Known broken 2 - the first measurement of
+20b's cap. The 60000-token budget is a guess until then.
 
 ## Presence, first week (2026-09-17 to 09-21)
 

@@ -561,6 +561,24 @@ def test_invented_link_keeps_paper_a_draft() -> None:
     tmp.cleanup()
 
 
+def test_citation_wrapping_is_not_an_invented_link() -> None:
+    """Live 2026-10-17: gpt-oss wrote every citation as `<url>】`, so the paper's
+    links never matched the findings' and all 10 real sources read as invented."""
+    from agents import overnight
+    findings = ("- Prisync case (https://prisync.com/portfolio/how-protein-package/)\n"
+                "- VOZIQ (https://www.voziq.ai/solution/price-optimization)\n"
+                "- Kesper (https://kesper.io/solutions/ai-inventory-management)\n"
+                "- Stripe (https://stripe.com/customers/livex-ai)\n")
+    paper = ("Claims cite https://prisync.com/portfolio/how-protein-package/】 and "
+             "【https://www.voziq.ai/solution/price-optimization】, **https://kesper.io/solutions/ai-inventory-management**, "
+             "`https://stripe.com/customers/livex-ai/`.\n## What I am unsure about\nSome things.\n")
+    ok, why = overnight.paper_is_finished(paper, findings)
+    _check("full-width brackets, bold, backticks and a trailing slash do not make a link invented",
+           ok, why)
+    ok, why = overnight.paper_is_finished(paper + "See https://made-up.example/x】.", findings)
+    _check("a genuinely absent link is still caught", not ok and "not in the findings" in why, why)
+
+
 def test_evaluator_verdicts() -> None:
     import llm
     overnight, goals, work, tmp, calls = _fresh()
