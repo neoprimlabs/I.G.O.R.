@@ -106,6 +106,106 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def test_plan_sees_earlier_papers() -> None:
+    """Live 2026-10-17: the night's second paper repeated 4 of the first's 6 topics,
+    because the planner starts from an emptied findings.md after each paper."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "paper-2026-10-16.md").write_text(
+        "# Old Revenue Paper\n\n## Summary\nx\n## Dynamic Pricing\nx\n## Upsell Engines\nx\n"
+        "## What I am unsure about\nx\n", encoding="utf-8")
+    (folder / "draft-2026-10-16.md").write_text("# A Draft\n\n## Draft Only Topic\n", encoding="utf-8")
+    s = _Stubs(findings_per_step=1)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    plan = s.plan_users[0] if s.plan_users else ""
+    _check("the planner is told what earlier papers covered",
+           "Old Revenue Paper" in plan and "Dynamic Pricing" in plan and "Upsell Engines" in plan, plan)
+    _check("boilerplate sections are left out",
+           "What I am unsure about" not in plan and "## Summary" not in plan, plan)
+    _check("drafts are not counted as covered", "Draft Only Topic" not in plan, plan)
+
+    for i in range(40):
+        (folder / f"paper-2026-09-{i:02d}.md").write_text(
+            f"# Paper {i}\n\n" + "".join(f"## Heading {i}-{j} {'w' * 60}\n" for j in range(8)),
+            encoding="utf-8")
+    s = _Stubs(findings_per_step=1)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    covered = overnight._covered_by_papers(folder)
+    _check("the covered list is capped", len(covered) <= overnight._COVERED_CHARS, str(len(covered)))
+    tmp.cleanup()
+
+
+def test_self_improvement_sees_recent_fixes() -> None:
+    """Live 2026-10-17: the first night proposed a fix for "100am", fixed two days
+    before, because the session could not see what had changed since."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Review recent mistakes", "self_improve")
+    (config.MEMORY_DIR / "corrections.md").write_text(
+        "## 2026-10-14 22:13 UTC\nUser corrected:\n> I said 1am\n", encoding="utf-8")
+    config.LOG_FILE = str(Path(tmp.name) / "missing.log")
+    seen = {}
+
+    async def spy(system, user, max_tokens, cap=None):
+        seen.update(system=system, user=user)
+        return ""
+
+    real = overnight._recent_fixes
+    overnight._recent_fixes = lambda: ["Stop 100am becoming 10:00"]
+    try:
+        _run(overnight.tick(NIGHT_TIME, search=_Stubs().search, complete=spy))
+    finally:
+        overnight._recent_fixes = real
+    _check("the review sees recent fixes", "Stop 100am becoming 10:00" in seen.get("user", ""),
+           seen.get("user", "")[:300])
+    _check("and is told not to re-propose them", "already" in seen.get("system", "").lower())
+
+    real_base = config.BASE_DIR
+    config.BASE_DIR = Path(tmp.name)
+    try:
+        _check("no git history is not an error", overnight._recent_fixes() == [])
+    finally:
+        config.BASE_DIR = real_base
+    fixes = overnight._recent_fixes()
+    _check("the real history yields commit subjects",
+           isinstance(fixes, list) and all(isinstance(f, str) and f for f in fixes), str(fixes[:3]))
+    _check("docs-only commits are left out",
+           not any(f.startswith(("STATE", "ARCHITECTURE", "Plan:", "Design:")) for f in fixes),
+           str([f for f in fixes if f.startswith(("STATE", "ARCHITECTURE"))][:3]))
+    fix_100am = [i for i, f in enumerate(fixes) if "100am" in f]
+    _check("the 2026-10-16 '100am' fix is inside the list the session sees",
+           not fix_100am or fix_100am[0] < overnight._SI_MAX_FIXES, str(fix_100am))
+    tmp.cleanup()
+
+
+def test_superseded_draft_not_listed() -> None:
+    """Live 2026-10-17: the digest listed a test session's draft as in progress after
+    a finished paper had replaced it."""
+    overnight, goals, work, tmp, _ = _fresh()
+    folder = config.MEMORY_DIR / "work" / "g1"
+    folder.mkdir(parents=True)
+    (folder / f"draft-{NIGHT}.md").write_text("# D\n", encoding="utf-8")
+    (folder / f"paper-{NIGHT}.md").write_text("# Finished\n", encoding="utf-8")
+    work.log_session("g1", "research", "draft", 1, 1, [f"work/g1/draft-{NIGHT}.md"], [], now=NIGHT_TIME)
+    work.log_session("g1", "research", "paper", 1, 1, [f"work/g1/paper-{NIGHT}.md"],
+                     [f"work/g1/paper-{NIGHT}.md"], now=NIGHT_TIME)
+    text, _ = overnight.digest_section(NIGHT)
+    _check("a draft followed by a finished paper is not listed", "Drafts in progress" not in text, text)
+
+    tmp.cleanup()
+    overnight, goals, work, tmp, _ = _fresh()
+    folder = config.MEMORY_DIR / "work" / "g1"
+    folder.mkdir(parents=True)
+    (folder / f"paper-{NIGHT}.md").write_text("# Finished\n", encoding="utf-8")
+    work.log_session("g1", "research", "paper", 1, 1, [f"work/g1/paper-{NIGHT}.md"],
+                     [f"work/g1/paper-{NIGHT}.md"], now=NIGHT_TIME)
+    work.log_session("g1", "research", "draft", 1, 1, [f"work/g1/draft-{NIGHT}-2.md"], [], now=NIGHT_TIME)
+    text, _ = overnight.digest_section(NIGHT)
+    _check("a draft after the last paper is still listed", f"draft-{NIGHT}-2.md" in text, text)
+    tmp.cleanup()
+
+
 def test_outside_window_costs_nothing() -> None:
     overnight, goals, work, tmp, _ = _fresh()
     goals.add("Study autonomous systems", "research")
@@ -442,8 +542,11 @@ def test_digest_attaches_finished_papers() -> None:
 
 def test_failing_session_does_not_wedge_rotation() -> None:
     overnight, goals, work, tmp, _ = _fresh()
-    goals.add("Alpha topic", "research")
-    goals.add("Beta topic", "research")
+    # Created before the ticks, on the test's own clock. With the real clock this
+    # test passed on 2026-10-16 and failed on 10-17, once "now" passed NIGHT_TIME.
+    created = datetime(2026, 10, 17, 1, 0, tzinfo=clock.USER_TZ)
+    goals.add("Alpha topic", "research", now=created)
+    goals.add("Beta topic", "research", now=created)
     s = _Stubs()
     real = s.complete
 
@@ -519,7 +622,12 @@ def test_self_improvement_call_fits_the_tpm_bucket() -> None:
         return ""
 
     s = _Stubs()
-    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=spy))
+    real_fixes = overnight._recent_fixes
+    overnight._recent_fixes = lambda: ["y" * 300 + f" fix {i}" for i in range(80)]
+    try:
+        _run(overnight.tick(NIGHT_TIME, search=s.search, complete=spy))
+    finally:
+        overnight._recent_fixes = real_fixes
     _check("the review call was made", "chars" in seen, str(work._load()[-1:]))
     est = int(seen.get("chars", 0) / react._CHARS_PER_TOKEN) + seen.get("max_tokens", 0)
     _check("worst-case prompt plus max_tokens is under 8000", est < 8000, str(est))
