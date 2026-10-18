@@ -24,6 +24,7 @@ MODELS = {
     "evaluator": "openai/gpt-oss-20b",   # shares research's bucket
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
+    "screening": "openai/gpt-oss-120b",  # shares chat's bucket: one ~2000 token gig screen a day
 }
 
 # Delegated workers run on 20b, NOT on react's 120b. A worker starts while the

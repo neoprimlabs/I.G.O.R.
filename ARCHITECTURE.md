@@ -50,8 +50,8 @@ and the overnight tick (hourly). Retiming one needs a deploy.
 
 **Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and log
 to `history.db`. The **gig watch** (`agents/gigs.py`) reads the n8n forum Jobs board
-and r/forhire [Hiring]. Red flags are dropped in code and by one daily 20b screening
-call, and the poster blocked; failed screening holds the day's gigs. No pitches yet. `scheduled_message` manages timed messages in `memory/scheduled.json`
+and r/forhire [Hiring]. Red flags are dropped by code and one daily 120b screen, and
+the poster blocked; a failed screen holds the day's gigs. `scheduled_message` manages timed messages in `memory/scheduled.json`
 (America/New_York). **Presence** is one check-in a day behind code gates, off unless
 `memory/presence_config.md` says `state: on`.
 
@@ -513,9 +513,10 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | `evaluator` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
+| `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
 
-`chat` and `react` share a bucket deliberately: the router sends a message to one
-or the other and never both, so they alternate on the hot path instead of stacking.
+`chat` and `react` share a bucket deliberately: the router sends each message to
+one, never both, so they alternate instead of stacking.
 The router is alone on qwen because it is the only model that answers inside a
 10-token budget; a router outage falls back to React.
 
@@ -554,7 +555,7 @@ under about 1024 returns empty content with a 200 OK.
 
 All live in `memory/` on the server and are **gitignored** - they exist only on the
 host, plus the daily off-host archive `scripts/backup_memory.ps1` pulls to the
-user's PC (30 kept). Syncthing no longer runs (2026-10-16), so that archive is the only other copy.
+user's PC (30 kept). Syncthing no longer runs, so that archive is the only other copy.
 
 **Read at startup, restart required:** `schedule_config.md`
 
@@ -604,7 +605,7 @@ default, so the prompt in the source is the prompt in play.
 `main._smoke_test()` runs after `_ensure_memory_files()` and exits 1 rather than
 raising, so `start.sh` crash recovery restores the last good commit. It verifies:
 
-- six `config.MODELS` roles present and non-empty (`worker` is not checked)
+- seven `config.MODELS` roles present and non-empty (`worker` is not checked)
 - `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
   at least 1
 - four routing fast paths resolve correctly (all on fast paths, so no API call)

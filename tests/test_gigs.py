@@ -150,8 +150,12 @@ def test_red_flags_are_specific() -> None:
     for text in ("This is unpaid but great exposure", "Free pilot to start", "Contact me on Telegram",
                  "There is no active project yet", "Send a deposit for the starter kit",
                  "We will send you a check to deposit", "We rent your Upwork account", "Paid in crypto only",
-                 "Commission-only role", "Please send your passport"):
+                 "Commission-only role", "Please send your passport",
+                 "Join our founding vendor cohort. Earnings depend on actual sales.",
+                 "Potential long-term partnership with revenue sharing"):
         _check(f"red flag: {text!r}", gigs.red_flag(text) != "", text)
+    _check("a revenue share on top of stated pay is not a red flag",
+           gigs.red_flag("Part-time ongoing, $35/hr guaranteed + revenue share") == "")
     _check("listed red flags add to the built-in ones",
            gigs.red_flag("Must use our proprietary SDK", ("proprietary sdk",)).startswith("listed"))
     tmp.cleanup()
@@ -237,13 +241,27 @@ def test_one_bad_source_does_not_stop_the_rest() -> None:
 
 def test_parse() -> None:
     gigs, tmp = _fresh()
-    notes, red = gigs._parse("RED 2: vendor advertising its product\n1. Fits the Python agent work https://x.example\n"
-                             "**3.** A stretch: needs Shopify tracking\n9. out of range\n2. also a note", 3)
+    picks, skips, red = gigs._parse(
+        "RED 2: vendor advertising its product\n1. Uses the Python agent work https://x.example\n"
+        "**SKIP 3**: locked to Singapore\n4. A stretch: needs Shopify tracking\n9. out of range\n"
+        "2. also a note\n3. also a note", 4)
     _check("RED lines are read", red == {2: "vendor advertising its product"}, str(red))
-    _check("notes are read in order, links stripped, red wins",
-           list(notes) == [1, 3] and "https" not in notes[1], str(notes))
-    _check("NONE means nothing worth it and nothing red", gigs._parse("NONE", 3) == ({}, {}))
+    _check("SKIP lines are read", skips == {3: "locked to Singapore"}, str(skips))
+    _check("picks keep their order, links stripped, RED and SKIP win",
+           list(picks) == [1, 4] and "https" not in picks[1], str(picks))
+    live = ("3. N. Build n8n + MirrorFly video conferencing automation; gap: MirrorFly API integration experience.\n"
+            "1. N. Shopify tracking + n8n automation build; gap: Shopify API integration specifics.\n"
+            "2. SKIP 2: QA role, not a build.\n"
+            "4. SKIP 4: Requires Southeast Asia time zone, not US Eastern.")
+    picks, skips, red = gigs._parse(live, 4)
+    _check("20b's live 10-18 output: a numbered SKIP is a skip, not a pick",
+           list(picks) == [3, 1] and set(skips) == {2, 4} and red == {}, f"{picks} {skips}")
+    _check("and the copied 'N.' placeholder is stripped", picks[3].startswith("Build n8n"), picks[3])
+    _check("a RED with the number in front is still red", gigs._parse("2. RED: scam", 3)[2] == {2: "scam"},
+           str(gigs._parse("2. RED: scam", 3)))
+    _check("a note that starts with N is not cut", gigs._parse("1. Needs Python", 1)[0] == {1: "Needs Python"})
     _check("unusable output is None, so the gigs are held", gigs._parse("I cannot help with that.", 3) is None)
+    _check("NONE is not a verdict either", gigs._parse("NONE", 3) is None)
     _check("empty output is None", gigs._parse("", 3) is None)
     tmp.cleanup()
 
@@ -281,24 +299,42 @@ def test_screened_run_sends_and_blocks() -> None:
 
     async def screen(profile, listing):
         listings.append((profile, listing))
-        # Position 2 is the MirrorFly post, in collect's order.
-        return "RED 2: looks like a vendor advertising its own product\n3. Fits: a Python or n8n chatbot."
+        # In collect's order: 1 Shopify, 2 MirrorFly, 3 the dental chatbot.
+        return ("SKIP 1: needs Shopify tracking experience\nRED 2: looks like a vendor advertising its own product\n"
+                "3. Uses the Python agent work for a chatbot; new to n8n.")
 
     result, sent = _run(gigs, screen)
     _check("one message is sent", len(sent) == 1, str(sent))
     message = sent[0] if sent else ""
-    _check("the pick is under Worth a look, numbered first",
-           message.index("**Worth a look**") < message.index("1. [Hiring] AI chatbot"), message)
-    _check("the screened-out gig is not shown", "MirrorFly" not in message, message)
-    _check("its account is blocked", "n8n:shyamvijay" in gigs.blocked(), str(gigs.blocked()))
-    _check("the rest are listed under Also new", "**Also new**" in message and "Shopify" in message, message)
+    _check("it lists only the pick, numbered", message.startswith("**New gigs worth a look**")
+           and "1. [Hiring] AI chatbot" in message and "new to n8n" in message, message)
+    _check("skipped and red-flagged gigs are not shown", "Shopify" not in message and "MirrorFly" not in message, message)
+    _check("the red-flagged account is blocked", "n8n:shyamvijay" in gigs.blocked(), str(gigs.blocked()))
     _check("the screening call never sees contact details", "@" not in listings[0][0], listings[0][0])
     _check("the listing carries post bodies", "HubSpot" in listings[0][1], listings[0][1][:200])
     found_file = (config.MEMORY_DIR / "gigs_found.md").read_text(encoding="utf-8")
-    _check("what was sent is kept for questions later", "AI chatbot" in found_file and "Worth a look:" in found_file)
+    _check("the pick is kept for questions later", "AI chatbot" in found_file and "Worth a look:" in found_file)
+    _check("the skip is kept with its reason", "Skipped: needs Shopify tracking" in found_file, found_file[-600:])
     _check("red-flagged gigs never reach the file", "MirrorFly" not in found_file)
+    _check("the log summary counts each verdict", result == "sent 1 picks, 1 skipped, 1 red flags", result)
     result, sent = _run(gigs, screen)
     _check("the next run has nothing new and sends nothing", sent == [] and result == "nothing new", f"{result} {sent}")
+    tmp.cleanup()
+
+
+def test_unjudged_gig_is_held() -> None:
+    gigs, tmp = _fresh()
+
+    async def screen(profile, listing):
+        return "3. Uses the Python agent work."
+
+    result, sent = _run(gigs, screen)
+    _check("the judged pick is sent", len(sent) == 1 and "AI chatbot" in sent[0], str(sent))
+    _check("the summary says two were held", result.endswith("2 held"), result)
+    topics = _Topics()
+    gigs.collect(NOW, _fetchers(gigs), topics)
+    _check("gigs with no verdict are screened again next run", 322445 in topics.calls and 322016 in topics.calls,
+           str(topics.calls))
     tmp.cleanup()
 
 
@@ -306,12 +342,15 @@ def test_failed_send_keeps_the_gigs() -> None:
     gigs, tmp = _fresh()
 
     async def screen(profile, listing):
-        return "1. Fits."
+        return "1. Fits.\nSKIP 2: not for them\nSKIP 3: not for them"
 
     _run(gigs, screen, send_ok=False)
     import watchers
-    _check("a gig that never reached the user is not remembered",
-           not any("322445" in u for u in watchers.load_seen(gigs._SEEN)))
+    seen = watchers.load_seen(gigs._SEEN)
+    _check("a gig that never reached the user is not remembered", not any("322445" in u for u in seen))
+    _check("nor are the skips from that run", not any("322016" in u for u in seen), str(list(seen)))
+    status = (config.MEMORY_DIR / "gigs_found.md").read_text(encoding="utf-8")
+    _check("the status file says the send failed", "Sending failed" in status, status[:300])
     tmp.cleanup()
 
 
@@ -337,21 +376,24 @@ def test_gig_context_reaches_the_profile() -> None:
 
     async def screen(profile, listing):
         seen.append(profile)
-        return "NONE"
+        return "SKIP 1: not for them\nSKIP 2: not for them\nSKIP 3: not for them"
 
     result, sent = _run(gigs, screen)
     _check("context lines are added to the profile", seen and "Learning n8n now." in seen[0], str(seen))
-    _check("NONE with nothing red lists the gigs without picks",
-           len(sent) == 1 and "**Worth a look**" not in sent[0] and "**Also new**" in sent[0], str(sent))
+    _check("a day with no picks sends nothing", sent == [] and result.startswith("no picks"), f"{result} {sent}")
+    import watchers
+    _check("but its skips are remembered, so they are not screened again",
+           any("322445" in u for u in watchers.load_seen(gigs._SEEN)))
     tmp.cleanup()
 
 
 def test_format_caps_the_list() -> None:
     gigs, tmp = _fresh()
-    ordered = [({"title": f"Gig {i}", "url": f"https://e.example/{i}", "source": "n8n"}, "why" if i < 2 else "")
-               for i in range(12)]
-    message = gigs.format_for_discord(ordered)
-    _check("numbering runs across both groups", "8. Gig 7" in message and "9." not in message, message)
+    picks = [({"title": f"Gig {i}", "url": f"https://e.example/{i}", "source": "n8n"}, f"why {i}")
+             for i in range(12)]
+    message = gigs.format_for_discord(picks)
+    _check("eight are shown, numbered", "8. Gig 7" in message and "9." not in message, message)
+    _check("each with its reason", "why 0" in message and "why 7" in message, message)
     _check("the overflow is counted", "...and 4 more" in message, message)
     tmp.cleanup()
 
