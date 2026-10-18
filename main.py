@@ -99,7 +99,7 @@ def _smoke_test() -> None:
     for module in ("agents.direct", "agents.react", "agents.monitor",
                    "agents.research", "agents.research_loop",
                    "agents.prod_memory", "agents.evaluator", "context_store",
-                   "agents.scheduled", "agents.compose", "agents.presence", "clock"):
+                   "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs", "clock"):
         try:
             __import__(module)
         except Exception as e:

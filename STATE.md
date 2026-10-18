@@ -26,7 +26,22 @@ Last updated: **2026-10-18**
 
 ## Next action
 
-**Pick up here (2026-10-17 evening):**
+**Pick up here (2026-10-18 evening):**
+0. **Income direction chosen 2026-10-18: freelance AI automation, the user selling,
+   IGOR finding the work.** The user turned down prizes (Metaculus), work on their own
+   apps and a records-monitoring subscription; they will put in work and want
+   something "grounded and consistent". Research (sources in the session's file, not
+   here): n8n is the most-named automation platform in Upwork titles; HubSpot is the
+   common CRM; MirrorFly was one client's vendor, not a tool to learn. The user is
+   learning n8n first, using Claude Code to build.
+   **Built: the gig watch** (`agents/gigs.py`, daily 14:45 UTC): n8n forum Jobs board
+   plus r/forhire [Hiring] search feed, red flags dropped in code and by one 20b
+   screening call, posting account blocked (`gigs_blocked.json`), held if screening
+   fails, `gigs_found.md` with tool counts. The user's rule: nothing red-flagged ever
+   reaches them, and IGOR never interacts with those accounts. **Not built, by
+   agreement:** pitch drafting (call them "pitches", never "proposals" - that word
+   is the self-improvement queue) and the pitch log, until the user is ready to send.
+   **Check next:** the first 14:45 run's message and `gigs_found.md`.
 1. **Done 2026-10-18 00:48 UTC:** g1 (the generic "income feature" goal) retired to
    the archive and **g3** added with the statement the user agreed: ways an
    autonomous agent could earn money for the person who runs it, wide net, no

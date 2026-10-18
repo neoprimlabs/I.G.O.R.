@@ -155,6 +155,7 @@ _TOOLS = [
                         "tasks.md", "projects.md", "user.md", "agents.md",
                         "digest_config.md", "watchlist.md", "research.md",
                         "presence_config.md", "job_search.md", "jobs_found.md",
+                        "gig_search.md", "gigs_found.md",
                         "price_watch.md", "price_watch_status.md",
                     ],
                     "description": "The file to read",
@@ -187,7 +188,7 @@ _TOOLS = [
     },
     {
         "name": "watch_history",
-        "description": "What the price, stock and job watchers have seen over time - each change of availability or price, and each new matching job posting, with dates. Use for 'when was it last in stock', 'has the price moved', 'how many matching jobs this month'.",
+        "description": "What the price, stock, job and gig watchers have seen over time - each change of availability or price, and each new matching job or gig posting, with dates. Use for 'when was it last in stock', 'has the price moved', 'how many matching jobs this month'.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -366,6 +367,7 @@ When to use tools:
 - Every search result carries a Published date. Check it against the current date at the top of this prompt before calling anything recent, latest, or new. If the best sources you found are old, say how old rather than presenting them as current
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
 - memory_read jobs_found.md: what the daily job watch found recently and what it said about fit. Read it for any question about jobs it has found, before asking the user anything
+- memory_read gigs_found.md: freelance gigs the daily gig watch found, its last check, and which tools hiring posts named. gig_search.md holds its red flags and exclusions
 - memory_read price_watch.md and price_watch_status.md: what the price watch is watching for, and what it saw on its last check. Read these for any question about whether it is running or what it has found. The "cheapest keyword match" in the status file is not checked for being the right product - never quote it as the price of the item
 - read_file on memory/resume.md: the user's resume is on file and you CAN read it, including to answer which jobs suit him. The moment you do, search and fetch_url close for the rest of the turn - private data and the open web never share a turn - so read it first, or not at all in a turn that needs the web. If you have already searched, say it is on file, that you cannot open it in this turn, and offer to look in a new message. Never say it is missing and never ask him to paste it
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing

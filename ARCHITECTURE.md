@@ -44,12 +44,14 @@ until Groq's stated reset, and the reply says so.
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
 **Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (13:00
-UTC), job watch (14:30), price watch (2-hourly), stock watch (hourly), a Groq model
+UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch (hourly), a Groq model
 check, an advocacy draft (Mondays), presence (10 min), due scheduled messages (60s)
 and the overnight tick (hourly). Retiming one needs a deploy.
 
-**Watchers** (prices, restocks, jobs) stay silent unless something changed and log
-to `history.db`. `scheduled_message` manages timed messages in `memory/scheduled.json`
+**Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and log
+to `history.db`. The **gig watch** (`agents/gigs.py`) reads the n8n forum Jobs board
+and r/forhire [Hiring]. Red flags are dropped in code and by one daily 20b screening
+call, and the poster blocked; failed screening holds the day's gigs. No pitches yet. `scheduled_message` manages timed messages in `memory/scheduled.json`
 (America/New_York). **Presence** is one check-in a day behind code gates, off unless
 `memory/presence_config.md` says `state: on`.
 
@@ -205,10 +207,9 @@ accepts `none`. Groq's docs say gpt-oss defaults to high, but measured, unset
 behaves nothing like high - treat the documented default as unconfirmed. React does
 not set it, deliberately.
 
-`reasoning_format` is a Groq extension with no parameter on the openai client, so
-`model_params` puts it in `extra_body`. Passed as a keyword it raises TypeError
-before the request is made, which the deploy gate cannot catch because it imports
-modules without calling the API.
+`reasoning_format` has no openai-client parameter, so `model_params` puts it in
+`extra_body`; as a keyword it raises TypeError before the request, which the deploy
+gate cannot catch because it only imports modules.
 
 Two call sites stay out, on purpose:
 
@@ -429,14 +430,13 @@ web search done by code, files written by code only under `memory/work/` plus ea
 goal's progress line in `memory/goals.md`. Nothing it runs can message anyone; its only
 outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`, which the budget counts.
 
-**Research session**: up to 3 PLAN / SEARCH / DISTILL steps (the ResearchLoop prompts)
-appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or
-3 sessions, one living `paper.md` per goal is written, then revised (current paper +
-new findings, kept under 7500 chars). `paper_is_finished` checks in code: a "What I am
-unsure about" heading and 3 distinct links, all in the findings or the current paper.
-A failed check gets one retry told why. Then the Evaluator; an explicit FAIL keeps a draft (an error passes). A pass replaces
-`paper.md` (old one to `versions/`); the change note is computed from headings. PLAN
-is told the paper's headings. A failed write waits a night; no budget doubling.
+**Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
+append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
+sessions the goal's one living `paper.md` is written, then revised (under 7500 chars).
+Code checks for a "What I am unsure about" heading and 3 distinct links from the
+findings or paper, retrying once told why; then the Evaluator (FAIL keeps a draft).
+A pass moves the old paper to `versions/`; the change note comes from headings, which
+PLAN also sees. A failed write waits a night; no budget doubling.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
@@ -568,15 +568,13 @@ user's PC (30 kept). Syncthing no longer runs (2026-10-16), so that archive is t
 `HISTORY_RETENTION_DAYS`), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
 
-**Memory holds preferences, history and user facts. It does not hold
-architecture.** `agents.md` and `projects.md` both accumulated architecture
-descriptions that nobody maintained, drifted months out of date, and were reported
-to the user as current fact. Anything verifiable against source belongs in this
-file and is read with `read_file`.
+**Memory holds preferences, history and user facts, never architecture.**
+`agents.md` and `projects.md` once carried architecture that drifted months stale
+and was reported to the user as fact. Anything checkable against source belongs in
+this file and is read with `read_file`.
 
-`skills_react.md` and the critic that wrote it are both gone. Nothing modifies
-React's prompt at runtime except `prompt_react.md`, which does not currently
-exist.
+Nothing modifies React's prompt at runtime except `prompt_react.md`, which does not
+exist; `skills_react.md` and the critic that wrote it are gone.
 
 ### Agent prompt override pattern
 
