@@ -63,7 +63,7 @@ def _smoke_test() -> None:
     log = logging.getLogger(__name__)
     problems: list[str] = []
 
-    for role in ("router", "chat", "react", "research", "evaluator", "summary"):
+    for role in ("router", "chat", "react", "research", "evaluator", "summary", "screening"):
         model = config.MODELS.get(role)
         if not isinstance(model, str) or not model.strip():
             problems.append(f"config.MODELS[{role!r}] is missing or empty")

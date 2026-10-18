@@ -35,9 +35,16 @@ Last updated: **2026-10-18**
    common CRM; MirrorFly was one client's vendor, not a tool to learn. The user is
    learning n8n first, using Claude Code to build.
    **Built: the gig watch** (`agents/gigs.py`, daily 14:45 UTC): n8n forum Jobs board
-   plus r/forhire [Hiring] search feed, red flags dropped in code and by one 20b
-   screening call, posting account blocked (`gigs_blocked.json`), held if screening
-   fails, `gigs_found.md` with tool counts. The user's rule: nothing red-flagged ever
+   plus r/forhire [Hiring] search feed. Red flags are dropped by code patterns and by
+   one screening call that must give every post RED, SKIP or a pick; RED blocks the
+   posting account (`gigs_blocked.json`), only picks are sent, a post with no verdict
+   or a failed call is held. Screening is 120b at low (`MODELS["screening"]`): live
+   dry runs on 10-18 showed 20b low flag nothing, 20b medium return nothing at 2048
+   and misread the profile at 4096. `gigs_found.md` keeps picks, skips with reasons,
+   the last check and tool counts. Dry runs blocked 5 accounts by code pattern (free
+   pilot, no project, fee, partnership-only, a seller marketplace). Open question for
+   the user: 120b reds a "$35/hr guaranteed + revenue share" post for the revenue
+   share - consistent with "when in doubt, red", but it blocks that poster. The user's rule: nothing red-flagged ever
    reaches them, and IGOR never interacts with those accounts. **Not built, by
    agreement:** pitch drafting (call them "pitches", never "proposals" - that word
    is the self-improvement queue) and the pitch log, until the user is ready to send.
