@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-17**
+Last updated: **2026-10-18**
 
 ---
 
@@ -36,8 +36,16 @@ Last updated: **2026-10-17**
    worth at least $20 an hour, legal and honest, ranked shortlist. The user rejected
    an earlier, narrower draft as too constrained. Backup `memory/goals.md.bak-20261018`.
    Earning on its own still needs an outward channel IGOR's limits forbid, so the
-   paper is a shortlist for the user to act on. **Check next morning:** g3's first
-   `paper.md`; on a later night, the first live revision (only tested offline so far).
+   paper is a shortlist for the user to act on. **First night (10-18):** three drafts,
+   no paper. Two were false rejections - a 797-word paper over the 6000-char cap
+   because links count, and the unsure section written as `#` - and one really was
+   1563 words. Fixed the same day: cap 7500 (revise reads 4500 of new findings to pay
+   for it), any heading level, one retry told why, digest lists only the latest draft.
+   **Check next morning:** g3's first `paper.md`; later, the first live revision.
+   The 10-18 drafts ranked AdSense blogs first on hype sources - the content-quality
+   risk predicted for this goal. Meanwhile Claude Code ran the wide income scan
+   directly; the user is still choosing a direction (not prizes, not their own apps,
+   not a records-monitoring subscription).
 2. **Done 2026-10-17:** typed proposal decisions ("reject p1 and p2", any case) are
    carried out in code via `_proposal_decisions`, with the tool's own words as the
    reply - no model, so no wrong-case id and no false "done". Ids are case-insensitive
