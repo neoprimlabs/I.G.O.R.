@@ -222,7 +222,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
         query = await complete(research_loop._PLAN_SYSTEM, plan_user, _PLAN_BUDGET)
         query = query.splitlines()[0].strip().strip('"').strip() if query else ""
         if not query:
-            query = goal["statement"]
+            query = goal["statement"].split(". ")[0][:200]
 
         state["searches"] += 1
         try:

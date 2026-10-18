@@ -241,6 +241,24 @@ def test_revise_call_fits_the_tpm_bucket() -> None:
     tmp.cleanup()
 
 
+def test_empty_plan_falls_back_to_a_short_query() -> None:
+    """A goal statement can run to several sentences; searching all of it wastes a search."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Find paid work an agent can do. " + "Then a long tail of detail. " * 30, "research")
+    stubs = _Stubs(findings_per_step=1)
+    real = stubs.complete
+
+    async def no_plan(system, user, max_tokens, cap=None):
+        if system.startswith("You plan one step"):
+            return ""
+        return await real(system, user, max_tokens, cap)
+
+    _run(overnight.tick(NIGHT_TIME, search=stubs.search, complete=no_plan))
+    _check("an empty plan searches the goal's first sentence",
+           stubs.queries[:1] == ["Find paid work an agent can do"], str(stubs.queries[:1]))
+    tmp.cleanup()
+
+
 def test_self_improvement_sees_recent_fixes() -> None:
     """Live 2026-10-17: the first night proposed a fix for "100am", fixed two days
     before, because the session could not see what had changed since."""
