@@ -35,10 +35,14 @@ _TRIGGER_SESSIONS = 3
 # (2026-10-17): one night had produced two overlapping papers, each blind to the
 # other. The paper is capped so the revise call - system, goal, current paper and new
 # findings, plus 3072 for the answer - stays inside 20b's 8000 TPM bucket.
+# Live 2026-10-18 a 797-word first paper was rejected at 6111 characters because its
+# 14 links took about 900 of them. 7500 fits 800 words with links; a revision reads
+# less of the new findings to pay for the longer paper.
 _PAPER = "paper.md"
-_PAPER_MAX_CHARS = 6000
+_PAPER_MAX_CHARS = 7500
 _WRITE_INPUT_CHARS = 6000
-_WRITE_RESERVE = _WRITE_BUDGET + (_WRITE_INPUT_CHARS + _PAPER_MAX_CHARS + 2500) // 3 + 500
+_REVISE_INPUT_CHARS = 4500
+_WRITE_RESERVE = _WRITE_BUDGET + (_REVISE_INPUT_CHARS + _PAPER_MAX_CHARS + 2500) // 3 + 500
 
 _PAPER_FORMAT = """Format, in markdown, under 800 words:
 - A title as a level-one heading
@@ -90,7 +94,8 @@ def _links(text: str) -> set[str]:
 
 
 def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, str]:
-    if not re.search(r"^##\s+What I am unsure about\s*$", text, re.IGNORECASE | re.MULTILINE):
+    # Any heading level: live 2026-10-18 a paper wrote it as "# What I am unsure about".
+    if not re.search(r"^#{1,3}\s+What I am unsure about\s*:?\s*$", text, re.IGNORECASE | re.MULTILINE):
         return False, "no 'What I am unsure about' section"
     links = _links(text)
     if len(links) < 3:
@@ -274,22 +279,34 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     elif triggered and room < _WRITE_RESERVE:
         summary += ", paper write waits for budget"
     elif triggered:
-        body = text[-_WRITE_INPUT_CHARS:]
         paper_path = folder / _PAPER
         current = paper_path.read_text(encoding="utf-8")[:_PAPER_MAX_CHARS] if paper_path.exists() else ""
         if current:
+            body = text[-_REVISE_INPUT_CHARS:]
             system = _REVISE_SYSTEM
             write_user = (f"Goal: {goal['statement']}\n\nCurrent paper:\n{current}\n\n"
                           f"New findings:\n{body}")
         else:
+            body = text[-_WRITE_INPUT_CHARS:]
             system = _WRITE_SYSTEM
             write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
-        paper = await complete(system, write_user, _WRITE_BUDGET, cap=_WRITE_BUDGET)
-        if paper:
+        # A paper that fails these checks gets one retry told why, as react.py does for a
+        # rejected tool call. Live 2026-10-18 a first paper ran to 1563 words.
+        paper, ok, why = "", False, ""
+        for attempt in range(2):
+            retry = f"\n\nA first attempt was rejected: {why}. Write it again with that fixed." if attempt else ""
+            candidate = await complete(system, write_user + retry, _WRITE_BUDGET, cap=_WRITE_BUDGET)
+            if not candidate:
+                break
+            paper = candidate
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
             if ok and len(paper) > _PAPER_MAX_CHARS:
-                ok, why = False, f"longer than {_PAPER_MAX_CHARS} characters"
+                ok, why = False, (f"longer than {_PAPER_MAX_CHARS} characters "
+                                  f"(about {len(paper.split())} words)")
+            if ok or token_room - (work.overnight_tokens() - start_tokens) < _WRITE_RESERVE:
+                break
+        if paper:
             if ok:
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
@@ -633,9 +650,12 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
             lines.append("Paper updated:" if len(papers) == 1 else "Papers updated:")
             lines.extend(f"- {_paper_title(p)} ({p.name})" + (f" - {notes[p]}" if p in notes else "")
                          for p in papers)
-        pending_drafts = [name for names in drafts.values() for name in names]
+        # Only the latest draft per goal: live 2026-10-18 one goal's three failed
+        # attempts were all listed.
+        pending_drafts = [names[-1] for names in drafts.values()]
         if pending_drafts:
-            lines.append("Drafts in progress: " + ", ".join(pending_drafts))
+            label = "Draft in progress: " if len(pending_drafts) == 1 else "Drafts in progress: "
+            lines.append(label + ", ".join(pending_drafts))
         waiting = len(proposals.pending())
         if waiting:
             lines.append(f"{waiting} proposal{'s' if waiting != 1 else ''} waiting for your review")

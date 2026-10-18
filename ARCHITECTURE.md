@@ -432,9 +432,9 @@ outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`, which t
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (the ResearchLoop prompts)
 appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or
 3 sessions, one living `paper.md` per goal is written, then revised (current paper +
-new findings, kept under 6000 chars). `paper_is_finished` checks in code: a "What I am
+new findings, kept under 7500 chars). `paper_is_finished` checks in code: a "What I am
 unsure about" heading and 3 distinct links, all in the findings or the current paper.
-Then the Evaluator; an explicit FAIL keeps a draft (an error passes). A pass replaces
+A failed check gets one retry told why. Then the Evaluator; an explicit FAIL keeps a draft (an error passes). A pass replaces
 `paper.md` (old one to `versions/`); the change note is computed from headings. PLAN
 is told the paper's headings. A failed write waits a night; no budget doubling.
 
@@ -463,7 +463,7 @@ the Evaluator, which fails open); a daily-cap 429 logs
 `config.DAILY_TOKEN_CAPS`.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
-`digest_config.md` adds finished papers (sent as attachments), drafts, pending proposals,
+`digest_config.md` adds finished papers (sent as attachments), the latest draft per goal, pending proposals,
 tokens and searches spent, and any early stop (a capped night reports even with no
 files). A night that produced nothing adds nothing.
 

@@ -259,6 +259,54 @@ def test_empty_plan_falls_back_to_a_short_query() -> None:
     tmp.cleanup()
 
 
+def test_rejected_paper_retries_once_with_the_reason() -> None:
+    """Live 2026-10-18 a first paper ran to 1563 words and was kept as a draft with no
+    second try, so the next attempt waited for a dozen more findings."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    s = _Stubs(findings_per_step=5)
+    real = s.complete
+    users = []
+
+    async def long_then_short(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        users.append(user)
+        paper = await real(system, user, max_tokens, cap)
+        return paper.replace("## Findings\n", "## Findings\n" + "word " * 2000 + "\n") if len(users) == 1 else paper
+
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=long_then_short))
+    _check("two write calls", len(users) == 2, str(len(users)))
+    _check("the retry is told why", "rejected: longer than" in users[-1], users[-1][-200:])
+    _check("the second attempt becomes the paper", (folder / "paper.md").exists(),
+           str(sorted(p.name for p in folder.iterdir())))
+    _check("no draft is left", not list(folder.glob("draft-*")))
+    tmp.cleanup()
+
+
+def test_unsure_section_at_any_heading_level() -> None:
+    """Live 2026-10-18 a paper was kept as a draft for writing '# What I am unsure about'."""
+    from agents import overnight
+    links = " ".join(f"https://a.example/{i}" for i in range(3))
+    for heading in ("# What I am unsure about", "### What I am unsure about:"):
+        ok, why = overnight.paper_is_finished(f"x {links}\n{heading}\n- gaps\n")
+        _check(f"accepted: {heading!r}", ok, why)
+    ok, _ = overnight.paper_is_finished(f"x {links}\nWhat I am unsure about\n")
+    _check("plain text is not a heading", not ok)
+
+
+def test_digest_lists_only_the_latest_draft() -> None:
+    """Live 2026-10-18 the digest listed all three of one goal's failed attempts."""
+    overnight, goals, work, tmp, _ = _fresh()
+    for name in (f"draft-{NIGHT}.md", f"draft-{NIGHT}-2.md", f"draft-{NIGHT}-3.md"):
+        work.log_session("g3", "research", "draft kept", 1, 1, [f"work/g3/{name}"], [], now=NIGHT_TIME)
+    text, _ = overnight.digest_section(NIGHT)
+    _check("one line naming only the latest draft",
+           f"Draft in progress: draft-{NIGHT}-3.md" in text and f"draft-{NIGHT}.md" not in text, text)
+    tmp.cleanup()
+
+
 def test_self_improvement_sees_recent_fixes() -> None:
     """Live 2026-10-17: the first night proposed a fix for "100am", fixed two days
     before, because the session could not see what had changed since."""
@@ -313,7 +361,7 @@ def test_superseded_draft_not_listed() -> None:
     work.log_session("g1", "research", "paper", 1, 1, [f"work/g1/paper-{NIGHT}.md"],
                      [f"work/g1/paper-{NIGHT}.md"], now=NIGHT_TIME)
     text, _ = overnight.digest_section(NIGHT)
-    _check("a draft followed by a finished paper is not listed", "Drafts in progress" not in text, text)
+    _check("a draft followed by a finished paper is not listed", "in progress" not in text, text)
 
     tmp.cleanup()
     overnight, goals, work, tmp, _ = _fresh()
