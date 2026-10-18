@@ -68,6 +68,7 @@ class _Stubs:
         self.plan_users = []
         self.caps = []
         self.empty_write = False
+        self.write_users = []
 
     async def search(self, query, max_results=5):
         self.queries.append(query)
@@ -87,6 +88,7 @@ class _Stubs:
                      for i in range(self.findings_per_step)]
             return "\n".join(lines) + f"\nNext: thread {self.n}"
         self.writes += 1
+        self.write_users.append(user)
         if self.empty_write:
             return ""
         body = "# Paper\n\n## Findings\n" + "".join(
@@ -134,6 +136,108 @@ def test_plan_sees_earlier_papers() -> None:
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     covered = overnight._covered_by_papers(folder)
     _check("the covered list is capped", len(covered) <= overnight._COVERED_CHARS, str(len(covered)))
+    tmp.cleanup()
+
+
+def test_one_living_paper_is_revised() -> None:
+    """The user asked for one good paper, not several: live 2026-10-17 one night
+    produced two papers that overlapped, each blind to the other."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    s = _Stubs(findings_per_step=5)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    _check("the first write creates paper.md", (folder / "paper.md").exists(),
+           str(sorted(p.name for p in folder.iterdir())))
+    first = (folder / "paper.md").read_text(encoding="utf-8")
+
+    real = s.complete
+
+    async def revising(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        s.write_users.append(user)
+        return ("# Paper\n\n## Upsell Engines\nKept ([src](https://e.example/1/0)).\n"
+                "## Pricing\nNew ([src](https://e.example/4/0)) ([src](https://e.example/4/1)).\n"
+                "\n## What I am unsure about\nMuch.\n")
+
+    later = datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ)
+    _run(overnight.tick(later, search=s.search, complete=revising))
+    revised = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("the second write is a revision that is shown the current paper",
+           s.write_users and "Claim 0" in s.write_users[-1], (s.write_users or [""])[-1][:200])
+    _check("paper.md now holds the revision", "## Upsell Engines" in revised, revised[:200])
+    _check("a revision may keep links from the current paper",
+           "https://e.example/1/0" in revised)
+    versions = sorted(p.name for p in (folder / "versions").glob("*.md"))
+    _check("the previous version is kept under versions/",
+           versions == [f"paper-{NIGHT}.md"] and
+           (folder / "versions" / versions[0]).read_text(encoding="utf-8") == first, str(versions))
+    _check("there is still only one paper in the goal folder",
+           sorted(p.name for p in folder.glob("paper*.md")) == ["paper.md"],
+           str(sorted(p.name for p in folder.glob("paper*.md"))))
+    summary = work._load()[-1]["summary"]
+    _check("the log says what changed, worked out from the headings",
+           "revised: 2 sections added, 1 dropped" in summary, summary)
+    text, papers = overnight.digest_section(NIGHT)
+    _check("the digest attaches the paper once and says it was updated",
+           [p.name for p in papers] == ["paper.md"] and "Paper updated" in text
+           and "2 sections added, 1 dropped" in text, text)
+    tmp.cleanup()
+
+
+def test_overlong_revision_stays_draft() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    s = _Stubs(findings_per_step=5)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    before = (folder / "paper.md").read_text(encoding="utf-8")
+    real = s.complete
+
+    async def long_write(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        return ("# Paper\n\n## Long\n" + "word " * 2000 + "([a](https://e.example/1/0)) "
+                "([b](https://e.example/1/1)) ([c](https://e.example/1/2))\n"
+                "## What I am unsure about\nMuch.\n")
+
+    _run(overnight.tick(datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=long_write))
+    _check("an over-long revision does not replace the paper",
+           (folder / "paper.md").read_text(encoding="utf-8") == before)
+    _check("and is kept as a draft with the reason",
+           (folder / f"draft-{NIGHT}.md").exists() and "longer than" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    tmp.cleanup()
+
+
+def test_revise_call_fits_the_tpm_bucket() -> None:
+    from agents import react
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems " + "with a long statement " * 20, "research")
+    folder = work.folder(_first_id(goals))
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "paper.md").write_text("# P\n\n## A\n" + "x" * 20000 + "\n", encoding="utf-8")
+    (folder / "findings.md").write_text("# F\n" + "".join(
+        f"\n<!-- session {i} -->\n- fact {i} (https://e.example/{i}) " + "y" * 600 + "\n"
+        for i in range(40)), encoding="utf-8")
+    seen = {}
+    real = _Stubs(findings_per_step=1).complete
+
+    async def spy(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        seen.update(chars=len(system) + len(user), max_tokens=max_tokens, cap=cap)
+        return ""
+
+    _run(overnight.tick(NIGHT_TIME, search=_Stubs().search, complete=spy))
+    est = int(seen.get("chars", 0) / react._CHARS_PER_TOKEN) + seen.get("max_tokens", 0)
+    _check("the revise call was made", "chars" in seen, str(work._load()[-1:]))
+    _check("worst-case revise prompt plus max_tokens is under 8000", est < 8000, str(est))
+    _check("the write reserve covers it", overnight._WRITE_RESERVE >= est,
+           f"{overnight._WRITE_RESERVE} < {est}")
+    _check("no doubling retry", seen.get("cap") == seen.get("max_tokens"))
     tmp.cleanup()
 
 
@@ -242,12 +346,12 @@ def test_paper_written_after_trigger() -> None:
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     folder = work.folder(gid)
     _check("one write call", s.writes == 1)
-    _check("finished paper saved", (folder / f"paper-{NIGHT}.md").exists(),
+    _check("finished paper saved", (folder / "paper.md").exists(),
            str(sorted(p.name for p in folder.iterdir())))
     _check("evaluator ran under the Overnight label",
            calls["eval"] == 1 and calls["label"] == "Overnight")
     _check("paper is listed as finished in the log",
-           f"paper-{NIGHT}.md" in " ".join(work._load()[-1]["finished"]))
+           "paper.md" in " ".join(work._load()[-1]["finished"]))
     tmp.cleanup()
 
 
@@ -259,7 +363,7 @@ def test_paper_without_unsure_section_stays_draft() -> None:
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     folder = work.folder(gid)
     _check("saved as a draft", (folder / f"draft-{NIGHT}.md").exists())
-    _check("no finished paper", not (folder / f"paper-{NIGHT}.md").exists())
+    _check("no finished paper", not (folder / "paper.md").exists())
     _check("the reason is in the log", "unsure" in work._load()[-1]["summary"].lower(),
            work._load()[-1]["summary"])
     _check("nothing finished", work._load()[-1]["finished"] == [])
@@ -658,7 +762,7 @@ def test_invented_link_keeps_paper_a_draft() -> None:
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     folder = work.folder(gid)
     _check("kept as a draft", (folder / f"draft-{NIGHT}.md").exists())
-    _check("not finished", not (folder / f"paper-{NIGHT}.md").exists())
+    _check("not finished", not (folder / "paper.md").exists())
     _check("the log says why", "not in the findings" in work._load()[-1]["summary"],
            work._load()[-1]["summary"])
     _check("evaluator skipped", calls["eval"] == 0)
@@ -697,7 +801,7 @@ def test_evaluator_verdicts() -> None:
     _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     folder = work.folder(gid)
     _check("an evaluator FAIL keeps a draft", (folder / f"draft-{NIGHT}.md").exists())
-    _check("and no paper", not (folder / f"paper-{NIGHT}.md").exists())
+    _check("and no paper", not (folder / "paper.md").exists())
     _check("the reason is logged", "no sources for claim 2" in work._load()[-1]["summary"],
            work._load()[-1]["summary"])
     _check("nothing finished", work._load()[-1]["finished"] == [])
@@ -719,7 +823,7 @@ def test_evaluator_verdicts() -> None:
     finally:
         llm.complete, _evaluator_module._get_client = real_complete, real_client
     _check("an evaluator error fails open and the paper is finished",
-           (work.folder(gid) / f"paper-{NIGHT}.md").exists())
+           (work.folder(gid) / "paper.md").exists())
     tmp.cleanup()
 
 

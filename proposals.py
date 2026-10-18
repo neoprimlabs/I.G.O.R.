@@ -142,7 +142,7 @@ def with_preferences(prompt: str) -> str:
 
 def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
     now = now or datetime.now(timezone.utc)
-    pid = (pid or "").strip()
+    pid = (pid or "").strip().lower()
     items = _load()
     target = next((p for p in items if p["id"] == pid and p["status"] == "pending"), None)
     if target is None:

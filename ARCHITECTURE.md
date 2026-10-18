@@ -31,7 +31,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Routing.** Five fast paths in code, then one router call
+**Routing.** Six fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
@@ -126,6 +126,7 @@ A Discord DM travels this path every time:
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
+   regex       _proposal_decisions      -> ProposalDecision (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
    ```
 
@@ -430,13 +431,12 @@ outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`, which t
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (the ResearchLoop prompts)
 appending sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or
-3 sessions since the last paper, a WRITE call drafts a paper. `paper_is_finished`
-checks in code, not by a model: a "What I am unsure about" heading and 3 distinct
-source links, all in the findings. A pass goes to the Evaluator; an explicit FAIL
-keeps a draft (an Evaluator error passes). A pass is saved as `paper-<night>.md` and
-`findings.md` is archived beside it; else `draft-<night>.md`. PLAN is told earlier
-papers' titles and headings, so a new paper does not repeat them. A failed write is
-not retried that night; the write never doubles its budget (8000 TPM).
+3 sessions, one living `paper.md` per goal is written, then revised (current paper +
+new findings, kept under 6000 chars). `paper_is_finished` checks in code: a "What I am
+unsure about" heading and 3 distinct links, all in the findings or the current paper.
+Then the Evaluator; an explicit FAIL keeps a draft (an error passes). A pass replaces
+`paper.md` (old one to `versions/`); the change note is computed from headings. PLAN
+is told the paper's headings. A failed write waits a night; no budget doubling.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
