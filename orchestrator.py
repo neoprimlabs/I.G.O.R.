@@ -264,6 +264,29 @@ _SCHEDULING = re.compile(
 _NOT_SCHEDULING = re.compile(r"\b(digest|watchlist|watch list|schedule_config|price watch|stock watch|job watch)\b")
 
 
+# A typed proposal decision is carried out in code. Live 2026-10-17 "Reject proposal
+# P1 Reject proposal P2" went to React, which used the wrong-case id, then a `list`
+# that closed the tool, then replied that both were rejected - neither was. The
+# user's own words are the trust boundary for approval, so no model is involved.
+# Short and with no question mark, so "should I approve p1?" still reaches React.
+_DECISION_TOKEN = re.compile(r"\b(approve|accept|reject|decline)\b|\bp\s*(\d+)\b")
+
+
+def _proposal_decisions(text: str) -> list[tuple[str, bool]]:
+    """[(id, approve)] in order, each id once; [] when the message is not a decision."""
+    lower = (text or "").lower()
+    if "?" in lower or len(lower) > 200:
+        return []
+    out: list[tuple[str, bool]] = []
+    approve = None
+    for m in _DECISION_TOKEN.finditer(lower):
+        if m.group(1):
+            approve = m.group(1) in ("approve", "accept")
+        elif approve is not None and all(pid != f"p{m.group(2)}" for pid, _ in out):
+            out.append((f"p{m.group(2)}", approve))
+    return out
+
+
 def _spell_out_times(text: str) -> str:
     return _RUN_TOGETHER_TIME.sub(lambda m: f"{int(m.group(1))}:{m.group(2)}{m.group(3)}{m.group(4)}", text)
 
@@ -425,6 +448,8 @@ class Orchestrator:
             return "StopResearch"
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
+        if _proposal_decisions(content):
+            return "ProposalDecision"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
             return "Schedule"
 
@@ -523,6 +548,11 @@ class Orchestrator:
             # and the status block is the only source for them - SelfDescribe learned
             # the same lesson about prior turns.
             return await monitor.handle(content, [], call)
+
+        if destination == "ProposalDecision":
+            import proposals
+            return "\n".join(proposals.decide(pid, approve)
+                             for pid, approve in _proposal_decisions(content))
 
         if destination == "Schedule":
             # The scheduling tool is required until it has been called once. Live

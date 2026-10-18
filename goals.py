@@ -120,7 +120,7 @@ def add(statement: str, kind: str, now: Optional[datetime] = None) -> str:
 
 
 def set_status(goal_id: str, status: str) -> str:
-    goal_id = (goal_id or "").strip()
+    goal_id = (goal_id or "").strip().lower()
     if status not in _SETTABLE and status != "retired":
         return "Not changed: status must be active, paused or retired."
     goals = load()

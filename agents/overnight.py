@@ -31,28 +31,49 @@ _WRITE_BUDGET = 3072
 _REASONING_EFFORT = "low"
 _TRIGGER_FINDINGS = 12
 _TRIGGER_SESSIONS = 3
-# 20b is an 8000 TPM bucket and the write call asks for 3072 on top of its prompt.
-_WRITE_INPUT_CHARS = 9000
-_WRITE_RESERVE = _WRITE_BUDGET + _WRITE_INPUT_CHARS // 3 + 500
+# One living paper per goal, revised as findings arrive, at the user's request
+# (2026-10-17): one night had produced two overlapping papers, each blind to the
+# other. The paper is capped so the revise call - system, goal, current paper and new
+# findings, plus 3072 for the answer - stays inside 20b's 8000 TPM bucket.
+_PAPER = "paper.md"
+_PAPER_MAX_CHARS = 6000
+_WRITE_INPUT_CHARS = 6000
+_WRITE_RESERVE = _WRITE_BUDGET + (_WRITE_INPUT_CHARS + _PAPER_MAX_CHARS + 2500) // 3 + 500
 
-_WRITE_SYSTEM = """You write a short research paper from a list of sourced findings.
-
-You receive a goal and findings gathered for it. Each finding ends with the URL it came from. Write the paper in a plain, neutral voice.
-
-Format, in markdown:
+_PAPER_FORMAT = """Format, in markdown, under 800 words:
 - A title as a level-one heading
 - A short summary paragraph
-- Sections as level-two headings, each making its points from the findings
-- Cite the source inline as a markdown link every time a claim is made, using the URLs given in the findings
-- A final section headed exactly "## What I am unsure about" listing gaps, weak sources, vendor claims and anything the findings do not settle
+- Sections as level-two headings, each making its points from the sources
+- Cite the source inline as a markdown link every time a claim is made, using only the URLs given
+- A final section headed exactly "## What I am unsure about" listing gaps, weak sources, vendor claims and anything the sources do not settle
 
-Use only what the findings state. Do not add numbers, names or claims from general knowledge. A claim that has no URL in the findings does not go in the paper. Never say that something does not exist or that nobody is doing it; say that the findings do not cover it.
+Do not add numbers, names or claims from general knowledge. A claim that has no URL in what you were given does not go in the paper. Never say that something does not exist or that nobody is doing it; say that the sources do not cover it.
 
 Style:
 - No emojis
 - No em dashes - use plain hyphens
 - No exclamation points
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
+
+_WRITE_SYSTEM = """You write a short research paper from a list of sourced findings.
+
+You receive a goal and findings gathered for it. Each finding ends with the URL it came from. Write the paper in a plain, neutral voice, using only what the findings state.
+
+""" + _PAPER_FORMAT
+
+_REVISE_SYSTEM = """You revise a short research paper with new sourced findings.
+
+You receive a goal, the current version of the paper, and new findings gathered since. Each finding ends with the URL it came from. Return the complete revised paper, not a list of changes, in a plain, neutral voice.
+
+How to revise:
+- Keep what the current paper says that still holds, with its source links exactly as written
+- Add what the new findings support, and reorganise so the strongest material comes first
+- Shorten or drop what is weaker or repeated, so the paper stays under 800 words
+- If the goal asks for a shortlist, keep it as one ranked list
+
+Use only what the current paper and the new findings state.
+
+""" + _PAPER_FORMAT
 
 _SESSION_RE = re.compile(r"<!-- session (\d+) -->")
 _WRITTEN_MARK = "<!-- paper written -->"
@@ -114,23 +135,37 @@ _COVERED_CHARS = 1500
 _BOILERPLATE_SECTIONS = ("summary", "what i am unsure about", "reviewer note")
 
 
+def _headings(text: str) -> list[str]:
+    out = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            heading = line[3:].strip()
+            if heading and heading.lower() not in _BOILERPLATE_SECTIONS:
+                out.append(heading)
+    return out
+
+
+def _heading_change(old: str, new: str) -> str:
+    """What a revision changed, worked out in code so the digest cannot invent it."""
+    before, after = set(_headings(old)), set(_headings(new))
+    return f"{len(after - before)} sections added, {len(before - after)} dropped"
+
+
 def _covered_by_papers(folder) -> str:
-    """One line per finished paper: its title and section headings, newest kept."""
+    """One line per paper: its title and section headings, newest kept. The living
+    paper.md is newest; paper-<night>.md files are from before it existed."""
     lines = []
-    for path in sorted(folder.glob("paper-*.md")):
+    paths = sorted(folder.glob("paper-*.md"))
+    if (folder / _PAPER).exists():
+        paths.append(folder / _PAPER)
+    for path in paths:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        title, headings = path.name, []
-        for line in text.splitlines():
-            if line.startswith("# "):
-                title = line[2:].strip() or title
-            elif line.startswith("## "):
-                heading = line[3:].strip()
-                if heading and heading.lower() not in _BOILERPLATE_SECTIONS:
-                    headings.append(heading)
-        lines.append(f"- {title}: " + "; ".join(headings))
+        title = next((line[2:].strip() for line in text.splitlines()
+                      if line.startswith("# ") and line[2:].strip()), path.name)
+        lines.append(f"- {title}: " + "; ".join(_headings(text)))
     kept, size = [], 0
     for line in reversed(lines):
         if size + len(line) + 1 > _COVERED_CHARS:
@@ -240,10 +275,21 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
         summary += ", paper write waits for budget"
     elif triggered:
         body = text[-_WRITE_INPUT_CHARS:]
-        write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
-        paper = await complete(_WRITE_SYSTEM, write_user, _WRITE_BUDGET, cap=_WRITE_BUDGET)
+        paper_path = folder / _PAPER
+        current = paper_path.read_text(encoding="utf-8")[:_PAPER_MAX_CHARS] if paper_path.exists() else ""
+        if current:
+            system = _REVISE_SYSTEM
+            write_user = (f"Goal: {goal['statement']}\n\nCurrent paper:\n{current}\n\n"
+                          f"New findings:\n{body}")
+        else:
+            system = _WRITE_SYSTEM
+            write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
+        paper = await complete(system, write_user, _WRITE_BUDGET, cap=_WRITE_BUDGET)
         if paper:
-            ok, why = paper_is_finished(paper, body)
+            # The current paper's links already passed this check, so a revision may keep them.
+            ok, why = paper_is_finished(paper, body + "\n" + current)
+            if ok and len(paper) > _PAPER_MAX_CHARS:
+                ok, why = False, f"longer than {_PAPER_MAX_CHARS} characters"
             if ok:
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
@@ -252,14 +298,21 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 if not passed:
                     ok, why = False, f"evaluator failed it: {feedback or 'contract not met'}"
             if ok:
-                paper_path = _unique(folder, "paper", night)
+                note = "paper written"
+                if current:
+                    versions = folder / "versions"
+                    versions.mkdir(exist_ok=True)
+                    old = _unique(versions, "paper", night)
+                    paper_path.replace(old)
+                    state["files"].append(str(old.relative_to(config.MEMORY_DIR)))
+                    note = f"paper revised: {_heading_change(current, paper)}"
                 paper_path.write_text(clean(paper) + "\n", encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)
                 rel = str(paper_path.relative_to(config.MEMORY_DIR))
                 state["files"].extend([rel, str(moved.relative_to(config.MEMORY_DIR))])
                 state["finished"].append(rel)
-                summary += f", paper finished ({paper_path.name})"
+                summary += f", {note} ({_PAPER})"
             else:
                 draft_path = _unique(folder, "draft", night)
                 draft_path.write_text(clean(paper) + "\n", encoding="utf-8")
@@ -547,6 +600,7 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
     try:
         entries = [e for e in work._load() if e.get("night") == night]
         papers: list[Path] = []
+        notes: dict[Path, str] = {}
         # Per goal folder: a draft drops off once a later paper in that folder finished.
         # Live 2026-10-17 a test session's draft was listed as in progress after a
         # finished paper had replaced it.
@@ -560,11 +614,15 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
                     names = drafts.setdefault(str(rel_path.parent), [])
                     if rel_path.name not in names:
                         names.append(rel_path.name)
+            change = re.search(r"paper (written|revised: [^(]*)", e.get("summary") or "")
             for rel in e.get("finished") or []:
                 drafts.pop(str(Path(str(rel)).parent), None)
                 path = (config.MEMORY_DIR / str(rel)).resolve()
-                if root in path.parents and path.is_file() and path not in papers:
-                    papers.append(path)
+                if root in path.parents and path.is_file():
+                    if path not in papers:
+                        papers.append(path)
+                    if change:
+                        notes[path] = change.group(1).strip()
             if e.get("files") or e.get("finished") or e.get("stopped"):
                 produced = True
         if not produced:
@@ -572,8 +630,9 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
         tokens, searches = work.spent(night)
         lines = []
         if papers:
-            lines.append("Papers finished:")
-            lines.extend(f"- {_paper_title(p)} ({p.name})" for p in papers)
+            lines.append("Paper updated:" if len(papers) == 1 else "Papers updated:")
+            lines.extend(f"- {_paper_title(p)} ({p.name})" + (f" - {notes[p]}" if p in notes else "")
+                         for p in papers)
         pending_drafts = [name for names in drafts.values() for name in names]
         if pending_drafts:
             lines.append("Drafts in progress: " + ", ".join(pending_drafts))

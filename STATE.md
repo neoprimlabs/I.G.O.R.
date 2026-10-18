@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-16**
+Last updated: **2026-10-17**
 
 ---
 
@@ -36,14 +36,12 @@ Last updated: **2026-10-16**
    only) - earning on its own likely needs at least one outward channel, which would
    be a spec decision for the user. Do not rewrite goals.md until the user agrees the
    new statement.
-2. **Fix: approving/rejecting proposals must not go through the model.** On 10-17
-   the user said "Reject proposal P1 Reject proposal P2"; React called reject with
-   "P1" (ids are lowercase, case-sensitive, so it failed), then `list` (untrusted
-   read, which closed the tool), then replied that both were rejected - false. The
-   controller rejected both on the server. Planned fix: a code fast path for
-   "approve|reject p<N>" (case-insensitive, several ids) that calls proposals.decide
-   and replies with the exact result, like the digest commands; ids normalised to
-   lowercase in proposals and goals too.
+2. **Done 2026-10-17:** typed proposal decisions ("reject p1 and p2", any case) are
+   carried out in code via `_proposal_decisions`, with the tool's own words as the
+   reply - no model, so no wrong-case id and no false "done". Ids are case-insensitive
+   in proposals and goals. And at the user's request each goal now keeps **one living
+   `paper.md`**, revised as findings arrive (old versions in `versions/`), instead of
+   a new paper per trigger - the first night's two papers overlapped.
 
 A.4, the overnight work loop, is **live** since 2026-10-17. Read its
 first morning: the Overnight section of the 13:00 UTC digest, `memory/work/log.json`,
