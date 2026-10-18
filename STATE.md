@@ -27,15 +27,17 @@ Last updated: **2026-10-17**
 ## Next action
 
 **Pick up here (2026-10-17 evening):**
-1. **Rewriting research goal g1 with the user - in progress.** The current g1 ("a
-   feature the user could build that generates income") produced generic market
-   papers. The user's actual aim, in their words: use IGOR's ability to work
-   overnight to generate revenue - "a job of some sort that IGOR could do on its own
-   to generate income". Not yet settled: what kind of work, who pays, and how that
-   fits IGOR's hard limits (no external accounts, no spending, no posting, drafts
-   only) - earning on its own likely needs at least one outward channel, which would
-   be a spec decision for the user. Do not rewrite goals.md until the user agrees the
-   new statement.
+1. **Done 2026-10-18 00:48 UTC:** g1 (the generic "income feature" goal) retired to
+   the archive and **g3** added with the statement the user agreed: ways an
+   autonomous agent could earn money for the person who runs it, wide net, no
+   delivery step required, not limited to what IGOR can do today (say what each idea
+   needs beyond web search, writing and code on a no-GPU server), who pays and how
+   much with sources, startup cost, how the money arrives, any time the person spends
+   worth at least $20 an hour, legal and honest, ranked shortlist. The user rejected
+   an earlier, narrower draft as too constrained. Backup `memory/goals.md.bak-20261018`.
+   Earning on its own still needs an outward channel IGOR's limits forbid, so the
+   paper is a shortlist for the user to act on. **Check next morning:** g3's first
+   `paper.md`; on a later night, the first live revision (only tested offline so far).
 2. **Done 2026-10-17:** typed proposal decisions ("reject p1 and p2", any case) are
    carried out in code via `_proposal_decisions`, with the tool's own words as the
    reply - no model, so no wrong-case id and no false "done". Ids are case-insensitive
@@ -143,9 +145,8 @@ verified present in the findings. Three weaknesses, fixed the same day:
   with them the "100am" fix ranked 35th of 108 and fell outside the list.
 - The digest listed the test session's superseded draft as in progress; a draft now
   drops off once a later paper in its folder finished.
-Still open, the user's call: g1's statement is generic, so the papers are market
-summaries rather than something aimed at a solo builder on a free tier. And the
-user decides on p1/p2 (recommended: reject both).
+Both settled 2026-10-17: g1's generic statement was replaced by g3 (Next action,
+item 1), and the user rejected p1/p2.
 
 **Still to do:** when a night first stops with `daily cap 20b: <limit>`, put that
 limit in `config.DAILY_TOKEN_CAPS` and Known broken 2 - the first measurement of
