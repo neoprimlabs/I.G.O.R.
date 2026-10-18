@@ -222,6 +222,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # tokens - it is HTTP against public feeds - so this is close to free.
     _scheduler.add_job(_job_watch, "cron", hour=14, minute=30, id="job_watch")
 
+    # Fifteen minutes after the job watch, so the two never land together. One
+    # screening call a day on 20b, the summary bucket, idle at this hour.
+    _scheduler.add_job(_gig_watch, "cron", hour=14, minute=45, id="gig_watch")
+
     # Deals vanish within hours, so this runs often. One HTTP call per watched item
     # and no model call at all, which is why every two hours is affordable.
     _scheduler.add_job(_price_watch, "interval", hours=2, id="price_watch")
@@ -345,6 +349,17 @@ async def _job_watch() -> None:
             jobs.record_found(found, notes)
     except Exception as e:
         logger.error("Job watch failed - %s: %s", type(e).__name__, e)
+
+
+async def _gig_watch() -> None:
+    """New paid AI and automation gigs, if any. Silent when there are none."""
+    if _send_fn is None:
+        return
+    from agents import gigs
+    try:
+        logger.info("Gig watch: %s", await gigs.run(_send_fn))
+    except Exception as e:
+        logger.error("Gig watch failed - %s: %s", type(e).__name__, e)
 
 
 async def _deliver_scheduled() -> None:
