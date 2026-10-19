@@ -77,7 +77,9 @@ The runtime is the server. There is no local run.
 Local repo: `c:\Dev\IGOR`. Server: `/opt/igor`, service `igor`, user `igor`.
 Current host IP is in `STATE.md`.
 
-1. Edit locally, then `python -m py_compile <changed files>` - never skip.
+1. Edit locally, then `python -m py_compile <changed files>` - never skip. Then run
+   the offline suite: every `tests/test_*.py` except `test_models_live.py` and
+   `test_router_verdicts.py`, which call the real models and spend the daily budget.
 2. **If the change alters what ARCHITECTURE.md describes, update it in the same
    commit.** Not afterwards. This file went 24 commits stale once while R2 and R3
    rewrote most of what it documented, and IGOR reads it to answer questions about
