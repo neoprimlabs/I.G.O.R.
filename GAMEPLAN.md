@@ -1186,9 +1186,11 @@ personal details in config or memory, never in code.
 - [ ] **K.3 A clone close to IGOR for the user's brother to test.** Requirements:
   his own Discord bot, **his own Groq key** (on the user's key he would eat into
   the 200000-token daily budget), and memory completely separate from the user's -
-  the first time someone else's data lives in this system. Hosting is unsolved:
-  IGOR uses ~400 of 956 MB, so a second copy may not fit; check whether Oracle's
-  free tier allows a second machine before choosing.
+  the first time someone else's data lives in this system. Hosting, measured
+  2026-10-19: IGOR's process is ~104 MB resident and the box (E2.1.Micro, 1 GB, 2
+  vCPU) has ~510 MB available, so two or three clones fit on it. Oracle's free tier
+  also allows a second micro; its free Arm allowance was halved to 2 OCPU / 12 GB in
+  2026 (enforcement date disputed).
 - [ ] **K.4 A public-facing clone.** Needs what the user's IGOR deliberately lacks:
   many users, a sandbox, paid model capacity, content screening. Needs its own
   spec section, ratified by the user.
