@@ -773,6 +773,11 @@ _ADVOCACY = {
         "Basic needs are going unmet in the United States, and a guaranteed income "
         "floor is a serious policy response to that, not a fringe idea."
     ),
+    # Sites that rewrite other people's reports, so a draft's numbers come second hand.
+    # citizenportal.ai writes AI summaries of council meetings; on 2026-10-19 it was the
+    # only source for a draft's savings and debt figures, which nobody could check
+    # against the report itself. A draft the user signs should rest on the original.
+    "exclude": ["citizenportal.ai"],
 }
 
 _ADVOCACY_DRAFT_PROMPT = """You draft a short advocacy post for a human to review, edit, and publish under their own name.
@@ -822,7 +827,8 @@ async def _weekly_advocacy_draft() -> None:
         from agents import research
         cutoff = (datetime.utcnow() - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
         results = await research._run_search(_ADVOCACY["query"], max_results=5,
-                                             start_published_date=cutoff, use_summary=True)
+                                             start_published_date=cutoff, use_summary=True,
+                                             exclude_domains=_ADVOCACY["exclude"])
         if not results:
             logger.info("Advocacy draft: no recent results for %s", _ADVOCACY["topic"])
             return
@@ -845,7 +851,8 @@ async def _weekly_advocacy_draft() -> None:
         await _send_fn(
             f"**Draft for review - {_ADVOCACY['topic']}**\n\n{draft}\n\n"
             "Nothing has been posted anywhere. IGOR has no publishing accounts. "
-            "Edit this however you want and post it yourself."
+            "Check the numbers against the original study before your name goes on them, "
+            "then edit this however you want and post it yourself."
         )
     except Exception as e:
         logger.error("Advocacy draft failed - %s: %s", type(e).__name__, e)

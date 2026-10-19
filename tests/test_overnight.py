@@ -212,6 +212,40 @@ def test_overlong_revision_stays_draft() -> None:
     tmp.cleanup()
 
 
+def test_revision_must_build_on_the_paper() -> None:
+    """Live 2026-10-19 a revision kept none of the current paper's 9 sources and put
+    three new ideas in place of its five."""
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    s = _Stubs(findings_per_step=6, links=6)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    before = (folder / "paper.md").read_text(encoding="utf-8")
+    real = s.complete
+    users = []
+
+    async def replacing(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        users.append(user)
+        return ("# Paper\n\n## New\n([a](https://e.example/4/0)) ([b](https://e.example/4/1)) "
+                "([c](https://e.example/4/2))\n## What I am unsure about\nMuch.\n")
+
+    _run(overnight.tick(datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=replacing))
+    _check("a replacement is retried once, told why",
+           len(users) == 2 and "keeps 0 of the current paper's 6 source links" in users[-1],
+           f"{len(users)} {users[-1][-300:] if users else ''}")
+    _check("and does not replace the paper",
+           (folder / "paper.md").read_text(encoding="utf-8") == before)
+    _check("it is kept as a draft with the reason",
+           "replaced the paper instead of revising it" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    _check("keeping a third of the sources is a revision",
+           overnight.revision_keeps(before, before.split("Claim 2")[0] + "\n## New\n")[0])
+    tmp.cleanup()
+
+
 def test_revise_call_fits_the_tpm_bucket() -> None:
     from agents import react
     overnight, goals, work, tmp, _ = _fresh()

@@ -15,6 +15,7 @@ proactiveness does not track model capacity, so the larger model buys nothing he
 
 import asyncio
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -93,6 +94,13 @@ async def compose(brief: str, now: Optional[datetime] = None) -> Optional[str]:
 # Hermes runs a full agent on a stored prompt when a job fires; this does the same,
 # with read-only tools only, because nobody is watching when it runs.
 _AGENT_TOOLS = ["search", "fetch_url", "memory_read", "search_memory"]
+
+# 2026-10-19, live: a weekday "Practical idea for IGOR" proposed a #brain-dump channel
+# and !commands for a bot that only reads DMs, to build a knowledge hub it already has.
+# The run knew IGOR by name and nothing else. Hermes grounds a cron job by loading the
+# project's context file into it (`workdir`); this attaches the verified self-summary
+# SelfDescribe answers from, about 950 tokens, only when the brief is about IGOR.
+_ABOUT_IGOR = re.compile(r"\bI\.?G\.?O\.?R\b", re.IGNORECASE)
 _AGENT_MAX_TOKENS = 2048
 _AGENT_TIMEOUT_S = 180
 
@@ -121,6 +129,13 @@ async def write(brief: str, now: Optional[datetime] = None,
     """
     from agents import react
     task = f"What this message is for: {brief}"
+    if _ABOUT_IGOR.search(brief):
+        from agents import self_describe
+        summary = self_describe._load_document()
+        if summary:
+            task += ("\n\nThe brief is about I.G.O.R. itself. This is what I.G.O.R. is today, "
+                     "verified against its source code. Anything you suggest must fit this setup, "
+                     "and must not propose something it already does:\n" + summary)
     if recent:
         earlier = "\n".join(f"- {r}" for r in recent)
         task += ("\n\nThis message repeats. Earlier ones in the series, newest first - say "
