@@ -200,7 +200,7 @@ _TOOLS = [
     },
     {
         "name": "python_run",
-        "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has access to IGOR's installed packages (exa_py, httpx, requests) and the standard library.",
+        "description": "Execute Python code and return the output. Use for calculations, data processing, generating content, or testing logic. Has IGOR's installed packages and the standard library. Sandboxed: no network, no API keys, files read-only except /tmp.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -260,7 +260,7 @@ _TOOLS = [
     },
     {
         "name": "shell",
-        "description": "Run a shell command on the server and return output. Use for system inspection (logs, processes, disk, git operations, file management). Runs as the igor user with cwd=/opt/igor. Output capped at 4000 chars.",
+        "description": "Run a shell command on the server and return output. Use for inspection (files, disk, git). Runs as igor with cwd=/opt/igor in a sandbox: no network, no secrets, sees only its own processes, files read-only except /tmp and .git. Output capped at 4000 chars.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -513,10 +513,16 @@ async def _run_code(code: str, timeout: int = 10) -> str:
 
     timeout = min(max(timeout, 1), 30)
 
+    import sandbox
+    try:
+        argv = sandbox.prepare([sys.executable, "-c", code])
+    except sandbox.Unavailable as e:
+        return str(e)
+
     def _sync() -> str:
         try:
             result = subprocess.run(
-                [sys.executable, "-c", code],
+                argv,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -1154,9 +1160,10 @@ async def _write_server_file(path: str, content: str) -> str:
 # says. Hermes' "hardline blocklist" floor (filesystem wipes, fork bombs, mkfs, dd
 # onto a disk, a download piped into a shell), plus what only IGOR has to protect:
 # the deploy machinery that judges it, sudoers, the repo and memory as a whole,
-# and origin's history. A policy on the shell tool, not a sandbox - python_run can
-# still do anything the igor user can. Unparseable quoting fails closed, as in
-# Hermes, so quote tricks cannot hide a pattern.
+# and origin's history. Both shell and python_run also run inside sandbox.py (no
+# network, no secrets, read-only); this list stops what would still do harm in
+# there, such as rewriting .git. Unparseable quoting fails closed, as in Hermes, so
+# quote tricks cannot hide a pattern.
 _SHELL_SPLIT = frozenset({";", "&&", "||", "|", "&", "\n"})
 _LAUNCHERS = frozenset({"sudo", "env", "command", "nohup", "nice", "time", "exec", "xargs"})
 _WIPE_TARGETS = frozenset({"/", "/*", "~", "~/", "~/*", "$home", "$home/", ".", "./", "*", "..",
@@ -1234,14 +1241,19 @@ async def _run_shell(command: str, timeout: int = 10) -> str:
 
     timeout = min(max(timeout, 1), 30)
 
+    import sandbox
+    try:
+        argv = sandbox.prepare(["bash", "-c", command])
+    except sandbox.Unavailable as e:
+        return str(e)
+
     def _sync() -> str:
         try:
             result = subprocess.run(
-                ["bash", "-c", command],
+                argv,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=str(config.BASE_DIR),
             )
             output = result.stdout
             if result.stderr:

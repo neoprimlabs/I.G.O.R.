@@ -66,6 +66,16 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   per command for a tool used a few times a week. **Discord test for the user:** ask
   IGOR to run `pkill -f no_such_process_xyz`, expect the approval DM, reply no.
 - The ARCHITECTURE summary said "no voice, no image reading"; corrected.
+- **Shell sandbox - built.** Hermes runs commands in Docker; this host has ~500 MB
+  free and the docker group is root by another name, so `sandbox.py` uses bubblewrap
+  0.6.1 (apt, installed 10-19) - a flagged deviation. Found while designing it: the
+  unit's `EnvironmentFile=/opt/igor/.env` put every key in IGOR's environment and
+  every shell or python_run subprocess inherited it, so `env` printed them. Now both
+  run with a clean environment, `.env` and the sealed and private memory files and
+  the deploy folder hidden, no network, own PID namespace, read-only except `/tmp`
+  and `.git`, 1 GiB address space; a sandbox that cannot start refuses, it never
+  runs bare. Probed live as igor before wiring. Usage since 08-01: 8 shell calls,
+  all read-only (`git log/status/show`, `ps`), so the cost to real use is nil.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
   scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
   `memory/heartbeat.txt` every minute only while Discord reports a live connection

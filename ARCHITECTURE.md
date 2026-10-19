@@ -17,10 +17,9 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
   human publishes. It never buys anything and never applies for a job.
 - **No self-restart.** `restart_self` writes a sentinel, but the watchdog has no
   sudo rights, so nothing restarts. Only the deploy script below restarts IGOR.
-- **No sandbox.** `shell` and `python_run` run as `igor` on the live host. The
-  shell refuses a fixed blocklist in code (wipes, disk writes, pipe-to-shell,
-  force-push, the deploy machinery) and asks the user before risky commands; a
-  policy, not a sandbox.
+- **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
+  network, secrets or sealed memory, read-only but `/tmp` and `.git`; refused if
+  it cannot start. The shell also refuses a blocklist and asks before risky ones.
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes and images the user sends are read.
 
@@ -263,7 +262,7 @@ home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell
 plus the repo, memory, sudoers, the deploy machinery and force-push. Commands are
 split on `; && || |` and quote-stripped with `shlex`, `sh -c` strings are checked
 too, and unparseable quoting fails closed. Any part blocked means nothing runs.
-`python_run` is not covered. Hermes' middle tier (`approvals.py`): recursive
+Hermes' middle tier (`approvals.py`): recursive
 deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
 and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
 `scheduled_message` is switched off after a web read, like the other tools that
