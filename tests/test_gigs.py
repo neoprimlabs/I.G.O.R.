@@ -129,6 +129,35 @@ def test_parsers() -> None:
     tmp.cleanup()
 
 
+def test_hacker_news() -> None:
+    gigs, tmp = _fresh()
+    story = 49922569
+    contract = {"objectID": "50001", "parent_id": story, "author": "assume_ai", "created_at": "2026-10-15T10:00:00Z",
+                "comment_text": "AssumeAI | AI Engineer (&pound;30/hr) | Contract | REMOTE (UK) | We build n8n and "
+                                "Python automations for SMEs and need help " + "with client systems " * 10}
+    commission = {"objectID": "50002", "parent_id": story, "author": "irash", "created_at": "2026-10-13T10:00:00Z",
+                  "comment_text": "Irash Tech | Business Development Manager (Freelance, Commission-only) | "
+                                  "REMOTE | We build AI automation for clients."}
+    reply = {"objectID": "50003", "parent_id": 50001, "author": "someone", "created_at": "2026-10-15T11:00:00Z",
+             "comment_text": "Is this open to contractors in the US? Python automation is my thing."}
+    page1 = json.dumps({"hits": [contract, commission, reply]})
+    page2 = json.dumps({"hits": [contract]})
+    posts = gigs._from_hn(story, [page1, page2, "not json"])
+    _check("top-level posts only, each once", [p["url"] for p in posts] == [
+        "https://news.ycombinator.com/item?id=50001", "https://news.ycombinator.com/item?id=50002"],
+           str([p["url"] for p in posts]))
+    _check("the title is the post's opening, cut at a word", posts[0]["title"].startswith("AssumeAI | AI Engineer")
+           and len(posts[0]["title"]) <= 140 and not posts[0]["title"].endswith(" "), posts[0]["title"])
+    _check("HTML entities are decoded", "£30/hr" in posts[0]["title"], posts[0]["title"])
+    _check("every post counts as hiring", all(gigs._is_hiring(p) for p in posts))
+    found, _ = gigs.collect(NOW, [("hn", lambda: gigs._from_hn(story, [page1]))], _Topics())
+    _check("the contract gig comes through", [g["url"] for g in found] == ["https://news.ycombinator.com/item?id=50001"],
+           str([g["url"] for g in found]))
+    _check("the commission-only post is dropped and its poster blocked", "hn:irash" in gigs.blocked(),
+           str(gigs.blocked()))
+    tmp.cleanup()
+
+
 def test_only_hiring_posts() -> None:
     gigs, tmp = _fresh()
     for title in ("• [Available] Hardened n8n engineer", "[For Hire] audits", "For hire: n8n builds",

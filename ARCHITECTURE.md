@@ -116,7 +116,7 @@ A Discord DM travels this path every time:
    anything that is not a DM, caches the channel for proactive sends. The user's
    attachments go through `agents/inbound.py` first: voice notes become text
    (Whisper), up to 3 images are described by qwen inside untrusted markers, and
-   PDFs, `.docx` and text files are saved to `memory/inbox/` (an untrusted read)
+   PDFs, Word, Excel, notebooks and text are saved to `memory/inbox/` (untrusted)
    with the opening in the message; a long one goes to React.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
@@ -368,7 +368,8 @@ conversation.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive. Code decides what it
 can be right about and a model judges the rest. The gig watch (`agents/gigs.py`)
-reads the n8n forum Jobs board and r/forhire [Hiring]; red flags drop in code or a
+reads the n8n forum Jobs board, r/forhire [Hiring] and contract posts in HN's "Who is
+hiring?"; red flags drop in code or a
 daily 120b screen, blocking the poster, and a failed screen holds the gigs.
 
 ### ConfigEdit

@@ -192,6 +192,56 @@ def test_documents() -> None:
     _check("an oversized document is refused before download", "over the 10 MB" in _run([huge])[0][0] and huge.reads == 0)
 
 
+def _xlsx() -> bytes:
+    """A two-sheet workbook as Excel writes it: shared strings, an inline string, a number."""
+    m = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    r = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("xl/workbook.xml", f'<workbook {m} {r}><sheets><sheet name="Invoices" sheetId="1" r:id="rId1"/>'
+                                      f'<sheet name="Notes" sheetId="2" r:id="rId2"/></sheets></workbook>')
+        z.writestr("xl/_rels/workbook.xml.rels",
+                   '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                   '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/>'
+                   '<Relationship Id="rId2" Target="/xl/worksheets/sheet2.xml"/></Relationships>')
+        z.writestr("xl/sharedStrings.xml", f'<sst {m}><si><t>Client</t></si><si><t>Total</t></si>'
+                                           f'<si><r><t>Acme </t></r><r><t>Ltd</t></r></si></sst>')
+        z.writestr("xl/worksheets/sheet1.xml", f'<worksheet {m}><sheetData>'
+                   '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+                   '<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>412.5</v></c></row>'
+                   '</sheetData></worksheet>')
+        z.writestr("xl/worksheets/sheet2.xml", f'<worksheet {m}><sheetData><row r="1">'
+                   '<c r="A1" t="inlineStr"><is><t>Paid on the 3rd</t></is></c></row></sheetData></worksheet>')
+    return buf.getvalue()
+
+
+def test_spreadsheets_and_notebooks() -> None:
+    from agents import inbound
+    _check("xlsx and ipynb are recognised", inbound._kind("q3.xlsx", None) == "xlsx" and
+           inbound._kind("eda.ipynb", None) == "ipynb")
+    text, facts = inbound._xlsx_text(_xlsx())
+    _check("every sheet is read, by name", "## Sheet: Invoices" in text and "## Sheet: Notes" in text, text)
+    _check("shared strings, rich text, numbers and inline strings come through",
+           "Client\tTotal" in text and "Acme Ltd\t412.5" in text and "Paid on the 3rd" in text, text)
+    _check("the facts count the sheets", facts == "an Excel workbook, 2 sheets", facts)
+    _check("a broken workbook says so", inbound._xlsx_text(b"not a zip")[1].startswith("could not be read"))
+
+    import json
+    notebook = json.dumps({"cells": [
+        {"cell_type": "markdown", "source": ["# Sales\n", "Quarterly look"]},
+        {"cell_type": "code", "source": "df.groupby('region').sum()",
+         "outputs": [{"output_type": "stream", "text": ["east 10\n", "west 12\n"]},
+                     {"output_type": "execute_result", "data": {"text/plain": "x" * 2500}}]}]}).encode()
+    text, facts = inbound._ipynb_text(notebook)
+    _check("notebook cells are read in order", text.index("# Sales") < text.index("df.groupby"), text[:200])
+    _check("with their outputs", "east 10" in text and "west 12" in text)
+    _check("a huge output is cut", "[output cut]" in text and "x" * 2001 not in text)
+    _check("the facts count the cells", facts == "a Jupyter notebook, 2 cells", facts)
+
+    parts, _ = _run([_Att("q3.xlsx", None, _xlsx())])
+    _check("a workbook attachment lands in the message", "Acme Ltd" in parts[0] and "Excel workbook" in parts[0], parts[0][:200])
+
+
 def test_inbox_is_pruned() -> None:
     from agents import inbound
     inbox = config.MEMORY_DIR / "inbox"

@@ -70,7 +70,15 @@ _N8N_LIST = "https://community.n8n.io/c/jobs/13.json"
 _N8N_TOPIC = "https://community.n8n.io/t/{id}.json"
 _REDDIT_HIRING = ("https://www.reddit.com/r/forhire/search.rss"
                   "?q=flair%3AHiring&restrict_sr=1&sort=new")
-_SOURCE_LABELS = {"n8n": "n8n forum", "reddit": "r/forhire"}
+# Hacker News' monthly "Who is hiring?" thread: real companies, about 300 posts a
+# month, 40 marked contract or freelance in October 2026. Its "Freelancer? Seeking
+# freelancer?" thread stopped after October 2025. Algolia's search returns just the
+# matching top-level posts in four requests, instead of fetching ~300 one by one.
+_HN_USER = "https://hacker-news.firebaseio.com/v0/user/whoishiring.json"
+_HN_ITEM = "https://hacker-news.firebaseio.com/v0/item/{id}.json"
+_HN_SEARCH = "https://hn.algolia.com/api/v1/search?tags=comment,story_{id}&query={q}&hitsPerPage=100"
+_HN_QUERIES = ("contract", "freelance", "contractor", "part-time")
+_SOURCE_LABELS = {"n8n": "n8n forum", "reddit": "r/forhire", "hn": "Hacker News"}
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
 # Freelancers advertising themselves post on the same boards. On the n8n board on
@@ -185,13 +193,48 @@ def _from_reddit(payload: str) -> list[dict]:
     return out
 
 
+def _from_hn(story_id: int, payloads: list[str]) -> list[dict]:
+    """Top-level posts of one "Who is hiring?" thread from Algolia search results;
+    replies to posts are left out."""
+    out, seen = [], set()
+    for payload in payloads:
+        try:
+            hits = json.loads(payload).get("hits") or []
+        except (ValueError, AttributeError):
+            continue
+        for hit in hits:
+            oid = str(hit.get("objectID") or "")
+            if not oid or oid in seen or hit.get("parent_id") != story_id:
+                continue
+            seen.add(oid)
+            text = _text(hit.get("comment_text") or "")
+            out.append({"title": text[:140].rsplit(" ", 1)[0] if len(text) > 140 else text,
+                        "url": f"https://news.ycombinator.com/item?id={oid}",
+                        "created": hit.get("created_at") or "", "author": (hit.get("author") or "").strip(),
+                        "body": text, "source": "hn"})
+    return out
+
+
+def _fetch_hn() -> list[dict]:
+    story = None
+    for sid in (json.loads(_get(_HN_USER)).get("submitted") or [])[:6]:
+        item = json.loads(_get(_HN_ITEM.format(id=int(sid))))
+        if (item.get("title") or "").startswith("Ask HN: Who is hiring?"):
+            story = item["id"]
+            break
+    if story is None:
+        return []
+    return _from_hn(story, [_get(_HN_SEARCH.format(id=story, q=q)) for q in _HN_QUERIES])
+
+
 def _fetch_n8n_topic(topic_id) -> tuple[str, str]:
     return _from_n8n_topic(_get(_N8N_TOPIC.format(id=int(topic_id))))
 
 
 def _live_fetchers():
     return [("n8n", lambda: _from_n8n_list(_get(_N8N_LIST))),
-            ("reddit", lambda: _from_reddit(_get(_REDDIT_HIRING, accept="application/atom+xml")))]
+            ("reddit", lambda: _from_reddit(_get(_REDDIT_HIRING, accept="application/atom+xml"))),
+            ("hn", _fetch_hn)]
 
 
 def _criteria() -> tuple[list[str], list[str], list[str]]:
@@ -231,6 +274,8 @@ def _is_hiring(gig: dict) -> bool:
     title = gig.get("title") or ""
     if gig.get("source") == "reddit":
         return bool(_HIRING_TAG.search(title))
+    if gig.get("source") == "hn":
+        return True  # every top-level post in "Who is hiring?" is a hiring post
     return not _NOT_HIRING.search(title)
 
 
