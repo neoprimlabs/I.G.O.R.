@@ -85,10 +85,21 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   (14:45):** 10 new, 3 dropped, 2 picks sent (AI-agent QA, MirrorFly), 8 skipped,
   0 red flags. One flaw, seen twice: the QA pick's note mentioned MirrorFly - the
   screen mixed two posts; the prompt now says each line is about its own posting.
-- **First live paper revision (08:20 UTC 10-19) failed the Evaluator**: the goal asks
-  for sourced revenue, startup cost and payment flow per idea, and the findings do
-  not have them for every idea. Left as is - the reviewer doing its job; watch
-  whether revisions keep failing. That night spent 58986 of the 60000 budget.
+- **First live paper revision (08:20 UTC 10-19) was a replacement, not a revision**:
+  it kept none of the current paper's 9 sources and swapped its five ideas for three
+  new ones, mostly unpriced. The Evaluator failed it for the missing prices. Code now
+  rejects a revision that keeps under a third of the current paper's links and
+  retries once told why (`overnight.revision_keeps`). That night spent 58986 of 60000.
+- **Review of the user's 10-19 Discord day, fixed:** the weekday "Practical idea for
+  IGOR" (scheduled `a055d1`) proposed a #brain-dump channel and !commands for a DM-only
+  bot, knowing IGOR by name only. Hermes grounds a cron job by loading the project's
+  context file (`workdir`); `compose.write` now attaches the ARCHITECTURE self summary
+  when a brief names IGOR (~950 tokens, only those briefs). The Monday UBI draft's
+  savings and debt figures came from citizenportal.ai, AI summaries of council
+  meetings; the official first-year report has different numbers and the two-year
+  PDF is blocked from both the server and the PC. That site is now excluded from the
+  advocacy search, and the draft message asks the user to check numbers against the
+  original before posting.
 - **Attachments: Excel and notebooks added**, read with the standard library as
   Hermes does (`.xlsx` sheets as tab-separated rows, 2000 rows a sheet; `.ipynb`
   cells with outputs cut at 2000 chars).

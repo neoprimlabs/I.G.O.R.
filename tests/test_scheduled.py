@@ -476,6 +476,12 @@ async def test_write_at_delivery() -> None:
         _check("the agent's message is what sends", text.startswith("What would you keep"), text)
         _check("the agent gets the brief", "a deep philosophical question" in seen.get("message", ""), str(seen))
         _check("with no conversation history", seen.get("context") == [], str(seen.get("context")))
+        _check("a brief not about IGOR does not pay for the self-summary",
+               "What does NOT exist" not in seen.get("message", ""))
+        await compose.write("Practical idea for IGOR")
+        _check("a brief about IGOR carries the self-summary, so ideas fit the real setup",
+               "What does NOT exist" in seen.get("message", "")
+               and "DMs only" in seen.get("message", ""), seen.get("message", "")[:300])
         banned = {"shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
                   "send_message", "scheduled_message", "delegate_task", "task_update"}
         tools = set(seen.get("allowed_tools") or [])

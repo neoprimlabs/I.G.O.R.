@@ -348,13 +348,13 @@ automatically.
 
 React can only give a `brief`, written to be self-contained. When due,
 `compose.write` runs React fresh - no history, read-only tools (`search`,
-`fetch_url`, `memory_read`, `search_memory`), 180s timeout. If that fails or returns
+`fetch_url`, `memory_read`, `search_memory`), 180s timeout; a brief naming IGOR
+gets the self summary. If that fails or returns
 nothing, the tool-less `compose()` writes it; if that fails too, the brief itself is
 sent. Words the user dictated go in double quotes and are kept verbatim.
 
 A second brief due within 5 minutes of a pending one is merged into it. A correction
-is `update`, which edits a pending message in place by id (cancel-then-add was two
-calls and React kept skipping the cancel). `repeat` (daily, weekdays, weekly) moves
+is `update`, which edits a pending message in place by id. `repeat` (daily, weekdays, weekly) moves
 the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 across
 daylight saving. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
@@ -432,13 +432,14 @@ one session. A failed session also marks its goal reviewed, so it cannot wedge t
 rotation. It never raises. A session is a fixed pipeline: model calls with no tools,
 web search done by code, files written by code only under `memory/work/` plus each
 goal's progress line in `memory/goals.md`. Nothing it runs can message anyone; its only
-outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`, which the budget counts.
+outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
 sessions the goal's one living `paper.md` is written, then revised (under 7500 chars).
-Code checks for a "What I am unsure about" heading and 3 distinct links from the
-findings or paper, retrying once told why; then the Evaluator (FAIL keeps a draft).
+Code checks for a "What I am unsure about" heading, 3 distinct links from the
+findings or paper, and that a revision keeps a third of the paper's links, retrying
+once told why; then the Evaluator (FAIL keeps a draft).
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees. A failed write waits a night; no budget doubling.
 

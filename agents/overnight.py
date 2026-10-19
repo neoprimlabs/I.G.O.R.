@@ -107,6 +107,19 @@ def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, 
     return True, ""
 
 
+def revision_keeps(current: str, paper: str) -> tuple[bool, str]:
+    """A revision must build on the current paper. Live 2026-10-19 a "revision" kept
+    none of the current paper's 9 sources and swapped its five ideas for three new
+    ones; the Evaluator caught it only because the new ideas lacked prices."""
+    before = _links(current)
+    kept = len(before & _links(paper))
+    if kept < max(1, len(before) // 3):
+        return False, (f"it keeps {kept} of the current paper's {len(before)} source links, so it "
+                       f"replaced the paper instead of revising it - keep the current paper's "
+                       f"ideas that still hold and add the new findings to them")
+    return True, ""
+
+
 def _real_search():
     from agents import research
 
@@ -301,6 +314,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             paper = candidate
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
+            if ok and current:
+                ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:
                 ok, why = False, (f"longer than {_PAPER_MAX_CHARS} characters "
                                   f"(about {len(paper.split())} words)")

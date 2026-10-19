@@ -12,6 +12,7 @@ async def _run_search(
     start_published_date: str | None = None,
     max_chars: int = 500,
     use_summary: bool = False,
+    exclude_domains: list[str] | None = None,
 ) -> list[dict]:
     """Search Exa and return title, url, published date and body text.
 
@@ -38,6 +39,8 @@ async def _run_search(
             kwargs = {"num_results": max_results, "text": {"max_characters": max_chars}}
         if start_published_date:
             kwargs["start_published_date"] = start_published_date
+        if exclude_domains:
+            kwargs["exclude_domains"] = exclude_domains
         response = exa.search_and_contents(query, **kwargs)
         return [
             {
