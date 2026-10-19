@@ -1456,6 +1456,18 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         filename = inputs.get("file", "")
         content = inputs.get("content", "")
         mode = inputs.get("mode", "append")
+        if filename == "user.md":
+            # Hermes refuses a memory write past the cap and says how much to free, so
+            # the profile gets tidied rather than cut off in the prompt that reads it.
+            try:
+                existing = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
+            except OSError:
+                existing = ""
+            after = content if mode == "overwrite" else f"{existing.rstrip()}\n{content}"
+            if len(after.strip()) > config.USER_PROFILE_CAP:
+                return (f"Not written: user.md would be {len(after.strip())} characters, over its "
+                        f"{config.USER_PROFILE_CAP} cap. Read it, shorten or drop older entries to free "
+                        f"{len(after.strip()) - config.USER_PROFILE_CAP}, and write it whole with overwrite.")
         success = prod_memory._write_to_memory(filename, content, mode)
         return "Written successfully." if success else "Write failed - check filename."
 

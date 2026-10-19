@@ -233,14 +233,14 @@ call site re-derived it. Tested by `tests/test_llm.py`.
 
 ### Direct
 
-One model call, no tool schemas at all, on `openai/gpt-oss-120b`. It uses the
-`call_claude` passed to it, so chat gets rate-limit backoff and user notification
-that React does not have.
+One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
+`call_claude` passed to it (rate-limit backoff and user notification). Its prompt
+ends with `memory/user.md`, Hermes' USER.md, which `memory_write` keeps under 1500
+characters by refusing a write past it.
 
-Its prompt forbids claiming anything about IGOR's own state, features or
-performance, because it cannot check: it states the limitation, then the specific
-check that would answer. It may not say IGOR lacks a capability or promise any
-future action; asked to do something it says so and asks for it as its own message.
+Its prompt forbids claiming anything about IGOR's state, features or performance,
+which it cannot check: it states the limitation and the check that would answer. It
+may not say IGOR lacks a capability or promise a future action.
 
 ### React
 

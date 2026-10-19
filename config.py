@@ -75,6 +75,10 @@ _uid = os.getenv("AUTHORIZED_DISCORD_USER_ID", "")
 AUTHORIZED_USER_ID: int = int(_uid) if _uid.isdigit() else 0
 
 MEMORY_DIR = BASE_DIR / "memory"
+# memory/user.md goes into every Direct prompt, as Hermes puts USER.md into every
+# session (its cap is 1375). A memory_write that would pass this is refused, so the
+# file gets tidied instead of cut off.
+USER_PROFILE_CAP = 1500
 LOG_FILE = BASE_DIR / "igor.log"
 
 # Number of individual messages (user + assistant counted separately) kept in
