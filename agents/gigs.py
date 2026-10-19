@@ -434,6 +434,8 @@ You get their profile and a numbered list of postings. Every posting gets exactl
 
 Only count as theirs what the profile says they have done. Something the profile says they are still learning is a gap.
 
+Each line is about its own posting only: the gap you name must be something that posting itself asks for, never a tool or product from another posting.
+
 The shape, for four postings - fill each angle bracket for that posting:
 3. Fits because <what in the profile matches this posting>; missing <what this posting needs that the profile lacks, or nothing>.
 1. Fits because <match>; missing <gap>.

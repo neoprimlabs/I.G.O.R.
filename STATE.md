@@ -83,8 +83,12 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   23 AI or automation). Its "Freelancer? Seeking freelancer?" thread ended Oct 2025.
   `gig_search.md` Context now says "not ready for senior roles". **First real run
   (14:45):** 10 new, 3 dropped, 2 picks sent (AI-agent QA, MirrorFly), 8 skipped,
-  0 red flags. One flaw: the QA pick's note mentioned MirrorFly - the screen mixed
-  two posts; watch for it.
+  0 red flags. One flaw, seen twice: the QA pick's note mentioned MirrorFly - the
+  screen mixed two posts; the prompt now says each line is about its own posting.
+- **First live paper revision (08:20 UTC 10-19) failed the Evaluator**: the goal asks
+  for sourced revenue, startup cost and payment flow per idea, and the findings do
+  not have them for every idea. Left as is - the reviewer doing its job; watch
+  whether revisions keep failing. That night spent 58986 of the 60000 budget.
 - **Attachments: Excel and notebooks added**, read with the standard library as
   Hermes does (`.xlsx` sheets as tab-separated rows, 2000 rows a sheet; `.ipynb`
   cells with outputs cut at 2000 chars).
