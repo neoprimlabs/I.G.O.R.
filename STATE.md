@@ -139,7 +139,7 @@ the resume read in "which of these jobs suit me".
    terms work, and `account manager`, `apac`, `emea`, `latam`, `philippines`,
    `mexico`, `saudi`, `riyadh`, `dutch`, `india`, `brazil`, `svp` were added to
    `job_search.md` (backup `job_search.md.bak-20261019`). Side effect: `sales` no
-   longer drops "Salesforce" titles. Still the user's call: excluding `lead`.
+   longer drops "Salesforce" titles. `lead` and `leader` added too: the user is "not ready to tackle senior roles".
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
 ## Overnight work loop (A.4, live 2026-10-17)
