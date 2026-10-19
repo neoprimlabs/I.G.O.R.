@@ -55,6 +55,17 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   create an API key, then Claude Code adds it and runs one live call to confirm the
   model id and that `reasoning_effort` is accepted (a rejection already hands on to
   20b).
+- **Asking before risky commands - built.** Hermes' middle tier between "runs" and
+  the hardline blocklist: `approvals.py` matches recursive deletes, `find -delete`,
+  `xargs rm`, open permissions, `kill`/`pkill`, `systemctl stop/restart`, writes to
+  `.env`/`.ssh`/`/etc`, table drops, `sh -c`/`python -c`, git resets; React's shell
+  tool DMs the command and the reason and waits; the user's yes/no reaches
+  `approvals.answer` in the orchestrator before anything else; 5 minutes of silence
+  is a no and React is told not to retry. One request waits at a time. Hermes'
+  "smart" mode (a model waving low-risk commands through) is not built: a model call
+  per command for a tool used a few times a week. **Discord test for the user:** ask
+  IGOR to run `pkill -f no_such_process_xyz`, expect the approval DM, reply no.
+- The ARCHITECTURE summary said "no voice, no image reading"; corrected.
 - `/opt/igor/.env` was readable by every account on the box; now 600, owner igor
   (the backup reads it with sudo tar, IGOR as its owner - both checked).
 - ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):

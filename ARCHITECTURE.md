@@ -19,9 +19,10 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
   sudo rights, so nothing restarts. Only the deploy script below restarts IGOR.
 - **No sandbox.** `shell` and `python_run` run as `igor` on the live host. The
   shell refuses a fixed blocklist in code (wipes, disk writes, pipe-to-shell,
-  force-push, the deploy machinery); a policy, not a sandbox.
-- **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No voice, no
-  image reading.
+  force-push, the deploy machinery) and asks the user before risky commands; a
+  policy, not a sandbox.
+- **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
+  replies; voice notes and images the user sends are read.
 
 **React's 20 tools, the complete list:** `search`, `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
@@ -244,11 +245,9 @@ may not say IGOR lacks a capability or promise a future action.
 
 ### React
 
-System prompt is rebuilt on every call from the current local and UTC time
-(`clock.time_line()`) plus
-`prompt_react.md` if present, otherwise the built-in default. Messages become
-`[system] + context window + user message`. All 20 tools attach unless
-`allowed_tools` narrows them.
+System prompt rebuilt each call: `clock.time_line()` plus `prompt_react.md` if
+present, else the built-in default; messages are `[system] + context + user`. All
+20 tools attach unless `allowed_tools` narrows them.
 
 **The 20 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
 `watch_history`, `search_files`, `delegate_task`, `task_update`,
@@ -256,37 +255,36 @@ System prompt is rebuilt on every call from the current local and UTC time
 `fetch_url`, `send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`.
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
-messages, both sides plus proactive sends): dated excerpts, newest first. A LIKE scan,
-milliseconds at this size. Read-only.
+messages, both sides plus proactive sends): dated excerpts, newest first. A LIKE scan;
+read-only.
 
 `shell` checks `_hardline_refusal` before anything runs: Hermes' floor (root or
 home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell)
 plus the repo, memory, sudoers, the deploy machinery and force-push. Commands are
 split on `; && || |` and quote-stripped with `shlex`, `sh -c` strings are checked
 too, and unparseable quoting fails closed. Any part blocked means nothing runs.
-`python_run` is not covered.
+`python_run` is not covered. Hermes' middle tier (`approvals.py`): recursive
+deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
+and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 
-**Price watch, in full.** Listings the product judge rejects are marked seen; any
-failure of that judge fails open and sends unfiltered, since an unreadable reply is
-a 200 OK that would otherwise swallow a real drop. `monitor._watcher_status` shows
-each watch, its target, when it last really ran (STALE past 6h) and the cheapest
-keyword match, labelled unchecked.
+**Price watch, in full.** Rejected listings are marked seen; a failed judge fails
+open and sends unfiltered (an unreadable 200 OK would otherwise swallow a real drop).
+`monitor._watcher_status` shows each watch, its target, its last real run (STALE
+past 6h) and the cheapest match, labelled unchecked.
 
 **Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
 `available` boolean and a price in cents: keyless, no model call. `aoostar.com`
-blocks the Oracle IP range (429s), so the
-fetch falls back to the `r.jina.ai` relay - a third-party dependency on the critical
-path, sent only public product URLs. A failed fetch carries the old state forward (or the next
-success fakes a restock); state is kept raw and available-AND-under-ceiling, so an
+blocks Oracle's IPs (429s), so fetches fall back to the `r.jina.ai` relay (a
+third-party dependency, sent only public URLs). A failed fetch carries the old state
+forward (or the next success fakes a restock); state is kept raw and available-AND-under-ceiling, so an
 over-target restock cannot suppress a later alert; the variant filter is anchored
 to the region option, since `variant: us` once matched "warehouse".
 
 **Watch history** (`history.py`, `memory/history.db`) keeps every successful
-observation: stock availability and price per variant, the price watch's cheapest
-match, each new matching job posting. A failed fetch writes nothing, for the same
-reason as above. About 130 rows a day, no model calls. React's `watch_history`
+observation (stock and price per variant, the price watch's cheapest match, each new
+job or gig posting); a failed fetch writes nothing. About 130 rows a day, no model calls. React's `watch_history`
 returns changes only, newest first, so a week of hourly "available" is one row.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,

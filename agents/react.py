@@ -1387,6 +1387,16 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         command = inputs.get("command", "")
         timeout = inputs.get("timeout", 10)
         logger.info("ReAct shell: %s", command[:80])
+        # Hermes' middle tier: risky but sometimes legitimate, so the user decides.
+        # A hardline command is refused by _run_shell without asking.
+        import approvals
+        why = None if _hardline_refusal(command) else approvals.risk(command)
+        if why:
+            approved, reason = await approvals.ask(command, why)
+            if not approved:
+                return (f"NOT RUN: this command needs the user's approval because {why}, and "
+                        f"{reason}. Do not retry it in this turn. Tell the user what you wanted to "
+                        "run and why; they can ask for it again in a new message.")
         return await _run_shell(command, timeout)
 
     if name == "fetch_url":
