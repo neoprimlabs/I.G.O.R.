@@ -98,8 +98,11 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   savings and debt figures came from citizenportal.ai, AI summaries of council
   meetings; the official first-year report has different numbers and the two-year
   PDF is blocked from both the server and the PC. That site is now excluded from the
-  advocacy search, and the draft message asks the user to check numbers against the
-  original before posting.
+  advocacy search. The user has no time to check figures, so code does: every
+  percentage and dollar figure in a draft must appear on its source page (Exa
+  `get_contents`; the search summary if the page cannot be read), else one retry
+  told which, else the week is skipped (`monitor._check_figures`). Claude Code
+  rewrote the 10-19 post from confirmed figures only and sent it to the user.
 - **Attachments: Excel and notebooks added**, read with the standard library as
   Hermes does (`.xlsx` sheets as tab-separated rows, 2000 rows a sheet; `.ipynb`
   cells with outputs cut at 2000 chars).
