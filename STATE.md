@@ -42,9 +42,10 @@ Last updated: **2026-10-18**
    dry runs on 10-18 showed 20b low flag nothing, 20b medium return nothing at 2048
    and misread the profile at 4096. `gigs_found.md` keeps picks, skips with reasons,
    the last check and tool counts. Dry runs blocked 5 accounts by code pattern (free
-   pilot, no project, fee, partnership-only, a seller marketplace). Open question for
-   the user: 120b reds a "$35/hr guaranteed + revenue share" post for the revenue
-   share - consistent with "when in doubt, red", but it blocks that poster. The user's rule: nothing red-flagged ever
+   pilot, no project, fee, partnership-only, a seller marketplace). The user is "not
+   interested in revenue shares" at all (10-18): revenue/profit share phrases are in
+   `memory/gig_search.md` Exclude, so such posts drop in code, unblocked, even with
+   stated pay (backup `gig_search.md.bak-20261018`). The user's rule: nothing red-flagged ever
    reaches them, and IGOR never interacts with those accounts. **Not built, by
    agreement:** pitch drafting (call them "pitches", never "proposals" - that word
    is the self-improvement queue) and the pitch log, until the user is ready to send.
