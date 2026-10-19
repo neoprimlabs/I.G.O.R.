@@ -804,6 +804,48 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
+# The user signs these posts and has no time to check them, so code checks every
+# percentage and money figure against the source page before a draft is sent. Those
+# are the figures a reader quotes, and the kind that went out unverifiable on
+# 2026-10-19. Counts and durations are left alone: a page saying "two years" where
+# the draft says "24-month" is the same fact, and a digit match would call it false.
+_FIGURE_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?|\d+(?:\.\d+)?\s?(?:%|percent\b)", re.IGNORECASE)
+
+
+def _unsourced_figures(draft: str, source_text: str) -> list[str]:
+    """The draft's percentages and money figures that the source text does not state."""
+    page = re.sub(r"(?<=\d),(?=\d{3})", "", source_text)
+    missing = []
+    for m in _FIGURE_RE.finditer(_SOURCE_INDEX_RE.sub("", draft)):
+        figure = m.group(0).strip()
+        number = re.search(r"\d[\d,]*(?:\.\d+)?", figure).group(0).replace(",", "")
+        if "$" in figure:
+            pattern = rf"\$\s?{re.escape(number)}(?![\d])"
+        else:
+            pattern = rf"(?<![\d.]){re.escape(number)}\s?(?:%|percent)"
+        if not re.search(pattern, page, re.IGNORECASE) and figure not in missing:
+            missing.append(figure)
+    return missing
+
+
+async def _check_figures(draft: str, results: list[dict]) -> tuple[str, str]:
+    """(why the draft fails, what it was checked against). why is "" when it passes;
+    checked is "page", "summary" when the page could not be read, or "" for no figures."""
+    if not _FIGURE_RE.search(_SOURCE_INDEX_RE.sub("", draft)):
+        return "", ""
+    m = _SOURCE_INDEX_RE.search(draft)
+    i = int(m.group(1)) - 1 if m else -1
+    if not 0 <= i < len(results):
+        return "it has figures but no Source line naming one of the results", ""
+    from agents import research
+    page = await research._page_text(results[i].get("url", ""))
+    checked = "page" if page else "summary"
+    missing = _unsourced_figures(draft, page or results[i].get("body", ""))
+    if missing:
+        return f"its source does not state these figures: {', '.join(missing)}", checked
+    return "", checked
+
+
 def _append_draft(text: str) -> None:
     """Keep a dated record of every draft on disk.
 
@@ -834,25 +876,40 @@ async def _weekly_advocacy_draft() -> None:
             return
 
         formatted = research._format_results(results)
-        draft = await llm.complete(
-            _client,
-            config.MODELS["chat"],
-            _ADVOCACY_DRAFT_PROMPT.format(stance=_ADVOCACY["stance"]),
-            f"Search results:\n\n{formatted}",
-            max_tokens=1024,
-            label="Advocacy draft",
-        )
-        if not draft or "NOTHING WORTH DRAFTING" in draft.upper():
-            logger.info("Advocacy draft: nothing worth drafting from this week's results")
+        user = f"Search results:\n\n{formatted}"
+        for attempt in range(2):
+            draft = await llm.complete(
+                _client,
+                config.MODELS["chat"],
+                _ADVOCACY_DRAFT_PROMPT.format(stance=_ADVOCACY["stance"]),
+                user,
+                max_tokens=1024,
+                label="Advocacy draft",
+            )
+            if not draft or "NOTHING WORTH DRAFTING" in draft.upper():
+                logger.info("Advocacy draft: nothing worth drafting from this week's results")
+                return
+            why, checked = await _check_figures(draft, results)
+            if not why:
+                break
+            logger.warning("Advocacy draft rejected: %s", why)
+            user += (f"\n\nA first draft was rejected: {why}. Write it again using only figures "
+                     f"its source states, or no figures.")
+        else:
+            logger.info("Advocacy draft: not sent, figures still unsourced after a retry")
             return
 
+        checked_note = {
+            "page": "Every percentage and dollar figure in it was checked against the source page. ",
+            "summary": ("Its figures match the search summary of the source; the page itself "
+                        "could not be read to check them. "),
+        }.get(checked, "")
         draft = sanitize.clean(_attach_sources(draft, results))
         _append_draft(draft)
         await _send_fn(
             f"**Draft for review - {_ADVOCACY['topic']}**\n\n{draft}\n\n"
-            "Nothing has been posted anywhere. IGOR has no publishing accounts. "
-            "Check the numbers against the original study before your name goes on them, "
-            "then edit this however you want and post it yourself."
+            f"{checked_note}Nothing has been posted anywhere. IGOR has no publishing accounts. "
+            "Edit this however you want and post it yourself."
         )
     except Exception as e:
         logger.error("Advocacy draft failed - %s: %s", type(e).__name__, e)

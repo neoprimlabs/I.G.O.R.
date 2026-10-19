@@ -63,6 +63,22 @@ async def _run_search(
         return []
 
 
+async def _page_text(url: str, max_chars: int = 30000) -> str:
+    """The page's own text, for checking a claim against it. "" when it cannot be read."""
+    def _sync() -> str:
+        from exa_py import Exa
+        exa = Exa(api_key=config.EXA_API_KEY)
+        response = exa.get_contents([url], text={"max_characters": max_chars})
+        return (response.results[0].text or "") if response.results else ""
+
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync)
+    except Exception as e:
+        logger.error("Exa contents error for %s - %s: %s", url, type(e).__name__, e)
+        return ""
+
+
 def _format_results(results: list[dict]) -> str:
     lines = []
     for i, r in enumerate(results, 1):
