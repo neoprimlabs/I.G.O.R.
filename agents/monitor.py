@@ -1,4 +1,5 @@
 import asyncio
+import math
 import json
 import logging
 import os
@@ -21,6 +22,8 @@ _send_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _send_file_fn: Optional[Callable[[str], Awaitable[None]]] = None
 _client: Optional[openai.AsyncOpenAI] = None
 _setup_done: bool = False
+_connected_fn: Optional[Callable[[], bool]] = None
+_HEARTBEAT = "heartbeat.txt"
 
 _BRIDGEMIND_CHANNEL_ID = "UCwaTGE53GLGC3fDClVl_7TA"
 _BRIDGEMIND_RSS = f"https://www.youtube.com/feeds/videos.xml?channel_id={_BRIDGEMIND_CHANNEL_ID}"
@@ -181,14 +184,16 @@ async def _check_bridgemind_videos() -> None:
 
 
 def setup(send_fn: Callable[[str], Awaitable[None]],
-          send_file_fn: Optional[Callable[[str], Awaitable[None]]] = None) -> None:
-    global _scheduler, _send_fn, _send_file_fn, _client, _setup_done
+          send_file_fn: Optional[Callable[[str], Awaitable[None]]] = None,
+          connected_fn: Optional[Callable[[], bool]] = None) -> None:
+    global _scheduler, _send_fn, _send_file_fn, _client, _setup_done, _connected_fn
     if _setup_done:
         return
     _setup_done = True
 
     _send_fn = send_fn
     _send_file_fn = send_file_fn
+    _connected_fn = connected_fn
     _client = openai.AsyncOpenAI(
         api_key=config.GROQ_API_KEY,
         base_url="https://api.groq.com/openai/v1",
@@ -254,6 +259,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # Polled rather than one date job per message: APScheduler drops a date job more
     # than a second late, so anything due during a restart would be lost. No tokens.
     _scheduler.add_job(_deliver_scheduled, "interval", seconds=60, id="scheduled_messages")
+
+    # Proof of a live Discord connection and a running scheduler, read by a root-owned
+    # check outside the repo that restarts IGOR when it goes stale.
+    _scheduler.add_job(_heartbeat, "interval", seconds=60, id="heartbeat")
 
     # Presence decides whether to speak on its own. Ten minutes rather than sixty
     # because a lull is a 25-90 minute window and a coarser tick would step over it.
@@ -360,6 +369,36 @@ async def _gig_watch() -> None:
         logger.info("Gig watch: %s", await gigs.run(_send_fn))
     except Exception as e:
         logger.error("Gig watch failed - %s: %s", type(e).__name__, e)
+
+
+def gateway_connected(client) -> bool:
+    """Ready, not closed, and a finite gateway latency: discord.py reports inf or nan
+    latency when no heartbeat acknowledgement has come back."""
+    try:
+        return bool(client.is_ready() and not client.is_closed() and math.isfinite(client.latency))
+    except Exception:
+        return False
+
+
+async def _heartbeat() -> None:
+    """Touch memory/heartbeat.txt, but only while Discord says IGOR is connected.
+
+    systemd sees a process, not a connection: a gateway that drops while the process
+    lives looks healthy to everything (STATE Known broken 4). Hermes exports a
+    gateway-up signal and a scheduler heartbeat age for alerting; this one file is
+    both, since a dead scheduler stops it too. /usr/local/lib/igor-deploy/heartbeat.sh
+    reads its age.
+    """
+    if _connected_fn is None:
+        return
+    try:
+        if not _connected_fn():
+            logger.warning("Heartbeat skipped: Discord gateway not connected")
+            return
+        (config.MEMORY_DIR / _HEARTBEAT).write_text(
+            datetime.now(timezone.utc).isoformat() + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.error("Heartbeat failed - %s: %s", type(e).__name__, e)
 
 
 async def _deliver_scheduled() -> None:
