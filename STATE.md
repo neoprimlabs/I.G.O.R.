@@ -45,6 +45,18 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   to free. Live `user.md` corrected (the server is an x86 micro, not ARM A1), the
   digest-time section swapped for the income plan, tidied to 1488 chars (backup
   `user.md.bak-20261019`).
+- **Backup provider - built, dormant until the user adds a key.** Hermes'
+  `fallback_providers`: a chain tried in order, failing over on 429s and 5xx after
+  retries, a missing model or refused key at once, a dropped connection; a 400 on
+  the primary is still raised. `config.FALLBACK_MODELS` 120b -> Cerebras
+  `gpt-oss-120b` (same model, free tier ~1M tokens/day at 5 requests/min per
+  third-party pages; signup may want a card) -> Groq 20b. Cerebras is skipped until
+  `CEREBRAS_API_KEY` is in `/opt/igor/.env`. **For the user:** sign up at Cerebras,
+  create an API key, then Claude Code adds it and runs one live call to confirm the
+  model id and that `reasoning_effort` is accepted (a rejection already hands on to
+  20b).
+- `/opt/igor/.env` was readable by every account on the box; now 600, owner igor
+  (the backup reads it with sudo tar, IGOR as its owner - both checked).
 - ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):
   every addition needs an equal cut.
 
