@@ -713,6 +713,17 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   every turn, unbounded growth, and blind injection of unreviewed skills. Buckets:
   auto-approve low risk, write high-stakes suggestions to a review file for user
   sign-off, flag needs-more-context. Include expiry and curation.
+  **2026-10-19, status:** the preference half is built (A.2 corrections, A.4's
+  self-improvement goal, proposals with sign-off, `preferences.md` with a cap). No
+  auto-approve bucket, by evidence: about a third of logged corrections are real.
+  The missing half is Hermes' skills (procedures learned from hard tasks), designed
+  and parked by the user ("not worried about that right now"): a skill index under
+  200 tokens in React's prompt (React spends ~5800 of its 7000 before history),
+  skills read on demand with `read_file`, drafted overnight or on "save that as a
+  skill", every one approved by the user, Hermes' curator rules (stale 14 days
+  unused, archive 30, never delete). Parked because React did 4 multi-step tasks in
+  18 days (journal, 2026-10-01 to 10-19); revisit when clones or pitch drafting add
+  multi-step work.
 
 - [ ] **V.2 Memory restructure.** Was R4.3. Raw sources plus a curated index rather
   than flat files that drift. M.3 decides the rule this implements. NOTE for a
