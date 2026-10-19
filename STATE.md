@@ -76,6 +76,8 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   Authoritative copies in `C:\Dev\IGOR_backup\deploy-machinery\` (README has the
   install). **Failure path tested live 16:03 UTC:** a heartbeat set 10 minutes stale
   restarted IGOR (back online in 7s) and the test-labelled alert reached the webhook.
+  At 16:10, stale again within half an hour of that restart: "would alert only", no
+  second restart. Dry runs no longer write to the deploy log.
 - **Gig watch: Hacker News added**, the contract and freelance posts in the monthly
   "Who is hiring?" thread via Algolia search (4 requests; 40 such posts in October,
   23 AI or automation). Its "Freelancer? Seeking freelancer?" thread ended Oct 2025.
