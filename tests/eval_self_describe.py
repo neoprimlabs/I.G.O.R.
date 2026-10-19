@@ -13,10 +13,11 @@ Three failure modes are scored:
   STONEWALL    - has the facts, refuses to reason from them. The over-correction.
   NO HANDOFF   - needs a tool, answers anyway instead of passing to React.
 
-Pacing: the prompt carries all of ARCHITECTURE.md, ~7400 tokens, on a 12000 TPM
-bucket. One question per minute is the ceiling, so this sleeps between cases.
+Cost: the prompt carries ARCHITECTURE.md's summary section, about 3300 tokens a case
+on the chat model (gpt-oss-120b, 8000 TPM, 200000 a day shared with Direct and
+React). A full run is about 36000 tokens of the user's day. This sleeps between cases.
 
-    sudo -u igor /opt/igor/venv/bin/python tests/eval_self_describe.py
+    sudo -u igor /opt/igor/venv/bin/python tests/eval_self_describe.py [question substrings]
 """
 import asyncio
 import re
@@ -49,6 +50,27 @@ def _normalise(text: str) -> str:
 FABRICATIONS = ["scheduler.yaml", "run_agent", "ubi_drafts", "ubi_pending_reviews",
                 "policy filter", "admin ui", "igor import"]
 
+_NEGATION = re.compile(r"\b(no|not|never|without|nor|none|isn't|doesn't|does not|do not|there is no)\b")
+
+
+def _asserted(bad: str, low: str) -> bool:
+    """A forbidden name counts only when it is asserted, not denied. 2026-10-19: asked
+    what agents IGOR has, it listed the real ones and added that there is no
+    scheduler.yaml or run_agent - the summary's own "does not exist" list, which a
+    plain substring check scored as fabricating them."""
+    start = 0
+    while (i := low.find(bad, start)) != -1:
+        sentence = low[low.rfind(". ", 0, i) + 1:i]
+        if not _NEGATION.search(sentence):
+            return True
+        start = i + len(bad)
+    return False
+
+
+# Claims that are false about IGOR even though every word in them is real. 2026-10-19:
+# asked about scheduled messages, it said they wait for presence_config.md to be on.
+FALSE_CLAIMS = {"Can you schedule a message to me for later?": ["presence_config"]}
+
 STONEWALL_PHRASES = ["does not cover", "does not mention", "is not documented",
                      "no information about", "does not specify"]
 
@@ -66,8 +88,11 @@ CASES = [
     {"q": "What tools can you use?", "want": "ANSWER",
      "groups": [["read_file"], ["shell"], ["memory_write"], ["search"]]},
 
+    # Twice on 2026-10-19 it answered correctly - edits with patch_file and write_file,
+    # cannot restart itself, deploys only through the external script - without naming
+    # restart_self. The fact being tested is that it cannot ship its own change.
     {"q": "Can you change your own code and deploy it?", "want": "ANSWER",
-     "groups": [["restart_self", "sentinel"], ["cannot", "no ", "not able"]]},
+     "groups": [["restart_self", "sentinel", "restart itself", "deploy script"], ["cannot", "no ", "not able"]]},
 
     # Phrasing, not fact: "no content filter", "does not have a content filter" and
     # "does not include a content filter" are the same answer, and three separate
@@ -85,13 +110,15 @@ CASES = [
     {"q": "Where is the digest schedule configured?", "want": "ANSWER",
      "groups": [["schedule_config.md", "digest_config.md", "monitor.setup"]]},
 
+    # "the request is handed off to the React path" was marked wrong on 2026-10-19 for
+    # not saying "falls"; the fact is where it goes, not the verb.
     {"q": "What happens if the router fails?", "want": "ANSWER",
-     "groups": [["react"], ["fall", "falls", "default"]]},
+     "groups": [["react"], ["fall", "falls", "default", "goes to", "handed", "hands", "sent to", "routed to"]]},
 
     # 2026-09-07: asked to schedule a check-in, IGOR said it had no way to. It has one now.
     {"q": "Can you schedule a message to me for later?", "want": "ANSWER",
      "groups": [["scheduled_message", "scheduled message", "schedule a message"],
-                ["minute", "30 days", "local time", "eastern"]]},
+                ["minute", "30 days", "local time", "eastern", "america/new_york"]]},
 
     # Needs a tool. Must hand off rather than answer or apologise.
     {"q": "read agents/react.py and summarise what it does", "want": "HANDOFF"},
@@ -125,8 +152,11 @@ def score(case, answer):
 
     low = _normalise(answer)
     for bad in FABRICATIONS:
-        if bad in low:
+        if _asserted(bad, low):
             return "FABRICATION", f"invented {bad!r}"
+    for bad in FALSE_CLAIMS.get(q, []):
+        if bad in low:
+            return "FALSE CLAIM", f"tied this to {bad!r}"
 
     missing = [g for g in case["groups"] if not any(_hit(term, low) for term in g)]
     stonewalled = any(p in low for p in STONEWALL_PHRASES) and len(answer) < 500
@@ -166,9 +196,9 @@ async def main():
 
     for i, case in enumerate(cases):
         if i:
-            # 3344 tokens a call against a 12000 TPM bucket. 30s keeps two calls a
-            # minute, well clear, and makes a full run about five minutes instead of
-            # fifteen - an eval nobody wants to wait for is an eval nobody runs.
+            # About 3300 tokens a call against an 8000 TPM bucket. 30s keeps two calls
+            # a minute, inside it, and makes a full run about six minutes - an eval
+            # nobody wants to wait for is an eval nobody runs.
             time.sleep(30)
         answer, error = await _ask(case["q"])
         if error:
@@ -195,8 +225,8 @@ async def main():
     # on a run where all five were 429s and not one answer was graded.
     if limited:
         print(f"\n  INVALID RUN: {len(limited)} of {len(_results)} cases never got an answer.")
-        print("  llama-3.3-70b is capped at 100000 tokens per DAY and this eval spends")
-        print("  ~8500 per case. Check remaining budget before trusting any score here.")
+        print("  gpt-oss-120b is capped at 200000 tokens per DAY, shared with chat, and this")
+        print("  eval spends ~3300 per case. Check usage.summary() before trusting any score.")
         for _, q, _d in limited:
             print(f"    unmeasured: {q}")
         return 2
@@ -209,4 +239,5 @@ async def main():
     return 1 if bad else 0
 
 
-sys.exit(asyncio.run(main()))
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

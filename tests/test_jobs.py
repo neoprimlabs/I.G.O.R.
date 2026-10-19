@@ -199,6 +199,20 @@ def test_matching() -> None:
            jobs._matches(no_location, wanted, excluded), str(no_location))
 
 
+def test_exclusions_are_whole_words() -> None:
+    """Live 2026-10-18 region-locked roles (APAC, EMEA, "Saudi National") and seven
+    Account Manager titles reached the user. Region terms need whole-word matching:
+    as a substring, "apac" would also drop "Capacity"."""
+    from agents import jobs
+    excluded = ["apac", "sales", "manager,", "speaking", "10+ years", "svp", "india"]
+    base = {"company": "c", "location": "Remote", "url": "https://x/1", "source": "remotive"}
+    for title in ("APAC Python - Kodland", "Account Manager, Enterprise", "Spanish-speaking Support Agent",
+                  "Support Engineer (10+ years)", "SVP Marketing", "Inside Sales Rep", "Support - India"):
+        _check(f"excluded: {title!r}", not jobs._matches(dict(base, title=title), [], excluded))
+    for title in ("Capacity Planning Analyst", "Salesforce Administrator", "Support Specialist, Indiana"):
+        _check(f"kept: {title!r}", jobs._matches(dict(base, title=title), [], excluded))
+
+
 def test_seen_and_collect() -> None:
     from agents import jobs
 
@@ -366,10 +380,13 @@ if __name__ == "__main__":
     test_source_order_decides_what_the_ranker_sees()
     print("\nmatching")
     test_matching()
+    test_exclusions_are_whole_words()
     print("\nseen store and collection")
     test_seen_and_collect()
     print("\nranking against a profile")
     test_ranking_uses_a_profile_without_contact_details()
+    print("\nwhat was found is kept")
+    test_what_was_found_is_kept()
     print("\nproof of life")
     test_the_weekly_proof_of_life()
     print("\na source being down")

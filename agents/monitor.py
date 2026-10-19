@@ -414,6 +414,7 @@ Rules:
 - Lead with the most significant development
 - Stay inside what the result actually says. Do not add detail it does not contain, and do not resolve an unfamiliar or technical claim into a more familiar one - keep each story in the field its source puts it in.
 - Reuse the source's own wording for the key nouns rather than substituting your own
+- Copy every number with its unit and scale exactly as the source writes it. "816B parameters" stays "816B parameters", never "816 parameters" - a number without its B, M, K, %, or currency sign is a different number
 - If a result is too thin to summarise honestly, use its title rather than inventing detail
 - No emojis
 - No em dashes - use plain hyphens
