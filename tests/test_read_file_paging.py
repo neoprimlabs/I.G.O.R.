@@ -85,7 +85,7 @@ async def main():
     # "what does NOT exist" list - that list is the part that stops React inventing
     # a content filter. Adding three lines above it silently pushed it out once.
     doc = open("ARCHITECTURE.md", encoding="utf-8").read()
-    tail = doc.find("- **No sandbox.**")
+    tail = doc.find("- **No container.**")
     end = doc.find("\n", tail)
     check("the whole self-summary fits one read window", -1 < end < _READ_WINDOW,
           f"summary ends at {end}, window is {_READ_WINDOW}")

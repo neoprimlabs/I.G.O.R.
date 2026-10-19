@@ -100,11 +100,19 @@ def _smoke_test() -> None:
                    "agents.research", "agents.research_loop",
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
-                   "agents.inbound", "approvals", "clock"):
+                   "agents.inbound", "approvals", "clock", "sandbox"):
         try:
             __import__(module)
         except Exception as e:
             problems.append(f"{module} failed to import - {type(e).__name__}: {e}")
+
+    # Not a reason to refuse to start: shell and python_run refuse on their own and
+    # the rest of IGOR still works. The ERROR line it logs is what to look for.
+    try:
+        import sandbox
+        sandbox.startup_check()
+    except Exception as e:
+        log.error("Sandbox check could not run - %s: %s", type(e).__name__, e)
 
     try:
         from orchestrator import Orchestrator
