@@ -57,8 +57,20 @@ class IgorBot(discord.Client):
         # Cache the DM channel for proactive messages (monitor digests, rate limit notices)
         self._dm_channel = message.channel
 
+        content, prefer_tools = message.content, False
+        # Only the authorised user's attachments are read: each one costs an API call,
+        # and anyone else's message is dropped by the orchestrator anyway.
+        if message.attachments and message.author.id == config.AUTHORIZED_USER_ID:
+            from agents import inbound
+            try:
+                async with message.channel.typing():
+                    parts, prefer_tools = await inbound.read(message.attachments)
+                content = inbound.combine(content, parts)
+            except Exception as e:
+                logger.error("Reading attachments failed - %s: %s", type(e).__name__, e)
+
         try:
-            result = await self._orchestrator.process(message.author.id, message.content)
+            result = await self._orchestrator.process(message.author.id, content, prefer_tools=prefer_tools)
         except Exception as e:
             logger.error("Unhandled error in message processing - %s: %s", type(e).__name__, e)
             return

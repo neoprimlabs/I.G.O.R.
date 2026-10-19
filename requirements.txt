@@ -8,3 +8,6 @@ exa-py>=1.0.0
 youtube-transcript-api>=0.6.0
 python-dotenv>=1.0.0
 apscheduler>=3.10.0
+# Text from PDFs the user sends (agents/inbound.py). Pinned: installed by hand on the
+# server, since the deploy script does not run pip.
+pypdf==6.1.3

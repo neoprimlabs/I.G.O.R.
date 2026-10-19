@@ -26,6 +26,20 @@ Last updated: **2026-10-19**
 
 ## Next action
 
+**Hermes parity run, 2026-10-19 (the user away, Claude Code working through the
+docket; order: attachments, always-on memory, a backup provider, asking before risky
+commands; clones parked by the user, design in `docs/superpowers/specs/`):**
+- **Attachments - built.** `agents/inbound.py`, Hermes' pattern for text-only
+  models: voice notes via Whisper (`whisper-large-v3-turbo`), images described by
+  `qwen/qwen3.8-27b` (3 per message, by Discord URL, inline fallback), PDFs (pypdf
+  6.1.3, installed by hand in the venv), `.docx` and text saved to `memory/inbox/`.
+  Live on the server: vision described a real image; Whisper transcribed a public
+  `.ogg` ("Hello."); Groq lists `opus` as accepted. **Discord tests for the user:**
+  a voice note, a screenshot, a PDF. Groq's TTS model (Orpheus) needs the user to
+  accept its terms in the Groq console before spoken replies can be built.
+- ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):
+  every addition needs an equal cut.
+
 **Pick up here (2026-10-18 evening):**
 0. **Income direction chosen 2026-10-18: freelance AI automation, the user selling,
    IGOR finding the work.** The user turned down prizes (Metaculus), work on their own

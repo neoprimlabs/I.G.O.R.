@@ -653,18 +653,29 @@ def _is_goal_list(name: str, args: dict) -> bool:
     return name == "goal" and isinstance(args, dict) and args.get("action") == "list"
 
 
+# memory/work/ holds papers and findings written from web text overnight; memory/inbox/
+# holds documents the user sent, which can carry anyone's words.
+_UNTRUSTED_FOLDERS = ("work", "inbox")
+
+
 def _reads_work_folder(name: str, args: dict) -> bool:
-    """read_file on memory/work/: papers and findings written from web text overnight."""
+    """read_file on memory/work/ or memory/inbox/."""
     if name != "read_file":
         return False
     path = (args or {}).get("path") if isinstance(args, dict) else None
     if not isinstance(path, str) or not path:
         return False
     try:
-        (config.BASE_DIR / path).resolve().relative_to((config.MEMORY_DIR / "work").resolve())
-        return True
+        resolved = (config.BASE_DIR / path).resolve()
     except Exception:
         return False
+    for folder in _UNTRUSTED_FOLDERS:
+        try:
+            resolved.relative_to((config.MEMORY_DIR / folder).resolve())
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def _quarantine_check(name: str, args: dict, web_read: bool, private_read: bool) -> Optional[str]:
@@ -1033,14 +1044,14 @@ async def _search_source(pattern: str, glob: Optional[str] = None,
 
     import fnmatch
     root = config.BASE_DIR.resolve()
-    # Overnight papers and findings are web text; a search hit would carry it past the
-    # quarantine, which cannot see in advance what a pattern will match.
-    work_root = (config.MEMORY_DIR / "work").resolve()
+    # Overnight papers and inbox documents are untrusted text; a search hit would carry
+    # it past the quarantine, which cannot see in advance what a pattern will match.
+    skipped_roots = [(config.MEMORY_DIR / folder).resolve() for folder in _UNTRUSTED_FOLDERS]
     hits, total = [], 0
     for path in sorted(root.rglob("*")):
         if any(part in _SEARCH_SKIP for part in path.parts):
             continue
-        if work_root in path.resolve().parents:
+        if any(skipped in path.resolve().parents for skipped in skipped_roots):
             continue
         if not path.is_file():
             continue

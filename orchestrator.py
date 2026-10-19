@@ -364,12 +364,14 @@ class Orchestrator:
         from context_store import load
         self._context: list[dict] = load()
 
-    async def process(self, user_id: int, content: str) -> tuple[str, bool] | None:
+    async def process(self, user_id: int, content: str, prefer_tools: bool = False) -> tuple[str, bool] | None:
         """Entry point for every incoming message.
 
         Returns None for unauthorized users (silent drop, no acknowledgment).
         Returns (response, as_file) where as_file signals the bot to send a file attachment.
         Prefixes: "file: <task>" sends response as a downloadable file.
+        prefer_tools: an attached document is longer than the part in the message, and
+        only React can page through the rest.
         """
         if user_id != config.AUTHORIZED_USER_ID:
             return None
@@ -380,7 +382,7 @@ class Orchestrator:
 
         # A "file:" request is always document work regardless of what it asks
         # for, so it skips the router and goes straight to the tool agent.
-        destination = "React" if file_mode else await self._classify(task)
+        destination = "React" if file_mode or prefer_tools else await self._classify(task)
 
         # Before _update_context runs, so the last assistant entry is still the reply
         # being corrected rather than the one about to be written.
