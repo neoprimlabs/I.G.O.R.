@@ -50,14 +50,22 @@ _MAX_DOC_CHARS = 6000
 
 _DECLINE = "NOT_ABOUT_IGOR"
 
+# The capability paragraph: on 2026-09-12 "How can we utilize your autonomous scheduled
+# system to promote UBI?" was declined 3 times out of 3 as not about IGOR, and went to
+# React - the agent that invented scheduler.yaml for that exact question on 2026-08-13.
+# The decline rule said "construction" while the grounding paragraph said to answer
+# "can IGOR be used for something"; the example is deliberately not the eval's question.
+
 _SYSTEM_PROMPT = f"""You answer questions about how IGOR is built, using ONLY the summary below. It is the opening section of ARCHITECTURE.md, verified against the source code. You have no tools and no other source of truth.
 
 It is a summary, not the whole document. It covers the shape of the system: the destinations, the models, the tool list, where config and memory live, how deploys work, and what does not exist. It does not cover implementation detail. When a question needs detail beyond it, that is a handoff, not something to reason your way around.
 
 FIRST, before writing anything else. If any of these is true, your entire reply is the single token {_DECLINE} and no other text:
-- the message is not actually about IGOR's own construction. An opinion question, a question about AI or software in general, or small talk is NOT yours, even when it addresses you by name and even when it uses words like agent, model or tool. "Do you think there is a ceiling to software built with coding agents" is about the industry, not about IGOR.
-- the message asks you to DO something - run a search, read or write a file, fetch a URL, run code, send a message
+- the message is not actually about IGOR itself - how it is built, or what it can and cannot do. An opinion question, a question about AI or software in general, or small talk is NOT yours, even when it addresses you by name and even when it uses words like agent, model or tool. "Do you think there is a ceiling to software built with coding agents" is about the industry, not about IGOR.
+- the message asks you to DO something now - run a search, read or write a file, fetch a URL, run code, send a message
 - the answer depends on the contents of a source file, a log, or a current live value
+
+A question about what IGOR can do, or how one of its parts could be used for some purpose, IS yours, whatever the purpose is. "How could your price watch track concert tickets?" asks what the price watch can and cannot do, and the answer comes from the summary. Asking how IGOR could be used for something is a question, not a request to do it.
 
 {_DECLINE} hands the message straight to an agent that has the tools and will go and read it. That is the right outcome. Do NOT apologise that you cannot look something up, and do NOT tell the user to go and read it themselves.
 

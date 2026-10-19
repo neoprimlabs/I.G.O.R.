@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-18**
+Last updated: **2026-10-19**
 
 ---
 
@@ -119,27 +119,27 @@ the resume read in "which of these jobs suit me".
    weekdays, Mon 2026-10-19 10:00 EDT. Monitor reported it from its status block. One
    new defect from that reply, fixed after: React said "Monday, October 23" for the
    19th because the tool's confirmation gave no date - it now always does.
-3. **The SelfDescribe eval, and one real defect it found.** Four of ten cases were
-   run on gpt-oss-120b on 2026-09-12, no 429:
-   - Pass: "What tools can you use?", "Where is the digest schedule configured?",
-     and the new "Can you schedule a message to me for later?"
-   - **Fail: the UBI case declines every time.** SelfDescribe returns
-     `NOT_ABOUT_IGOR` and hands "How can we utilize your autonomous scheduled system
-     to promote UBI?" to React - the agent that fabricated `scheduler.yaml` on this
-     exact question on 2026-08-13. A/B on 2026-09-12: declined 3/3 with the current
-     ARCHITECTURE.md and 3/3 with the pre-`17d2407` one, so it is not the scheduled
-     messages edit. It is the decline path `32e7dcc` added for messages "not about
-     IGOR at all"; `d90926e` kept it to test whether it was enough alone, and this is
-     the answer - it over-declines a question that is half about IGOR. Fix it with
-     the eval as the judge, not by reading an answer.
-   - Six cases still unmeasured on the current model: agents, change own code,
-     content filter, social media, router failure, and the two handoffs.
-   - `tests/eval_self_describe.py` has **no `__main__` guard** - importing it runs
-     all ten cases. Its INVALID RUN message still quotes llama-3.3-70b's 100000/day,
-     which is stale. Pass substrings of the questions to run a subset.
-
-   Run it after any change to `agents/self_describe.py`, the router prompt, or
-   ARCHITECTURE.md's summary.
+3. **Done 2026-10-19: the SelfDescribe eval, all 11 cases, on 120b.** The UBI
+   case ("How can we utilize your autonomous scheduled system to promote UBI?") no
+   longer declines; the decline rule now says a question about what IGOR can do, or
+   how a part could be used for something, is SelfDescribe's (the rule said
+   "construction" while the grounding paragraph said to answer it). First full run
+   7/11. The rest, fixed: the 10-18 gig-watch edit had crammed gigs, scheduled
+   messages and presence into one summary paragraph, so "what agents" listed watchers
+   and "schedule a message" claimed it needs `presence_config.md` - the summary is
+   short again, the gig detail moved below the marker, and a FALSE CLAIM check guards
+   it. Two scorer faults: "handed off to React" and "America/New_York" are now
+   accepted, and a forbidden name inside a denial ("there is no scheduler.yaml") no
+   longer counts as fabrication. The own-code case accepts "cannot restart itself"
+   without naming `restart_self`. The eval has a `__main__` guard now; about 3300
+   tokens a case, ~36000 a full run. Run it after any change to
+   `agents/self_describe.py`, the router prompt, or ARCHITECTURE.md's summary.
+   Same session: AI news keeps every number with its unit (a digest said "816-
+   parameter" for 816B); the job watch matches exclusions as whole words, so region
+   terms work, and `account manager`, `apac`, `emea`, `latam`, `philippines`,
+   `mexico`, `saudi`, `riyadh`, `dutch`, `india`, `brazil`, `svp` were added to
+   `job_search.md` (backup `job_search.md.bak-20261019`). Side effect: `sales` no
+   longer drops "Salesforce" titles. Still the user's call: excluding `lead`.
 4. Then **V.1**, the improvement loop with sign-off buckets.
 
 ## Overnight work loop (A.4, live 2026-10-17)
@@ -855,10 +855,7 @@ user, not made quietly.
    lost (25 of 25 digests since 2026-08-18), but a stall at 13:00 would have cost
    that day's digest with only a WARNING. `monitor.setup()` now builds the scheduler
    with `job_defaults={"misfire_grace_time": 300}`: five minutes late beats missing.
-6. **`tests/test_self_grounding.py` fails on import** and has since `13d10ab`, when
-   grounding moved from React to SelfDescribe: it imports
-   `_ground_if_self_referential`, which no longer exists. Delete it or rewrite it
-   against SelfDescribe.
+6. **Gone.** `tests/test_self_grounding.py`, which failed on import, has been removed.
 7. **FIXED 2026-09-16.** A request to move a check-in could rewrite the morning
    digest schedule. On 2026-09-14 "Do it later.. around 11:40" routed CONFIG and
    ConfigEdit wrote `time: 11:40 UTC` into `schedule_config.md`, undetected for six

@@ -44,16 +44,16 @@ until Groq's stated reset, and the reply says so.
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
 **Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (13:00
-UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch (hourly), a Groq model
-check, an advocacy draft (Mondays), presence (10 min), due scheduled messages (60s)
-and the overnight tick (hourly). Retiming one needs a deploy.
+UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch
+(hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
+scheduled messages (60s) and the overnight tick (hourly). Retiming one needs a deploy.
 
-**Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and log
-to `history.db`. The **gig watch** (`agents/gigs.py`) reads the n8n forum Jobs board
-and r/forhire [Hiring]. Red flags are dropped by code and one daily 120b screen, and
-the poster blocked; a failed screen holds the day's gigs. `scheduled_message` manages timed messages in `memory/scheduled.json`
-(America/New_York). **Presence** is one check-in a day behind code gates, off unless
-`memory/presence_config.md` says `state: on`.
+**Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and
+log to `history.db`.
+
+**Scheduled messages**: `scheduled_message` keeps timed messages in
+`memory/scheduled.json` (America/New_York). **Presence** is separate: one check-in
+a day behind code gates, off unless `memory/presence_config.md` says `state: on`.
 
 **Overnight loop**: hourly 00:00-06:59 local, a fixed code pipeline on `gpt-oss-20b`
 with no acting tools works the standing goals in `memory/goals.md`, writing sourced
@@ -366,7 +366,9 @@ between messages, 2 a day, 6 model calls a day, never within 20 minutes of a liv
 conversation.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive. Code decides what it
-can be right about and a model judges the rest.
+can be right about and a model judges the rest. The gig watch (`agents/gigs.py`)
+reads the n8n forum Jobs board and r/forhire [Hiring]; red flags drop in code or a
+daily 120b screen, blocking the poster, and a failed screen holds the gigs.
 
 ### ConfigEdit
 

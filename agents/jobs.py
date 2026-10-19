@@ -193,6 +193,14 @@ def _from_wwr(payload: str) -> list[dict]:
     return out
 
 
+def _excluded(title: str, term: str) -> bool:
+    """Whole words, so "apac" leaves "Capacity Deployment Lead" alone and "sales"
+    leaves "Salesforce". A term's own punctuation still counts: "manager," and
+    "10+ years" match as written. Substring matching made region terms unusable -
+    live 2026-10-18, APAC, EMEA and "Saudi National" roles reached the user."""
+    return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", title) is not None
+
+
 def _matches(job: dict, wanted: list[str], excluded: list[str]) -> bool:
     """Exclusions and remote-ness only, unless a Titles list is configured.
 
@@ -206,7 +214,7 @@ def _matches(job: dict, wanted: list[str], excluded: list[str]) -> bool:
     title = (job.get("title") or "").lower()
     if not title or not job.get("url"):
         return False
-    if any(term in title for term in excluded):
+    if any(_excluded(title, term) for term in excluded):
         return False
     if wanted and not any(term in title for term in wanted):
         return False
