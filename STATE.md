@@ -73,7 +73,19 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   owned beside `deploy.sh` and run by `igor-heartbeat.timer` every 2 minutes,
   restarts IGOR and alerts the webhook when it is over 300s old - never during a
   deploy, never within 5 minutes of a start, once per half hour, then alerts only.
-  Authoritative copies in `C:\Dev\IGOR_backup\deploy-machinery\`.
+  Authoritative copies in `C:\Dev\IGOR_backup\deploy-machinery\` (README has the
+  install). **Failure path tested live 16:03 UTC:** a heartbeat set 10 minutes stale
+  restarted IGOR (back online in 7s) and the test-labelled alert reached the webhook.
+- **Gig watch: Hacker News added**, the contract and freelance posts in the monthly
+  "Who is hiring?" thread via Algolia search (4 requests; 40 such posts in October,
+  23 AI or automation). Its "Freelancer? Seeking freelancer?" thread ended Oct 2025.
+  `gig_search.md` Context now says "not ready for senior roles". **First real run
+  (14:45):** 10 new, 3 dropped, 2 picks sent (AI-agent QA, MirrorFly), 8 skipped,
+  0 red flags. One flaw: the QA pick's note mentioned MirrorFly - the screen mixed
+  two posts; watch for it.
+- **Attachments: Excel and notebooks added**, read with the standard library as
+  Hermes does (`.xlsx` sheets as tab-separated rows, 2000 rows a sheet; `.ipynb`
+  cells with outputs cut at 2000 chars).
 - `/opt/igor/.env` was readable by every account on the box; now 600, owner igor
   (the backup reads it with sudo tar, IGOR as its owner - both checked).
 - ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):

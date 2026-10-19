@@ -78,6 +78,10 @@ def _kind(filename: str, content_type: Optional[str]) -> str:
         return "pdf"
     if name.endswith(".docx"):
         return "docx"
+    if name.endswith(".xlsx"):
+        return "xlsx"
+    if name.endswith(".ipynb"):
+        return "ipynb"
     if ct.startswith("text/") or name.endswith(_TEXT_EXT):
         return "text"
     return "other"
@@ -126,6 +130,81 @@ def _docx_text(data: bytes) -> tuple[str, str]:
     return "\n".join(p for p in paragraphs if p), "a Word document"
 
 
+_XLSX_NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+            "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+            "rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+_MAX_SHEET_ROWS = 2000
+
+
+def _xlsx_text(data: bytes) -> tuple[str, str]:
+    """Each sheet as tab-separated rows, with the standard library only, as Hermes
+    reads Excel. Shared strings are looked up; formulas show their last value."""
+    import xml.etree.ElementTree as ET
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            names = set(z.namelist())
+            shared = []
+            if "xl/sharedStrings.xml" in names:
+                for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall("m:si", _XLSX_NS):
+                    shared.append("".join(t.text or "" for t in si.iter(f"{{{_XLSX_NS['m']}}}t")))
+            book = ET.fromstring(z.read("xl/workbook.xml"))
+            rels = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+            targets = {r.get("Id"): r.get("Target") for r in rels.findall("rel:Relationship", _XLSX_NS)}
+            sheets, cut = [], False
+            for sheet in book.findall("m:sheets/m:sheet", _XLSX_NS):
+                target = (targets.get(sheet.get(f"{{{_XLSX_NS['r']}}}id")) or "").lstrip("/")
+                path = target if target.startswith("xl/") else f"xl/{target}"
+                if path not in names:
+                    continue
+                rows = []
+                for row in ET.fromstring(z.read(path)).iter(f"{{{_XLSX_NS['m']}}}row"):
+                    if len(rows) >= _MAX_SHEET_ROWS:
+                        cut = True
+                        break
+                    cells = []
+                    for c in row.findall("m:c", _XLSX_NS):
+                        v = c.find("m:v", _XLSX_NS)
+                        if c.get("t") == "s" and v is not None and (v.text or "").isdigit():
+                            i = int(v.text)
+                            cells.append(shared[i] if i < len(shared) else "")
+                        elif c.get("t") == "inlineStr":
+                            cells.append("".join(t.text or "" for t in c.iter(f"{{{_XLSX_NS['m']}}}t")))
+                        else:
+                            cells.append(v.text if v is not None and v.text else "")
+                    if any(cells):
+                        rows.append("\t".join(cells))
+                sheets.append(f"## Sheet: {sheet.get('name')}\n" + "\n".join(rows))
+    except Exception as e:
+        logger.warning("XLSX could not be read - %s: %s", type(e).__name__, e)
+        return "", "could not be read as an Excel workbook"
+    facts = f"an Excel workbook, {len(sheets)} sheet{'s' if len(sheets) != 1 else ''}"
+    if cut:
+        facts += f", only the first {_MAX_SHEET_ROWS} rows of a sheet were read"
+    return "\n\n".join(sheets).strip(), facts
+
+
+def _ipynb_text(data: bytes) -> tuple[str, str]:
+    """Cells in order with their outputs, as Hermes reads notebooks; an output over
+    2000 characters is cut, since it is usually a log or a data dump."""
+    import json
+    try:
+        cells = json.loads(data.decode("utf-8", errors="replace")).get("cells") or []
+    except Exception as e:
+        logger.warning("Notebook could not be read - %s: %s", type(e).__name__, e)
+        return "", "could not be read as a Jupyter notebook"
+    parts = []
+    for i, cell in enumerate(cells, 1):
+        source = cell.get("source") or ""
+        source = "".join(source) if isinstance(source, list) else str(source)
+        parts.append(f"[cell {i}, {cell.get('cell_type', 'cell')}]\n{source.strip()}")
+        for out in cell.get("outputs") or []:
+            text = out.get("text") or (out.get("data") or {}).get("text/plain") or ""
+            text = "".join(text) if isinstance(text, list) else str(text)
+            if text.strip():
+                parts.append("[output]\n" + (text if len(text) <= 2000 else text[:2000] + " [output cut]").strip())
+    return "\n\n".join(parts), f"a Jupyter notebook, {len(cells)} cells"
+
+
 def _plain_text(data: bytes) -> tuple[str, str]:
     encoding = "utf-16" if data[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8"
     return data.decode(encoding, errors="replace").strip(), "a text file"
@@ -136,6 +215,10 @@ def _extract(kind: str, data: bytes) -> tuple[str, str]:
         return _pdf_text(data)
     if kind == "docx":
         return _docx_text(data)
+    if kind == "xlsx":
+        return _xlsx_text(data)
+    if kind == "ipynb":
+        return _ipynb_text(data)
     return _plain_text(data)
 
 
@@ -271,7 +354,7 @@ async def read(attachments, transcribe=None, describe=None,
     for a, kind in docs:
         if kind == "other":
             parts.append(f"[An attachment, {a.filename}, was not read: IGOR reads voice notes, images, "
-                         f"PDFs, Word .docx files and plain text]")
+                         f"PDFs, Word .docx, Excel .xlsx, Jupyter notebooks and plain text]")
             continue
         if (a.size or 0) > _MAX_DOC_BYTES:
             parts.append(f"[A document, {a.filename}, is {_size(a.size)}, over the 10 MB that can be read]")
