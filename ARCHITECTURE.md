@@ -112,7 +112,11 @@ locally. Test pure logic with standalone Python snippets instead.
 A Discord DM travels this path every time:
 
 1. **`interfaces/discord_bot.py` `on_message`** - ignores its own messages and
-   anything that is not a DM, caches the channel for proactive sends.
+   anything that is not a DM, caches the channel for proactive sends. The user's
+   attachments go through `agents/inbound.py` first: voice notes become text
+   (Whisper), up to 3 images are described by qwen inside untrusted markers, and
+   PDFs, `.docx` and text files are saved to `memory/inbox/` (an untrusted read)
+   with the opening in the message; a long one goes to React.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
    auth check in the system; everything downstream trusts it.
@@ -203,9 +207,8 @@ that fail as a 200 OK when omitted, keyed by model so no call site has to rememb
 `reasoning_format` `hidden` for qwen, `reasoning_effort` `low` for both gpt-oss
 models. An explicit caller value still wins, so ResearchLoop keeps the `low` it
 measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
-accepts `none`. Groq's docs say gpt-oss defaults to high, but measured, unset
-behaves nothing like high - treat the documented default as unconfirmed. React does
-not set it, deliberately.
+accepts `none`. Groq's docs say gpt-oss defaults to high; measured, unset behaves
+nothing like high, so that default is unconfirmed. React relies on `model_params`.
 
 `reasoning_format` has no openai-client parameter, so `model_params` puts it in
 `extra_body`; as a keyword it raises TypeError before the request, which the deploy
@@ -516,30 +519,27 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
 | `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
+| `vision` | `qwen/qwen3.8-27b` | shares router's 8000; 2048 an image, when sent |
+| `speech` | `whisper-large-v3-turbo` | audio seconds, not tokens |
 
 `chat` and `react` share a bucket deliberately: the router sends each message to
-one, never both, so they alternate instead of stacking.
-The router is alone on qwen because it is the only model that answers inside a
-10-token budget; a router outage falls back to React.
+one, never both, so they alternate instead of stacking. qwen is the only model that
+answers inside the router's 10-token budget; a router outage falls back to React.
 
-**Fallback model.** `llm.create` is the one place a Groq chat completion is made
-for `llm.complete` and React. On a 429 that survived the client's retries it
-benches the model until the reset Groq names in the body (60s if none) and
-retries once on `config.FALLBACK_MODELS` - 120b to 20b, a separate bucket.
-While benched, calls go straight to the fallback. The orchestrator scopes a turn
-(`start_turn`/`end_turn`, a ContextVar) and appends a one-line notice to any
-reply that used the fallback. 20b has no fallback, so if it is limited too the
-user gets `_rate_limit_reply`. The router
-is not covered - its failure already falls through to React.
+**Fallback model.** `llm.create` makes every Groq chat completion for
+`llm.complete` and React. A 429 that survived the client's retries benches the
+model until the reset Groq names (60s if none) and retries once on
+`config.FALLBACK_MODELS` - 120b to 20b, a separate bucket; while benched, calls go
+straight there. A turn (`start_turn`/`end_turn`) that used the fallback gets a
+one-line notice. 20b has no fallback (then `_rate_limit_reply`); the router's
+failure already falls through to React.
 
 **Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
-reports it only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the ones measured:
+says so only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the measured ones:
 `gpt-oss-120b` is 200000 (2026-10-16), shared by Direct and React. `usage.record`
-adds every response's exact token count to `memory/token_ledger.json` in hourly
-buckets per model and per agent - called from `llm.complete`, React's loop and
-final answer, and the router. Monitor's status shows the last 24h against the cap,
-so "how much budget is left" is answerable. It is IGOR's own count: spend from
-anything that bypasses `record` is invisible to it.
+adds every response's token count to `memory/token_ledger.json` hourly, per model
+and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
+against the cap. It is IGOR's own count: spend that bypasses `record` is invisible.
 
 `max_tokens` counts against TPM at request time: prompt plus reservation is what
 Groq bills against the bucket. Never configure a call where the sum can exceed
@@ -648,21 +648,19 @@ them never takes IGOR down:
 | imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-The third gate is the point. `systemctl is-active` reports a process, and a process
-that starts and never reaches Discord is not a working assistant - the gap in
-"Known broken" item 3. The probe is anchored to a timestamp taken before the
-restart, or the previous run's `online` line satisfies it and every deploy passes.
+The third gate is the point: a process that starts and never reaches Discord is not
+a working assistant. The probe is anchored to a timestamp taken before the restart,
+or the previous run's `online` line would satisfy it.
 
 **Still not covered:** a crash that happens later, after a healthy deploy. That is
 `Restart=always` plus the backup script's crash-loop alert, same as before.
 
 **Self-modification:** React can write code and the restart sentinel, but the
 restart never happens; changes sit on disk unloaded until the deploy script runs.
-Nothing here operates below the host (Oracle terminated the instance in July 2026);
-`scripts/backup_memory.ps1` covers that from outside with a daily off-host backup of
-`memory/` and `.env`, a health check, and alerts to a Discord webhook. It also
-extracts `memory/work/` from the archive into `Documents\IGOR Work` on the PC; a
-missing folder or a failed extraction never stops the health checks.
+Below the host (Oracle terminated the instance in July 2026), `scripts/backup_memory.ps1`
+covers it from outside: a daily off-host backup of `memory/` and `.env`, a health
+check and webhook alerts, and a copy of `memory/work/` in `Documents\IGOR Work` on the
+PC that never blocks the checks.
 
 ---
 

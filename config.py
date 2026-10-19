@@ -25,6 +25,8 @@ MODELS = {
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
     "screening": "openai/gpt-oss-120b",  # shares chat's bucket: one ~2000 token gig screen a day
+    "vision": "qwen/qwen3.8-27b",        # shares router's bucket: 2048 tokens an image, only when one is sent
+    "speech": "whisper-large-v3-turbo",  # voice notes; audio is limited in seconds, not tokens
 }
 
 # Delegated workers run on 20b, NOT on react's 120b. A worker starts while the
