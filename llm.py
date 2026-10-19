@@ -23,6 +23,7 @@ dispatch and tool_use_failed retries, and it is already correct.
 """
 
 import logging
+import os
 import re
 import time
 from contextvars import ContextVar
@@ -64,6 +65,7 @@ _MODEL_DEFAULTS: dict[str, dict[str, str]] = {
     "qwen/qwen3.8-27b": {"reasoning_format": "hidden"},
     "openai/gpt-oss-120b": {"reasoning_effort": "low"},
     "openai/gpt-oss-20b": {"reasoning_effort": "low"},
+    "cerebras:gpt-oss-120b": {"reasoning_effort": "low"},
 }
 
 
@@ -100,8 +102,18 @@ _TRY_AGAIN = re.compile(r"try again in ((?:\d+h)?(?:\d+m)?(?:[\d.]+s)?)")
 _WAIT_PART = re.compile(r"([\d.]+)([hms])")
 _BENCH_DEFAULT_S = 60
 
-_benched: dict[str, tuple[float, bool]] = {}
+# Other failures that move a call down the chain, as Hermes' triggers do: a model
+# Groq no longer serves (it deleted the Llama family on 2026-08-17), a key it refuses,
+# its servers failing, the connection dropping. A 400 is the request's own fault -
+# React handles tool_use_failed itself - so on the primary it is raised as before.
+_GONE_S = 3600
+_ERROR_S = 60
+
+# model -> (bench until, why): why is True for a daily cap, False for a per-minute
+# limit, "gone" for a model that is not found or a refused key, "error" otherwise.
+_benched: dict[str, tuple[float, object]] = {}
 _turn: ContextVar[Optional[dict]] = ContextVar("llm_turn", default=None)
+_provider_clients: dict[str, openai.AsyncOpenAI] = {}
 
 
 def is_daily_cap(e: Exception) -> bool:
@@ -128,27 +140,72 @@ def in_words(seconds: float) -> str:
 
 def bench(model: str, e: Exception, now: Optional[float] = None) -> None:
     now = time.time() if now is None else now
-    wait = wait_seconds(e) or _BENCH_DEFAULT_S
-    _benched[model] = (now + wait, is_daily_cap(e))
-    logger.error("%s rate-limited (%s), benched for %ds", model,
-                 "daily cap" if is_daily_cap(e) else "per-minute", int(wait))
+    if isinstance(e, openai.RateLimitError):
+        wait, why = wait_seconds(e) or _BENCH_DEFAULT_S, is_daily_cap(e)
+    elif isinstance(e, (openai.NotFoundError, openai.AuthenticationError, openai.PermissionDeniedError)):
+        wait, why = _GONE_S, "gone"
+    else:
+        wait, why = _ERROR_S, "error"
+    _benched[model] = (now + wait, why)
+    logger.error("%s benched for %ds (%s: %s)", model, int(wait), type(e).__name__, str(e)[:160])
+
+
+def _chain(model: str) -> list[str]:
+    """The fallbacks for a model, in order, leaving out providers with no key set."""
+    out = []
+    for entry in config.FALLBACK_MODELS.get(model) or []:
+        provider = entry.split(":", 1)[0] if ":" in entry else ""
+        if provider and not os.getenv(config.PROVIDERS.get(provider, ("", ""))[1] or "_NO_KEY_"):
+            continue
+        out.append(entry)
+    return out
+
+
+def _fails_over(e: Exception, primary: bool) -> bool:
+    if isinstance(e, (openai.RateLimitError, openai.NotFoundError, openai.AuthenticationError,
+                      openai.PermissionDeniedError, openai.InternalServerError, openai.APIConnectionError)):
+        return True
+    # A fallback provider that rejects the request moves on rather than ending the chain.
+    return not primary and isinstance(e, openai.APIError)
+
+
+def _client_for(entry: str, groq: openai.AsyncOpenAI) -> tuple[openai.AsyncOpenAI, str]:
+    """The client and the provider's own model id for a chain entry."""
+    if ":" not in entry:
+        return groq, entry
+    provider, model = entry.split(":", 1)
+    if provider not in _provider_clients:
+        base_url, key_env = config.PROVIDERS[provider]
+        _provider_clients[provider] = openai.AsyncOpenAI(api_key=os.getenv(key_env, ""),
+                                                         base_url=base_url, max_retries=5)
+    return _provider_clients[provider], model
+
+
+def _usable(entry: str, now: float) -> bool:
+    return now >= _benched.get(entry, (0.0, False))[0]
 
 
 def choose(model: str, now: Optional[float] = None) -> str:
-    """The model to call: the fallback while the primary is benched."""
+    """The model to call: the first one in the chain that is not benched."""
     now = time.time() if now is None else now
-    until = _benched.get(model, (0.0, False))[0]
-    fallback = config.FALLBACK_MODELS.get(model)
-    if fallback and now < until:
-        _note(model)
-        return fallback
+    if _usable(model, now):
+        return model
+    for entry in _chain(model):
+        if _usable(entry, now):
+            _note(model, entry)
+            return entry
     return model
 
 
-def _note(primary: str) -> None:
+def _note(primary: str, used: str) -> None:
     turn = _turn.get()
     if turn is not None:
-        turn[primary] = _benched.get(primary, (0.0, False))
+        turn[primary] = (*_benched.get(primary, (0.0, False)), used)
+
+
+def _name(entry: str) -> str:
+    provider, _, model = entry.partition(":")
+    return f"{provider.capitalize()} {model}" if model else entry
 
 
 def start_turn():
@@ -162,9 +219,10 @@ def end_turn(token, now: Optional[float] = None) -> Optional[str]:
     if not turn:
         return None
     now = time.time() if now is None else now
-    primary, (until, daily) = next(iter(turn.items()))
-    why = "its daily allowance is used up" if daily else "it is rate-limited"
-    return (f"`[Answered on the backup model ({config.FALLBACK_MODELS.get(primary, '?')}): "
+    primary, (until, kind, used) = next(iter(turn.items()))
+    why = {True: "its daily allowance is used up", False: "it is rate-limited",
+           "gone": "Groq says the model is not available", "error": "it is returning errors"}.get(kind, "it failed")
+    return (f"`[Answered on the backup model ({_name(used)}): "
             f"the main model is back in {in_words(max(until - now, 1))}, {why}]`")
 
 
@@ -175,19 +233,21 @@ async def create(client: openai.AsyncOpenAI, model: str, label: str, *,
     params=False skips model_params for the caller that deliberately leaves
     reasoning_effort unset (React). Raises what the last attempt raised.
     """
-    use = choose(model)
-    for attempt in range(2):
+    order = [model] + _chain(model)
+    start = order.index(choose(model))
+    for i, use in enumerate(order[start:], start):
         extra = model_params(use, reasoning_effort=reasoning_effort) if params else {}
+        target, model_id = _client_for(use, client)
         try:
-            response = await client.chat.completions.create(model=use, **kwargs, **extra)
-        except openai.RateLimitError as e:
-            bench(use, e)
-            fallback = config.FALLBACK_MODELS.get(use)
-            if attempt or not fallback:
+            response = await target.chat.completions.create(model=model_id, **kwargs, **extra)
+        except Exception as e:
+            if not _fails_over(e, primary=(use == model)) or i == len(order) - 1:
+                if _fails_over(e, primary=(use == model)):
+                    bench(use, e)
                 raise
-            _note(use)
-            logger.warning("%s falling back from %s to %s", label or use, use, fallback)
-            use = fallback
+            bench(use, e)
+            _note(model, order[i + 1])
+            logger.warning("%s falling back from %s to %s", label or model, use, order[i + 1])
             continue
         usage.record(use, response, label)
         return response

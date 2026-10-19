@@ -526,13 +526,12 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 one, never both, so they alternate instead of stacking. qwen is the only model that
 answers inside the router's 10-token budget; a router outage falls back to React.
 
-**Fallback model.** `llm.create` makes every Groq chat completion for
-`llm.complete` and React. A 429 that survived the client's retries benches the
-model until the reset Groq names (60s if none) and retries once on
-`config.FALLBACK_MODELS` - 120b to 20b, a separate bucket; while benched, calls go
-straight there. A turn (`start_turn`/`end_turn`) that used the fallback gets a
-one-line notice. 20b has no fallback (then `_rate_limit_reply`); the router's
-failure already falls through to React.
+**Fallback chain** (Hermes' `fallback_providers`). `llm.create` makes every chat
+completion for `llm.complete` and React. A 429 after retries benches the model to
+Groq's named reset (60s if none), a missing model or refused key for an hour, a
+5xx or dropped connection for a minute, and `config.FALLBACK_MODELS` is tried in
+order: 120b, Cerebras' gpt-oss-120b (skipped until `CEREBRAS_API_KEY` is set), 20b.
+A 400 on the primary is raised. A turn that used a backup gets a one-line notice.
 
 **Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
 says so only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the measured ones:

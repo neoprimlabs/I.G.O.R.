@@ -57,8 +57,20 @@ DAILY_TOKEN_CAPS = {
 # and React and is the one that ran dry on 2026-10-16; 20b is a separate bucket and
 # already runs delegated workers through the same tool loop. 20b has no entry, so
 # when it is limited too the call fails as before.
+#
+# Each entry is a chain tried in order, as in Hermes' fallback_providers. Cerebras
+# serves the same gpt-oss-120b, so prompts and tools behave the same, on a free tier
+# of about 1M tokens a day at 5 requests a minute (third-party figures, 2026-10-19).
+# A provider whose key is not in the environment is skipped, so it sits dormant
+# until CEREBRAS_API_KEY is added to .env.
 FALLBACK_MODELS = {
-    "openai/gpt-oss-120b": "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b": ["cerebras:gpt-oss-120b", "openai/gpt-oss-20b"],
+}
+
+# Providers other than Groq, by the prefix a fallback entry carries: base URL and the
+# environment variable holding the key.
+PROVIDERS = {
+    "cerebras": ("https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"),
 }
 
 # Overnight loop budget per night, on gpt-oss-20b whose daily cap is unmeasured, so kept modest.
