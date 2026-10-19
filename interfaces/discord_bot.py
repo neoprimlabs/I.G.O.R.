@@ -44,7 +44,8 @@ class IgorBot(discord.Client):
         logger.info("I.G.O.R. online: %s (ID: %d)", self.user, self.user.id)
         # Fresh orchestrator on every connection - resets session context per spec
         self._orchestrator = Orchestrator(notify=self.send_to_user, notify_file=self.send_file_to_user)
-        monitor.setup(send_fn=self.send_to_user, send_file_fn=self.send_file_to_user)
+        monitor.setup(send_fn=self.send_to_user, send_file_fn=self.send_file_to_user,
+                      connected_fn=lambda: monitor.gateway_connected(self))
         import approvals
         approvals.set_sender(self.send_to_user)
 

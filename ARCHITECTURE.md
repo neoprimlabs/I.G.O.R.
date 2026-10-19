@@ -621,13 +621,17 @@ silently drop every message.
 
 **What executes today.** `igor.service` runs `main.py` directly, so `start.sh` (compile
 check, crash revert) never runs, and `watchdog.py` is active but powerless: user
-`igor` has no sudoers entry, so nothing restarts IGOR except the deploy script.
-Checked 2026-08-03; sudo rights re-confirmed 2026-10-16. What protects the system:
+`igor` has no sudoers entry, so only root-owned scripts restart IGOR. Checked
+2026-08-03; sudo rights re-confirmed 2026-10-16. What protects the system:
 
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start
 - systemd `Restart=always` - a bad deploy is a visible crash loop
 - `scripts/backup_memory.ps1` - off-host backup, and an alert on a crash loop
+- `heartbeat.sh`, beside the deploy script, on a 2-minute timer: `monitor._heartbeat`
+  touches `memory/heartbeat.txt` each minute only while Discord is connected; past
+  300s it restarts IGOR and alerts the webhook, once per half hour, never during a
+  deploy or in the 5 minutes after a start
 
 ### Health-gated deploy (S.1, built 2026-08-10)
 
@@ -649,12 +653,9 @@ The third gate is the point: a process that starts and never reaches Discord is 
 a working assistant. The probe is anchored to a timestamp taken before the restart,
 or the previous run's `online` line would satisfy it.
 
-**Still not covered:** a crash that happens later, after a healthy deploy. That is
-`Restart=always` plus the backup script's crash-loop alert, same as before.
-
-**Self-modification:** React can write code and the restart sentinel, but the
-restart never happens; changes sit on disk unloaded until the deploy script runs.
-Below the host (Oracle terminated the instance in July 2026), `scripts/backup_memory.ps1`
+**After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
+heartbeat check above. Self-written code sits unloaded until a deploy (see the
+summary). Below the host (Oracle terminated the instance in July 2026), `scripts/backup_memory.ps1`
 covers it from outside: a daily off-host backup of `memory/` and `.env`, a health
 check and webhook alerts, and a copy of `memory/work/` in `Documents\IGOR Work` on the
 PC that never blocks the checks.
@@ -672,12 +673,10 @@ PC that never blocks the checks.
 
 ## Known sharp edges
 
-1. **Monitoring detects a dead process, not a dead gateway.** systemd can report
-   active while the Discord connection has dropped. GAMEPLAN C.5.
-2. **The router misroutes at the margins.** 26 of 27 live cases passed on
+1. **The router misroutes at the margins.** 26 of 27 live cases passed on
    2026-10-16. Structural guards exist where a misroute would be harmful (ConfigEdit's
    no-op check); the rest degrade into a worse answer rather than a wrong action.
-3. **Still on Oracle Always Free.** An entitlement change can terminate the
+2. **Still on Oracle Always Free.** An entitlement change can terminate the
    instance again, as it did in July 2026.
 
 ---
@@ -688,11 +687,10 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** The spec describes five; there are
   five routed destinations but Dev and Comms remain absorbed into React.
-- **A learning loop.** The critic is disabled and nothing writes learned skills.
-  The overnight loop only proposes; applying is the user's. GAMEPLAN V.1.
+- **Learned skills.** Preferences are learned with the user's approval; Hermes-style
+  skills are designed and parked (GAMEPLAN V.1).
 - **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
-- **Voice.** Not started. Groq serves Whisper (speech to text) and Orpheus (text
-  to speech) on the existing key. qwen3-tts is not on Groq, and local TTS does not
-  fit the host.
+- **Spoken replies.** Voice notes are transcribed (Whisper); Orpheus speech needs
+  its terms accepted in the Groq console. Local TTS does not fit the host.
 - **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
   global, `context.db` has no user column. Single-user is assumed throughout.

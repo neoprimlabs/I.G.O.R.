@@ -66,6 +66,14 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   per command for a tool used a few times a week. **Discord test for the user:** ask
   IGOR to run `pkill -f no_such_process_xyz`, expect the approval DM, reply no.
 - The ARCHITECTURE summary said "no voice, no image reading"; corrected.
+- **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
+  scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
+  `memory/heartbeat.txt` every minute only while Discord reports a live connection
+  (a dead scheduler stops it too); `/usr/local/lib/igor-deploy/heartbeat.sh`, root-
+  owned beside `deploy.sh` and run by `igor-heartbeat.timer` every 2 minutes,
+  restarts IGOR and alerts the webhook when it is over 300s old - never during a
+  deploy, never within 5 minutes of a start, once per half hour, then alerts only.
+  Authoritative copies in `C:\Dev\IGOR_backup\deploy-machinery\`.
 - `/opt/igor/.env` was readable by every account on the box; now 600, owner igor
   (the backup reads it with sudo tar, IGOR as its owner - both checked).
 - ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):
@@ -889,11 +897,8 @@ user, not made quietly.
    longer retries a daily cap for 90s first.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
-4. Monitoring detects a dead process, not a dead gateway. If IGOR is running and
-   systemd reports active but the Discord connection has silently dropped, the
-   check reports healthy while the green dot is out. Closing that needs a
-   heartbeat emitted from inside the bot, gated on `is_ready()` and a finite
-   `bot.latency`. Not built.
+4. **FIXED 2026-10-19.** A dropped Discord connection with a live process now
+   restarts IGOR: `monitor._heartbeat` plus the root-owned `heartbeat.sh` timer.
 5. **FIXED 2026-09-16.** Every scheduled job used APScheduler's 1s
    `misfire_grace_time`, so a stall longer than a second skipped a job silently. The
    host does stall: a live tick was missed by 1.198s on 2026-09-12. Nothing had been
