@@ -376,6 +376,13 @@ class Orchestrator:
         if user_id != config.AUTHORIZED_USER_ID:
             return None
 
+        # A yes or no to a command waiting for approval belongs to the turn that is
+        # waiting, not to a new one.
+        import approvals
+        settled = approvals.answer(content)
+        if settled:
+            return settled, False
+
         file_mode = content.lower().startswith("file:")
         task = content[5:].strip() if file_mode else content
         task = _spell_out_times(task)
