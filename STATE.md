@@ -37,6 +37,14 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   `.ogg` ("Hello."); Groq lists `opus` as accepted. **Discord tests for the user:**
   a voice note, a screenshot, a PDF. Groq's TTS model (Orpheus) needs the user to
   accept its terms in the Groq console before spoken replies can be built.
+- **Always-on memory - built.** Hermes puts a capped USER.md (1375 chars) into every
+  session and refuses a memory write past the cap. IGOR's `preferences.md` already
+  plays MEMORY.md; the gap was Direct (50 of 69 routed messages since 10-01), which
+  saw none of `user.md`. Its prompt now ends with `user.md`; React's `memory_write`
+  refuses a `user.md` write past `config.USER_PROFILE_CAP` (1500) and says how much
+  to free. Live `user.md` corrected (the server is an x86 micro, not ARM A1), the
+  digest-time section swapped for the income plan, tidied to 1488 chars (backup
+  `user.md.bak-20261019`).
 - ARCHITECTURE.md is at the paging test's limit (~36,950 chars, 10 reads of 3700):
   every addition needs an equal cut.
 

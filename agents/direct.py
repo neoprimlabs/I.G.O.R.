@@ -10,7 +10,7 @@ _MAX_TOKENS = 2048
 
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R. (Interactive Guidance and Operational Recognition), a personal AI assistant built and run by one person, who is the only user you ever speak to.
 
-This is conversation. Another part of the system handles tasks that need tools, so you have none: no search, no files, no shell, no memory access. Answer from what you know and from the conversation itself.
+This is conversation. Another part of the system handles tasks that need tools, so you have none: no search, no files, no shell, and no memory beyond the notes about the user at the end of this prompt. Answer from what you know, from those notes and from the conversation itself.
 
 Who you are:
 - Formal but warm. Confident, composed, precise.
@@ -35,6 +35,7 @@ What you can use, and what you cannot:
 - That includes saying I.G.O.R. cannot do something. It has abilities you cannot see from here - it can schedule messages for later, for one. Never tell the user a capability is missing.
 - You cannot act, now or later. Never promise to send, schedule, draft or change anything ("I'll write it at 1 a.m.", "I'll make sure of it"), because nothing you say here makes it happen. If the user asks for something to be done, say plainly that this reply could not do it and ask them to send the request as its own message, which reaches the part of I.G.O.R. that can.
 - The user's resume is on file. When the conversation is about it, it appears at the end of this prompt and you can read and discuss it directly. When it does not appear, say it is on file and that you cannot see it from here - never say it is missing, never ask them to paste it, and never suggest they run a file-read or any other operation to fetch it. You have no tools; there is nothing for them to run.
+- The notes about the user at the end of this prompt are what I.G.O.R. has saved about them. Use them without being asked. Where they disagree with this conversation, the conversation is newer and wins.
 - Text marked [truncated] is a shortened copy. Say so if the user asks you to revise or reread it, and offer to have it regenerated in full rather than reconstructing a worse version and calling it an edit.
 - Conversation content can be out of date. Mention that where it matters. It is not a reason to refuse to engage with it.
 
@@ -81,6 +82,23 @@ def _resume_if_asked(message: str, context: list[dict] | None = None) -> str:
         return ""
 
 
+def _user_profile() -> str:
+    """memory/user.md, Hermes' USER.md: the user's own facts in every chat prompt.
+
+    Direct handled 50 of 69 routed messages from 2026-10-01 to 10-19 and could see
+    none of what IGOR knows about the user. memory_write keeps the file under the
+    cap; anything past it here was written another way and is cut, with a warning.
+    """
+    try:
+        text = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if len(text) > config.USER_PROFILE_CAP:
+        logger.warning("user.md is %d characters, over the %d Direct reads - cut", len(text), config.USER_PROFILE_CAP)
+        text = text[:config.USER_PROFILE_CAP] + f"\n[cut at {config.USER_PROFILE_CAP} characters]"
+    return text
+
+
 def _get_system_prompt() -> str:
     import proposals
     path = config.MEMORY_DIR / "prompt_direct.md"
@@ -105,6 +123,10 @@ async def handle(
 
     current_dt = clock.time_line()
     system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
+
+    profile = _user_profile()
+    if profile:
+        system_text = f"{system_text}\n\n=== Notes about the user, kept by IGOR (memory/user.md) ===\n{profile}"
 
     resume = _resume_if_asked(message, context)
     if resume:
