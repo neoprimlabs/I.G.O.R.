@@ -377,9 +377,16 @@ def test_self_improvement_sees_recent_fixes() -> None:
     _check("docs-only commits are left out",
            not any(f.startswith(("STATE", "ARCHITECTURE", "Plan:", "Design:")) for f in fixes),
            str([f for f in fixes if f.startswith(("STATE", "ARCHITECTURE"))][:3]))
-    fix_100am = [i for i, f in enumerate(fixes) if "100am" in f]
-    _check("the 2026-10-16 '100am' fix is inside the list the session sees",
-           not fix_100am or fix_100am[0] < overnight._SI_MAX_FIXES, str(fix_100am))
+    # Live 2026-10-17 the session re-proposed a fix made two days earlier. This pinned
+    # that one commit until 10-19, when 40 newer fixes pushed it out of a list that
+    # still held every fix from the last three days - the property that matters.
+    import subprocess
+    out = subprocess.run(["git", "-C", str(config.BASE_DIR), "log", "--since=2 days ago",
+                          "--pretty=%s"], capture_output=True, text=True).stdout
+    recent = [s.strip() for s in out.splitlines()
+              if s.strip() and not overnight._DOCS_ONLY.search(s.strip())]
+    _check("every fix from the last two days is inside the list the session sees",
+           len(recent) <= overnight._SI_MAX_FIXES, f"{len(recent)} > {overnight._SI_MAX_FIXES}")
     tmp.cleanup()
 
 

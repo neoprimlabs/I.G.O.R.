@@ -337,7 +337,7 @@ _TOOLS = [
     },
     {
         "name": "memory_write",
-        "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences.",
+        "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences. Never save how IGOR works (ARCHITECTURE.md holds that, and a copy goes stale) or facts a search would find again.",
         "input_schema": {
             "type": "object",
             "properties": {

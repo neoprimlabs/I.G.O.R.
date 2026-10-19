@@ -578,7 +578,16 @@ none depend on each other. Good filler work.
   incident) all sit in /opt/igor doing nothing. Remove with `sudo -u igor`, confirm
   nothing references them first.
 
-- [ ] **C.5 In-bot heartbeat for gateway liveness.** Two gaps, one fix.
+- [x] **C.5 In-bot heartbeat for gateway liveness.** DONE 2026-10-19 (d4d152c), built
+  server-side instead, with no account needed: `monitor._heartbeat` touches
+  `memory/heartbeat.txt` only while `is_ready()` and a finite latency hold, and the
+  root-owned `heartbeat.sh` timer restarts IGOR and alerts the webhook past 300s.
+  Restart, alert and loop protection tested live (STATE.md). Still open: a host
+  that dies outright cannot report itself, and the PC script only sees it while the
+  PC is on. A healthchecks.io ping from `heartbeat.sh` closes that - needs the
+  user's free account. Original plan below.
+
+  Two gaps, one fix.
 
   First: `scripts/backup_memory.ps1` detects a dead host or dead process, but not a
   live process whose Discord gateway has silently dropped. systemd reports active
@@ -631,7 +640,11 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   ARCHITECTURE.md, STATE.md and GAMEPLAN.md rather than a fourth copy of the facts.
   Backup at memory/projects.md.bak-20260803.
 
-- [ ] **M.3 Decide what memory files are for.** agents.md and projects.md both
+- [x] **M.3 Decide what memory files are for.** DONE 2026-10-19. agents.md and
+  projects.md were already cut back to preferences and a project list pointing at
+  ARCHITECTURE.md. The rule now sits in `memory_write`'s description, where React
+  reads it at the moment of writing, worded as Hermes words its own: do not save
+  what a context file already holds or what a search would find again. agents.md and projects.md both
   accumulated architecture nobody maintained, the same failure as CLAUDE.md and
   skills_react.md. Three files have now drifted the same way, so the pattern is the
   problem rather than any one file. Decide the rule: memory holds preferences,
@@ -641,7 +654,9 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase T - Make the last two days repeatable
 
-- [ ] **T.1 Tests into the repo.** Roughly six test files were written on
+- [x] **T.1 Tests into the repo.** DONE: `tests/` holds the suite (STATE.md `## The
+  test suite only ran on one laptop`), and CLAUDE.md's deployment step 1 now says
+  to run it, 2026-10-19. Roughly six test files were written on
   2026-08-02 and 2026-08-03 and every one was a throwaway in the session scratchpad.
   Between them they caught: the `2>&1` bug that would have silenced the watchdog on
   the one path it exists for, the router classifying opinion questions as CONFIG,
@@ -652,7 +667,8 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   research ones, which need GROQ_API_KEY. Put them in tests/, document how to run
   them, and reference them from CLAUDE.md's deployment workflow.
 
-- [ ] **T.2 C.5 in-bot heartbeat.** See Phase C. Needs a free account from the user.
+- [x] **T.2 C.5 in-bot heartbeat.** See Phase C. Built without the account; the
+  account is now only for the dead-host case.
 
 - [ ] **T.4 Server-side memory push, so backups do not depend on the PC.**
   Added 2026-08-03 after the 3am task ran and the question came up.
@@ -696,7 +712,9 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   **Needs from the user:** a private repo and a deploy key on the server. About ten
   minutes. Commit: `Server pushes memory to a private repo hourly, independent of the PC`
 
-- [ ] **T.3 Weather fetch failure in the digest.** monitor.py logged
+- [x] **T.3 Weather fetch failure in the digest.** CLOSED 2026-10-19: transient. One
+  503 in the month to 10-19 (10-13), and the digest already prints "No weather data
+  available." in its place. monitor.py logged
   `HTTPError: HTTP Error 503` at 13:00 on 2026-08-02 during the morning digest. The
   error handling worked; nobody looked. Check whether it is transient or the
   provider changed, and make the digest degrade gracefully rather than erroring.
