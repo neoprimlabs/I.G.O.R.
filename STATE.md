@@ -1071,6 +1071,13 @@ Windows Scheduled Task "IGOR memory backup" at 3am. Run on demand with
 Webhook URL lives at `C:\Users\Nucbox\Documents\IGOR_Keys\discord_webhook.txt`,
 outside the repo. Test the alert path with `-TestAlert`.
 
+**Hourly server push (T.4, 2026-10-20):** root's `memory-push.sh`, on
+`igor-memory-push.timer`, pushes `memory/**/*.md` except `private/` and `resume.md`
+to the private repo `WoahBanz/igor-memory` with its own deploy key. It does not
+depend on this machine. `.env` and `context.db` stay PC-only by design. Dry run:
+`sudo /usr/local/lib/igor-deploy/memory-push.sh --dry-run`. Copies of the script
+and units are in `C:\Dev\IGOR_backup\deploy-machinery\`.
+
 Caveat: it only runs when this machine is on. Task Scheduler catches up when the
 machine returns, so time away means late alerts rather than none.
 
