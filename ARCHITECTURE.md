@@ -99,7 +99,7 @@ user.
 - **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
   1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
 
-The host was an ARM A1 until Oracle terminated it in 2026-07; anything saying ARM
+The host was an ARM A1 until July 2026; anything saying ARM
 is out of date. `anthropic` stays installed, unused, for GAMEPLAN R4.1.
 
 **The runtime is the server.** There is no local run; discord.py is not installed
@@ -557,8 +557,10 @@ under about 1024 returns empty content with a 200 OK.
 ## Memory and config files
 
 All live in `memory/` on the server and are **gitignored** - they exist only on the
-host, plus the daily off-host archive `scripts/backup_memory.ps1` pulls to the
-user's PC (30 kept). Syncthing no longer runs, so that archive is the only other copy.
+host, plus the daily archive `scripts/backup_memory.ps1` pulls to the user's PC (30
+kept) and an hourly push of the `*.md` notes, minus `private/` and `resume.md`, to
+the private repo `WoahBanz/igor-memory` by root's `memory-push.sh`, which alerts on
+a failed push.
 
 **Read at startup, restart required:** `schedule_config.md`
 
@@ -658,10 +660,9 @@ or the previous run's `online` line would satisfy it.
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
 heartbeat check above. Self-written code sits unloaded until a deploy (see the
-summary). Below the host (Oracle terminated the instance in July 2026), `scripts/backup_memory.ps1`
-covers it from outside: a daily off-host backup of `memory/` and `.env`, a health
-check and webhook alerts, and a copy of `memory/work/` in `Documents\IGOR Work` on the
-PC that never blocks the checks.
+summary). Below the host (terminated once, July 2026), the PC's
+`scripts/backup_memory.ps1` (daily `memory/` and `.env`, health check, alerts, a copy
+of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cover it.
 
 ---
 

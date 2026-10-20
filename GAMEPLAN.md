@@ -670,7 +670,18 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 - [x] **T.2 C.5 in-bot heartbeat.** See Phase C. Built without the account; the
   account is now only for the dead-host case.
 
-- [ ] **T.4 Server-side memory push, so backups do not depend on the PC.**
+- [x] **T.4 Server-side memory push, so backups do not depend on the PC.** DONE
+  2026-10-20. Root-owned `/usr/local/lib/igor-deploy/memory-push.sh` on an hourly
+  timer commits `memory/**/*.md` (minus `private/` and `resume.md`) from a git dir
+  at `/var/lib/igor-memory.git` (root, 700) and pushes to the private repo
+  `WoahBanz/igor-memory` over its own deploy key (root, 600; GitHub's host key
+  pinned against `gh api meta`). Root, not igor, so IGOR cannot read the key or
+  rewrite the history. Allowlist plus a second check of the staged names before
+  every commit. A failed push alerts the webhook once a day and retries hourly.
+  Verified: 42 files pushed, all .md, none private; a broken remote logged
+  "Repository not found" and sent the (test) alert; restored clean. Not built: the
+  PC-side check of the newest remote commit's age (a stopped timer is the one case
+  nothing catches). Original plan below.
   Added 2026-08-03 after the 3am task ran and the question came up.
 
   **Problem.** `scripts/backup_memory.ps1` is a Windows Scheduled Task. No PC, no
