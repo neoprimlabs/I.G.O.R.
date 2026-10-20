@@ -1322,10 +1322,21 @@ def _strip_stale_dates(query: str) -> tuple[str, str | None]:
 
 async def _fetch_url(url: str) -> str:
     import httpx
+    import url_safety
+
+    class _Refused(Exception):
+        pass
+
+    # Every hop, redirects included: a public page can redirect to an internal one.
+    def _check(request: httpx.Request) -> None:
+        why = url_safety.problem(str(request.url))
+        if why:
+            raise _Refused(f"{request.url}: {why}")
 
     def _sync() -> str:
         try:
-            with httpx.Client(follow_redirects=True, timeout=15) as client:
+            with httpx.Client(follow_redirects=True, timeout=15,
+                              event_hooks={"request": [_check]}) as client:
                 resp = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
@@ -1333,6 +1344,10 @@ async def _fetch_url(url: str) -> str:
                     return f"[non-text content type: {content_type}]"
                 text = resp.text
                 return text[:8000] if len(text) > 8000 else text
+        except _Refused as e:
+            logger.warning("fetch_url refused %s", e)
+            return (f"[refused: {e}. IGOR does not fetch private or internal addresses. "
+                    "Do not retry it.]")
         except httpx.HTTPStatusError as e:
             return f"[HTTP {e.response.status_code}: {url}]"
         except Exception as e:

@@ -23,6 +23,8 @@ import difflib
 import json
 import logging
 import re
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 from typing import Awaitable, Callable, Optional
@@ -122,18 +124,34 @@ def page_lines(body: str, content_type: str = "text/html") -> list[str]:
     return lines[:_MAX_LINES]
 
 
+class _CheckedRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuses a redirect to an internal address, as url_safety refuses the first URL."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        import url_safety
+        why = url_safety.problem(newurl)
+        if why:
+            raise urllib.error.URLError(f"redirected to a refused address ({why})")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 async def _fetch(url: str) -> tuple[Optional[list[str]], str]:
     """(lines, "") or (None, why it could not be read)."""
     import asyncio
     import urllib.error
     import urllib.request
 
+    import url_safety
+
     # urllib, not httpx: live 2026-10-20 Wikipedia answered httpx with a 403 whatever
     # its headers, and answered urllib and curl with a 200.
     def _sync():
+        why = url_safety.problem(url)
+        if why:
+            return None, f"refused, {why}"
         try:
             request = urllib.request.Request(url, headers={"User-Agent": _AGENT})
-            with urllib.request.urlopen(request, timeout=20) as resp:
+            with urllib.request.build_opener(_CheckedRedirects).open(request, timeout=20) as resp:
                 content_type = resp.headers.get("content-type", "")
                 if "text" not in content_type and "json" not in content_type:
                     return None, f"it is not a text page ({content_type or 'no content type'})"
