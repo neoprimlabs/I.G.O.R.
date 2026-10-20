@@ -76,13 +76,16 @@ def _write_to_memory(filename: str, content: str, mode: str = "append") -> bool:
         return False
 
     path = config.MEMORY_DIR / filename
+    import checkpoints
 
     if mode == "overwrite":
         if filename not in _OVERWRITABLE_FILES:
             logger.error("Memory overwrite blocked - not an overwritable file: %s", filename)
             return False
         try:
+            checkpoints.before_write(path)
             path.write_text(content + "\n", encoding="utf-8")
+            checkpoints.after_write(path)
             return True
         except Exception as e:
             logger.error("Memory overwrite failed for %s - %s: %s", filename, type(e).__name__, e)
@@ -93,8 +96,10 @@ def _write_to_memory(filename: str, content: str, mode: str = "append") -> bool:
         return False
 
     try:
+        checkpoints.before_write(path)
         with path.open("a", encoding="utf-8") as f:
             f.write("\n" + content + "\n")
+        checkpoints.after_write(path)
         return True
     except Exception as e:
         logger.error("Memory write failed for %s - %s: %s", filename, type(e).__name__, e)

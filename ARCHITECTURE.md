@@ -286,11 +286,14 @@ observation (stock and price per variant, the price watch's cheapest match, each
 job or gig posting); a failed fetch writes nothing. About 130 rows a day, no model calls. React's `watch_history`
 returns changes only, newest first, so a week of hourly "available" is one row.
 
+**Checkpoints** (`checkpoints.py`, Hermes' rollback): the old bytes of each file
+`write_file`, `patch_file` or `memory_write` changes, once per React turn, newest 20,
+in `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
+`rollback N [all|<file>]` restores, keeping files edited since unless `all`.
+
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
-editing in place. React could already reach the file through `memory_write`, which
-rewrites it wholesale from model output - the way ConfigEdit destroyed
-`schedule_config.md` and nobody noticed for six days. The digest and presence both
-read this file. An ambiguous `done` is refused with the candidates listed rather than
+editing in place, where `memory_write` would rewrite it whole. The digest and presence
+both read this file. An ambiguous `done` is refused with the candidates listed rather than
 guessed, and it shares `monitor._parse_tasks` with the digest so the two can never
 disagree about what is open.
 
@@ -570,8 +573,7 @@ user's PC (30 kept). Syncthing no longer runs, so that archive is the only other
 `research*.md`.
 
 **Memory holds preferences, history and user facts, never architecture.**
-`agents.md` and `projects.md` once carried architecture that drifted months stale
-and was reported to the user as fact. Anything checkable against source belongs in
+`memory_write`'s description says so. Anything checkable against source belongs in
 this file and is read with `read_file`.
 
 Nothing modifies React's prompt at runtime except `prompt_react.md`, which does not
@@ -612,9 +614,7 @@ raising, so `start.sh` crash recovery restores the last good commit. It verifies
 - **every agent module imports.** `py_compile` checks syntax, not names, and
   agents are imported lazily, so a missing stdlib import otherwise passes the
   commit and fails on the first message that routes there
-
-An unset `AUTHORIZED_USER_ID` is what this exists for: the bot would connect and
-silently drop every message.
+- the sandbox probe, which logs an ERROR but never refuses to start
 
 ---
 
