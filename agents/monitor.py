@@ -264,6 +264,11 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # check outside the repo that restarts IGOR when it goes stale.
     _scheduler.add_job(_heartbeat, "interval", seconds=60, id="heartbeat")
 
+    # The user's page heartbeat (heartbeats.py, Hermes' /heartbeat), not the liveness
+    # one above. Polled each minute; it fetches only when its own interval is due.
+    _scheduler.add_job(_page_heartbeat, "interval", seconds=60, id="page_heartbeat",
+                       max_instances=1)
+
     # Presence decides whether to speak on its own. Ten minutes rather than sixty
     # because a lull is a 25-90 minute window and a coarser tick would step over it.
     # The gates and the daily call budget bound the cost, not the tick rate: most
@@ -378,6 +383,13 @@ def gateway_connected(client) -> bool:
         return bool(client.is_ready() and not client.is_closed() and math.isfinite(client.latency))
     except Exception:
         return False
+
+
+async def _page_heartbeat() -> None:
+    if _send_fn is None:
+        return
+    import heartbeats
+    await heartbeats.tick(_send_fn)
 
 
 async def _heartbeat() -> None:

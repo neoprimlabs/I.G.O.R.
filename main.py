@@ -100,7 +100,8 @@ def _smoke_test() -> None:
                    "agents.research", "agents.research_loop",
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
-                   "agents.inbound", "approvals", "clock", "sandbox"):
+                   "agents.inbound", "approvals", "clock", "sandbox", "checkpoints",
+                   "compression", "heartbeats"):
         try:
             __import__(module)
         except Exception as e:
