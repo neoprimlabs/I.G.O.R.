@@ -112,7 +112,7 @@ def test_setting_one() -> None:
                "could not read" in _cmd("heartbeat every 1h https://down.example/"))
         home.pages["https://js.example/"] = ["Loading"]
         _check("a page with no readable text is refused",
-               "JavaScript" in _cmd("heartbeat every 1h https://js.example/"))
+               "almost no readable text" in _cmd("heartbeat every 1h https://js.example/"))
         _check("a new one replaces the old", "replaces" in _cmd(f"heartbeat every 2h {URL}"))
         status = _cmd("heartbeat")
         _check("status shows the interval, pages and next check",

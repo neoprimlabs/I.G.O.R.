@@ -43,6 +43,10 @@ _FAIL_NOTICE = 3
 _QUIET_S = 120
 _BUDGET = 1024
 
+# A bare "Mozilla/5.0" was refused with a 403 by Wikipedia, live 2026-10-20.
+_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+          "Chrome/126.0 Safari/537.36")
+
 _COMMAND = re.compile(r"^/?(?:heartbeat|hb)\b(.*)$", re.IGNORECASE | re.DOTALL)
 _UNIT = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _URL = re.compile(r"https?://[^\s<>\"']+")
@@ -127,7 +131,7 @@ async def _fetch(url: str) -> tuple[Optional[list[str]], str]:
     def _sync():
         try:
             with httpx.Client(follow_redirects=True, timeout=20) as client:
-                resp = client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                resp = client.get(url, headers={"User-Agent": _AGENT})
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
                 if "text" not in content_type and "json" not in content_type:
@@ -242,8 +246,8 @@ async def command(cmd: tuple, now: Optional[datetime] = None) -> str:
         if lines is None:
             return f"I could not read {url} ({why}), so the heartbeat is not set."
         if len("".join(lines)) < _MIN_TEXT:
-            return (f"{url} has almost no readable text - it probably builds itself with "
-                    f"JavaScript, which I cannot run - so the heartbeat is not set.")
+            return (f"{url} has almost no readable text, so the heartbeat is not set. If the "
+                    f"page builds itself with JavaScript, I cannot run that.")
         pages[url] = {"lines": lines, "failures": 0}
     replaced = " It replaces the previous one." if hb else ""
     state.update(heartbeat={"every": seconds, "request": request, "urls": urls,
