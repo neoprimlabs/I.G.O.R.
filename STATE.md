@@ -114,7 +114,17 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   footer change and on a price rise; python.org and Wikipedia read the same twice
   running. Fetches use urllib because Wikipedia 403s httpx whatever its headers.
   **Discord test for the user:** `heartbeat every 1h tell me when <a page> changes`.
-- main.py's startup import check now covers checkpoints, compression and heartbeats.
+- main.py's startup import check now covers checkpoints, compression, heartbeats and
+  url_safety.
+- **Egress check - built (2026-10-20).** `fetch_url` takes its URL from the model,
+  which reads untrusted pages, and nothing stopped it fetching the cloud metadata
+  service, localhost or the private network. `url_safety.py` follows Hermes'
+  module of the same name: loopback, private, link-local (all of 169.254/16 and its
+  IPv4-mapped form), 100.64/10 and metadata hosts refused, on every redirect hop
+  (an httpx request hook in `fetch_url`, a redirect handler in the heartbeat). DNS
+  rebinding is the known gap, as in Hermes. Whether this host's metadata service
+  answers unauthenticated requests was not probed: the permission system refused
+  it, and the block does not depend on the answer.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
   scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
   `memory/heartbeat.txt` every minute only while Discord reports a live connection

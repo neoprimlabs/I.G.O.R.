@@ -156,11 +156,9 @@ A Discord DM travels this path every time:
    | `RESEARCH` | ResearchLoop |
 
    Any failure - unparseable output, exception, timeout - falls through to React.
-   Fail toward capability, never toward dropping the message. The verdict is
-   logged as `Router: <verdict> -> <destination>`.
+   The verdict is logged as `Router: <verdict> -> <destination>`.
 
-   The router bypasses `call_claude`, whose rate-limit path sleeps 30s or more;
-   failing fast to React beats making the user wait to be routed.
+   The router bypasses `call_claude`'s 30s rate-limit sleeps and fails fast.
 
 5. **`orchestrator._route`** - builds a bound `call_claude`, sets max_tokens
    (2048 chat, 3072 file mode), dispatches to the destination.
@@ -168,11 +166,10 @@ A Discord DM travels this path every time:
    feedback, then delivers with an `[Evaluator warning: ...]` prefix. Fails open.
 7. **`orchestrator.process` tail** - critic (disabled), context update (each
    side stored up to 20000 chars, in memory and in SQLite), `[Monitor]` suffix
-   when applicable. Each agent gets the last 6 entries within its own character
-   budget, newest in full and older ones shortened.
-8. **`discord_bot`** - `_sanitize` converts em dashes to spaced hyphens and maps
-   remaining typographic punctuation to ASCII, then chunks to Discord's 2000-char
-   limit, hard-splitting over-long single lines.
+   when applicable. Each agent gets the running summary and the last 6 entries
+   within its own character budget, newest in full.
+8. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
+   chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
 
 ---
 
@@ -483,7 +480,7 @@ React holds all three legs of the "lethal trifecta" in one context: private data
 (memory files), untrusted content (`fetch_url`, `search`), and outward action
 (`shell`, file writes, self-modification).
 
-Two controls, neither of which costs a model call:
+Three controls, none of which costs a model call:
 
 1. **Framing.** Search and fetch results are wrapped in
    `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
@@ -496,6 +493,9 @@ Two controls, neither of which costs a model call:
    turn. Both layers, because one batch can contain a search and a shell call and
    `asyncio.gather` gives no ordering guarantee, so the batch is judged as a whole
    before anything runs.
+3. **Addresses.** `url_safety.py`, as Hermes': `fetch_url` and the heartbeat refuse
+   loopback, private, link-local and metadata addresses on every redirect hop. DNS
+   rebinding is the known gap.
 
 Consequence: "search for X and save it to tasks.md" takes two turns. React reports
 what it found and the user asks for the write separately, which is a confirmation
