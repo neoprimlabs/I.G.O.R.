@@ -110,6 +110,9 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   is talking. Different on purpose: a link is required (a no-page recurring message
   is a repeating scheduled message), 15m minimum (it fetches someone else's site),
   12 model calls a day, a page unreachable 3 times in a row is mentioned once.
+  Live checks 10-20: the judge reported a $49.99 to $39.99 drop and stayed silent on a
+  footer change and on a price rise; python.org and Wikipedia read the same twice
+  running. Fetches use urllib because Wikipedia 403s httpx whatever its headers.
   **Discord test for the user:** `heartbeat every 1h tell me when <a page> changes`.
 - main.py's startup import check now covers checkpoints, compression and heartbeats.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
