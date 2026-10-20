@@ -96,8 +96,22 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   the window, 20b (not chat's 120b) folds them into `conversation_summary.json`,
   under 1800 chars, in the background so no reply waits. `_window` puts it first as
   a system message marked as a record, not instructions, capped at a fifth of the
-  budget (1400 chars for React, out of its 7000); SelfDescribe gets none. Cost: about
-  3000 tokens on 20b per 4 evicted messages.
+  budget (1400 chars for React, out of its 7000); SelfDescribe gets none. First live
+  run filed IGOR's own 10:00 idea as the user's open work; the prompt now gives a
+  proactive post one line in Done. Rerun: 986 tokens, correct.
+- **Page heartbeat - built.** Hermes' `/heartbeat every <interval> <prompt>` runs a
+  full agent turn per tick and stays silent on `NO_REPLY`; on this free tier that
+  would spend a day's chat budget in a day. `heartbeats.py` works like IGOR's
+  watchers instead: code fetches the pages named in the request, compares visible
+  text (times and "5 minutes ago" ignored, as Hermes' `/loop` digest ignores
+  timestamps), and only a changed diff reaches 20b, tool-less, which writes one to
+  three sentences or `NO_REPLY`. Hermes' rules: one heartbeat, replaced by a new
+  one; status/pause/resume/clear; missed ticks coalesce; a tick waits while the user
+  is talking. Different on purpose: a link is required (a no-page recurring message
+  is a repeating scheduled message), 15m minimum (it fetches someone else's site),
+  12 model calls a day, a page unreachable 3 times in a row is mentioned once.
+  **Discord test for the user:** `heartbeat every 1h tell me when <a page> changes`.
+- main.py's startup import check now covers checkpoints, compression and heartbeats.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
   scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
   `memory/heartbeat.txt` every minute only while Discord reports a live connection

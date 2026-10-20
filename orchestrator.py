@@ -462,6 +462,9 @@ class Orchestrator:
         import checkpoints
         if checkpoints.parse(content):
             return "Rollback"
+        import heartbeats
+        if heartbeats.parse(content):
+            return "Heartbeat"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
             return "Schedule"
 
@@ -571,6 +574,10 @@ class Orchestrator:
             # to undo anything.
             import checkpoints
             return checkpoints.run(checkpoints.parse(content))
+
+        if destination == "Heartbeat":
+            import heartbeats
+            return await heartbeats.command(heartbeats.parse(content))
 
         if destination == "Schedule":
             # The scheduling tool is required until it has been called once. Live

@@ -46,7 +46,8 @@ until Groq's stated reset, and the reply says so.
 **Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (13:00
 UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
-scheduled messages (60s) and the overnight tick (hourly). Retiming one needs a deploy.
+scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
+Retiming one needs a deploy.
 
 **Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and
 log to `history.db`.
@@ -227,8 +228,7 @@ orchestrator notifies and sleeps on a per-minute limit but answers at once on th
 daily cap, quoting the wait from Groq's 429 body (`_rate_limit_reply`), the evaluator fails open, Monitor drops the digest
 section, the research loop stops and reports what it has.
 
-This module exists because the knowledge lived as prose in CLAUDE.md and every new
-call site re-derived it. Tested by `tests/test_llm.py`.
+Tested by `tests/test_llm.py`.
 
 ### Direct
 
@@ -317,10 +317,8 @@ than merely useful, each covered by `tests/test_delegation.py`:
   `task_update` or `delegate_task`; `tests/test_delegation.py` asserts the whole set.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
-with an optional `context` of up to 6 surrounding lines. The context exists
-because `read_file` pages by character offset, so a worker that knows a line number
-cannot jump to it. It is Python, not a shelled-out grep, because the pattern comes
-from a model. It skips private files through `_is_private` and `.git`, `__pycache__`
+with an optional `context` of up to 6 surrounding lines. It is Python, not a
+shelled-out grep, because the pattern comes from a model. It skips private files through `_is_private` and `.git`, `__pycache__`
 and the venv. Read-only, so it is in neither quarantine set.
 
 Up to 8 iterations:
@@ -360,12 +358,17 @@ the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 acr
 daylight saving. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run is shown the series' last three
-messages and told not to repeat them. Scheduling routes `TASK`. A long agent run
+messages and told not to repeat them. A long agent run
 holds the 60s delivery job, so the next ticks are skipped, not lost.
 
 Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation.
+
+**Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
+`heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,
+plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
+only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive. Code decides what it
 can be right about and a model judges the rest. The gig watch (`agents/gigs.py`)
@@ -498,8 +501,7 @@ Consequence: "search for X and save it to tasks.md" takes two turns. React repor
 what it found and the user asks for the write separately, which is a confirmation
 gate on any action derived from the open web.
 
-Classifier-based screening was specified and deliberately not built. Detection is
-heuristic and cannot guarantee prevention; the constraint is structural instead.
+Classifier-based screening was deliberately not built; the constraint is structural.
 
 ---
 
@@ -507,7 +509,7 @@ heuristic and cannot guarantee prevention; the constraint is structural instead.
 
 `config.MODELS` is the single source of truth. Groq TPM limits are **per model**
 and independent buckets. Every general-purpose model Groq serves is 8000 TPM
-(re-measured 2026-08-18, after the Llama family was removed):
+(re-measured 2026-08-18):
 
 | Role | Model | Bucket |
 |---|---|---|
