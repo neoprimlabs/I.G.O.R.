@@ -43,8 +43,7 @@ _FAIL_NOTICE = 3
 _QUIET_S = 120
 _BUDGET = 1024
 
-# A bare "Mozilla/5.0" was refused with a 403 by Wikipedia, live 2026-10-20.
-_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+_AGENT =("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
           "Chrome/126.0 Safari/537.36")
 
 _COMMAND = re.compile(r"^/?(?:heartbeat|hb)\b(.*)$", re.IGNORECASE | re.DOTALL)
@@ -126,19 +125,23 @@ def page_lines(body: str, content_type: str = "text/html") -> list[str]:
 async def _fetch(url: str) -> tuple[Optional[list[str]], str]:
     """(lines, "") or (None, why it could not be read)."""
     import asyncio
-    import httpx
+    import urllib.error
+    import urllib.request
 
+    # urllib, not httpx: live 2026-10-20 Wikipedia answered httpx with a 403 whatever
+    # its headers, and answered urllib and curl with a 200.
     def _sync():
         try:
-            with httpx.Client(follow_redirects=True, timeout=20) as client:
-                resp = client.get(url, headers={"User-Agent": _AGENT})
-                resp.raise_for_status()
+            request = urllib.request.Request(url, headers={"User-Agent": _AGENT})
+            with urllib.request.urlopen(request, timeout=20) as resp:
                 content_type = resp.headers.get("content-type", "")
                 if "text" not in content_type and "json" not in content_type:
                     return None, f"it is not a text page ({content_type or 'no content type'})"
-                return page_lines(resp.text[:2_000_000], content_type), ""
-        except httpx.HTTPStatusError as e:
-            return None, f"HTTP {e.response.status_code}"
+                charset = resp.headers.get_content_charset() or "utf-8"
+                body = resp.read(2_000_000).decode(charset, "replace")
+                return page_lines(body, content_type), ""
+        except urllib.error.HTTPError as e:
+            return None, f"HTTP {e.code}"
         except Exception as e:
             return None, type(e).__name__
 
