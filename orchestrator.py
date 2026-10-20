@@ -459,6 +459,9 @@ class Orchestrator:
             return "Monitor"
         if _proposal_decisions(content):
             return "ProposalDecision"
+        import checkpoints
+        if checkpoints.parse(content):
+            return "Rollback"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
             return "Schedule"
 
@@ -562,6 +565,12 @@ class Orchestrator:
             import proposals
             return "\n".join(proposals.decide(pid, approve)
                              for pid, approve in _proposal_decisions(content))
+
+        if destination == "Rollback":
+            # Hermes' /rollback: the user's command, handled in code. No model decides
+            # to undo anything.
+            import checkpoints
+            return checkpoints.run(checkpoints.parse(content))
 
         if destination == "Schedule":
             # The scheduling tool is required until it has been called once. Live

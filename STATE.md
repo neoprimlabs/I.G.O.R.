@@ -76,6 +76,17 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   and `.git`, 1 GiB address space; a sandbox that cannot start refuses, it never
   runs bare. Probed live as igor before wiring. Usage since 08-01: 8 shell calls,
   all read-only (`git log/status/show`, `ps`), so the cost to real use is nil.
+- **Checkpoints and rollback - built.** Hermes snapshots a directory into a shadow
+  git repo before file tools and destructive shell commands. With the shell now
+  read-only, only `write_file`, `patch_file` and `memory_write` change files, so
+  `checkpoints.py` keeps per-file before-images in `memory/.checkpoints/` instead,
+  on Hermes' rules otherwise (once per turn, first image wins, newest 20, hand edits
+  kept unless `all`, a rollback is itself checkpointed). The user types `rollback`,
+  `rollback diff N`, `rollback N`, `rollback N all` or `rollback N <file>`; handled in
+  code, no model. Not rewound: the conversation (Hermes does). Fails open. Three bugs
+  caught by the tests before deploy: a deleted file read as "nothing recorded",
+  folder names that sorted 10 before 2, and a pruned name reused and pruned at once.
+  **Discord test for the user:** ask IGOR to add a task, then send `rollback`.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
   scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
   `memory/heartbeat.txt` every minute only while Discord reports a live connection

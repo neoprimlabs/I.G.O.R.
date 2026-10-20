@@ -1130,7 +1130,10 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
         if count > 1:
             return f"[patch failed: old_string appears {count} times - add more context to make it unique]"
         new_content = content.replace(old_string, new_string, 1)
+        import checkpoints
+        checkpoints.before_write(resolved)
         resolved.write_text(new_content, encoding="utf-8")
+        checkpoints.after_write(resolved)
         logger.info("ReAct patch_file: %s", path)
         return f"Patched: {path}. Restart required for changes to take effect."
     except Exception as e:
@@ -1149,7 +1152,10 @@ async def _write_server_file(path: str, content: str) -> str:
         return "[access denied: only .py and .md files allowed]"
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
+        import checkpoints
+        checkpoints.before_write(resolved)
         resolved.write_text(content, encoding="utf-8")
+        checkpoints.after_write(resolved)
         logger.info("ReAct write_file: %s (%d bytes)", path, len(content))
         return f"Written: {path} ({len(content)} bytes). Restart required for changes to take effect."
     except Exception as e:
@@ -1524,6 +1530,10 @@ async def handle(
     tools = _openai_tools()
     if allowed_tools is not None:
         tools = [t for t in tools if t["function"]["name"] in allowed_tools]
+    if _depth == 0:
+        # One checkpoint per turn, shared by the workers it delegates to.
+        import checkpoints
+        checkpoints.start_turn(message)
 
     tool_failures = 0
     delegations = 0
