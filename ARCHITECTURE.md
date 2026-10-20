@@ -99,8 +99,7 @@ user.
   1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
 
 The host was an ARM A1 until Oracle terminated it in 2026-07; anything saying ARM
-is out of date. IGOR left Anthropic on 2026-06-22 for cost; `anthropic` stays
-installed, unused, as the hook for GAMEPLAN R4.1.
+is out of date. `anthropic` stays installed, unused, for GAMEPLAN R4.1.
 
 **The runtime is the server.** There is no local run; discord.py is not installed
 locally. Test pure logic with standalone Python snippets instead.
@@ -402,11 +401,10 @@ tool, with a wider allowlist.
 
 Every model call goes through `_call`, a thin wrapper over `llm.complete` that
 handles both silent failures of a reasoning model on a tight budget (empty and
-clipped output are valid 200 OKs). **Both calls run at `reasoning_effort` low**, 4x
-to 7x fewer completion tokens than unset with output holding (measured 2026-08-10).
+clipped output are valid 200 OKs). **Both calls run at `reasoning_effort` low**,
+4x to 7x fewer completion tokens than unset.
 
-Gathering and synthesis stay in separate contexts: one loop doing both spent all 8
-iterations searching and recorded nothing.
+Gathering and synthesis stay in separate contexts; one loop doing both only searched.
 
 Findings are delivered as a **raw file attachment with no model pass over them**,
 followed by an offer to synthesize on request. A `synthesize research` fast path
@@ -572,12 +570,14 @@ user's PC (30 kept). Syncthing no longer runs, so that archive is the only other
 `HISTORY_RETENTION_DAYS`), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
 
+**Compression** (`compression.py`, as Hermes): once 4 messages leave the window,
+20b folds them into a running summary (`conversation_summary.json`, under 1800
+chars) in the background, backing off 60/300/900s on failure. `_window` puts it
+first as a system record, at most a fifth of the budget; not for SelfDescribe.
+
 **Memory holds preferences, history and user facts, never architecture.**
 `memory_write`'s description says so. Anything checkable against source belongs in
 this file and is read with `read_file`.
-
-Nothing modifies React's prompt at runtime except `prompt_react.md`, which does not
-exist; `skills_react.md` and the critic that wrote it are gone.
 
 ### Agent prompt override pattern
 
@@ -622,8 +622,8 @@ raising, so `start.sh` crash recovery restores the last good commit. It verifies
 
 **What executes today.** `igor.service` runs `main.py` directly, so `start.sh` (compile
 check, crash revert) never runs, and `watchdog.py` is active but powerless: user
-`igor` has no sudoers entry, so only root-owned scripts restart IGOR. Checked
-2026-08-03; sudo rights re-confirmed 2026-10-16. What protects the system:
+`igor` has no sudoers entry (checked 2026-10-16), so only root-owned scripts
+restart IGOR. What protects the system:
 
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start

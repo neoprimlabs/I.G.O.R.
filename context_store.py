@@ -129,6 +129,27 @@ def search(query: str, limit: int = 8) -> list[tuple[int, str, str]]:
         return []
 
 
+def rows_after(after_id: int) -> list[tuple[int, str, str, int]]:
+    """(id, role, content, ts) for every message after after_id, oldest first."""
+    try:
+        with _conn() as conn:
+            return conn.execute(
+                "SELECT id, role, content, ts FROM messages WHERE id > ? ORDER BY id",
+                (after_id,),
+            ).fetchall()
+    except Exception:
+        return []
+
+
+def max_id() -> int:
+    try:
+        with _conn() as conn:
+            row = conn.execute("SELECT MAX(id) FROM messages").fetchone()
+        return int(row[0] or 0)
+    except Exception:
+        return 0
+
+
 def clear() -> None:
     try:
         with _conn() as conn:

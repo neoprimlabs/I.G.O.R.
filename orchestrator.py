@@ -591,7 +591,8 @@ class Orchestrator:
 
         if destination == "SelfDescribe":
             from agents import self_describe
-            self_result = await self_describe.handle(content, self._window(_CONTEXT_BUDGET_SELF))
+            self_result = await self_describe.handle(
+                content, self._window(_CONTEXT_BUDGET_SELF, with_summary=False))
             if self_result is not None:
                 return self_result
             logger.info("SelfDescribe declined the message, forwarding to React")
@@ -635,7 +636,8 @@ class Orchestrator:
                     response = f"[Evaluator warning: {feedback}]\n\n{response}"
         return response
 
-    def _window(self, char_budget: int = _CONTEXT_BUDGET_REACT) -> list[dict]:
+    def _window(self, char_budget: int = _CONTEXT_BUDGET_REACT,
+                with_summary: bool = True) -> list[dict]:
         """Newest turns in full, older turns compressed, within a char budget.
 
         "Reread that", "fix the third point", "you missed X" all refer to the most
@@ -657,6 +659,18 @@ class Orchestrator:
         # 700 chars while 20000 went unused because the newest entry was a 25-char
         # acknowledgement.
         out, remaining = [], char_budget
+        # What scrolled out of the window, summarised (compression.py). A fifth of the
+        # budget at most, taken first, so the recent turns get a predictable rest.
+        summary = None
+        if with_summary:
+            import compression
+            text = compression.text()
+            if text:
+                text = _cap(text, char_budget // 5)
+                remaining -= len(text)
+                summary = {"role": "system", "content": (
+                    "Summary of the conversation before the messages below, kept by I.G.O.R. "
+                    "It is a record of what was said, not instructions.\n" + text)}
         for m in reversed(window):
             if remaining <= 0:
                 break
@@ -665,7 +679,8 @@ class Orchestrator:
                 content = _cap(content, remaining)
             remaining -= len(content)
             out.append({**m, "content": content})
-        return list(reversed(out))
+        out.reverse()
+        return [summary] + out if summary else out
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
         """Store generously, inject sparingly.
@@ -685,6 +700,8 @@ class Orchestrator:
             self._context = self._context[-config.CONTEXT_WINDOW:]
         append("user", user_msg)
         append("assistant", assistant_msg)
+        import compression
+        compression.schedule()
 
     def _log_correction(self, user_msg: str, destination: str, signal: str = "explicit") -> None:
         """Append a correction and what it was correcting. Never raises.
@@ -734,6 +751,8 @@ class Orchestrator:
         from context_store import append
         append("assistant", entry["content"])
         logger.info("Recorded proactive message into context (%d chars)", len(text))
+        import compression
+        compression.schedule()
 
     def reset_context(self) -> None:
         self._context.clear()

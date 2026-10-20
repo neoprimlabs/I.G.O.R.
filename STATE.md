@@ -87,6 +87,17 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   caught by the tests before deploy: a deleted file read as "nothing recorded",
   folder names that sorted 10 before 2, and a pruned name reused and pruned at once.
   **Discord test for the user:** ask IGOR to add a task, then send `rollback`.
+- **Context compression - built.** IGOR showed models the last 6 messages and
+  nothing older, and proactive posts (digest, job and gig lists) took those slots
+  too. Hermes compresses a session near its context limit: head and tail verbatim,
+  an auxiliary model summarises the middle into fixed sections, later passes update
+  rather than rewrite, failures back off 60/300/900s. IGOR has one endless
+  conversation, so `compression.py` runs on eviction: every 4 messages that leave
+  the window, 20b (not chat's 120b) folds them into `conversation_summary.json`,
+  under 1800 chars, in the background so no reply waits. `_window` puts it first as
+  a system message marked as a record, not instructions, capped at a fifth of the
+  budget (1400 chars for React, out of its 7000); SelfDescribe gets none. Cost: about
+  3000 tokens on 20b per 4 evicted messages.
 - **Connection heartbeat - built.** Hermes exports a gateway-up signal and a
   scheduler heartbeat age and alerts past 180s. `monitor._heartbeat` touches
   `memory/heartbeat.txt` every minute only while Discord reports a live connection
