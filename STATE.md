@@ -1088,6 +1088,12 @@ depend on this machine. `.env` and `context.db` stay PC-only by design. Dry run:
 `sudo /usr/local/lib/igor-deploy/memory-push.sh --dry-run`. Copies of the script
 and units are in `C:\Dev\IGOR_backup\deploy-machinery\`.
 
+The three root scripts share one webhook and now name themselves: alerts arrive
+as "IGOR deploy", "IGOR heartbeat" or "IGOR backup" (all came as the webhook's own
+name, "Heartbeat", until 2026-10-20). heartbeat.sh and memory-push.sh now build the
+payload with json.dumps, as deploy.sh did; their hand escaping covered quotes only,
+so a backslash or newline in an error would have made the alert invalid JSON.
+
 Caveat: it only runs when this machine is on. Task Scheduler catches up when the
 machine returns, so time away means late alerts rather than none.
 
