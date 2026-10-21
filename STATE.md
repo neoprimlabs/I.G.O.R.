@@ -9,10 +9,11 @@ Last updated: **2026-10-19**
 
 ## Running
 
-- **Host:** `129.80.181.77` - Oracle `VM.Standard.E2.1.Micro`, x86_64,
+- **Host:** address in `CLAUDE.local.md` (gitignored) - Oracle `VM.Standard.E2.1.Micro`, x86_64,
   US-ASHBURN-AD-1, Always Free, 1 OCPU / 956 MB RAM + 2 GB swapfile
 - **OS:** Ubuntu 22.04.5, Python 3.10.12, service user `igor`, root `/opt/igor`
-- **Services:** `igor` and `igor-watchdog`, both enabled and active
+- **Services:** `igor`, enabled and active. `igor-watchdog` was removed 2026-10-21:
+  it ran as `igor`, which has no sudo rights, so it could never restart anything.
 - **Status:** online, confirmed responding on Discord
 
 ## Code
@@ -52,9 +53,8 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   plays MEMORY.md; the gap was Direct (50 of 69 routed messages since 10-01), which
   saw none of `user.md`. Its prompt now ends with `user.md`; React's `memory_write`
   refuses a `user.md` write past `config.USER_PROFILE_CAP` (1500) and says how much
-  to free. Live `user.md` corrected (the server is an x86 micro, not ARM A1), the
-  digest-time section swapped for the income plan, tidied to 1488 chars (backup
-  `user.md.bak-20261019`).
+  to free. Live `user.md` corrected (the server is an x86 micro, not ARM A1) and
+  tidied to 1488 chars (backup `user.md.bak-20261019`).
 - **Backup provider - built, dormant until the user adds a key.** Hermes'
   `fallback_providers`: a chain tried in order, failing over on 429s and 5xx after
   retries, a missing model or refused key at once, a dropped connection; a 400 on
@@ -196,14 +196,7 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   every addition needs an equal cut.
 
 **Pick up here (2026-10-18 evening):**
-0. **Income direction chosen 2026-10-18: freelance AI automation, the user selling,
-   IGOR finding the work.** The user turned down prizes (Metaculus), work on their own
-   apps and a records-monitoring subscription; they will put in work and want
-   something "grounded and consistent". Research (sources in the session's file, not
-   here): n8n is the most-named automation platform in Upwork titles; HubSpot is the
-   common CRM; MirrorFly was one client's vendor, not a tool to learn. The user is
-   learning n8n first, using Claude Code to build.
-   **Built: the gig watch** (`agents/gigs.py`, daily 14:45 UTC): n8n forum Jobs board
+0. **Built 2026-10-18: the gig watch** (`agents/gigs.py`, daily 14:45 UTC): n8n forum Jobs board
    plus r/forhire [Hiring] search feed. Red flags are dropped by code patterns and by
    one screening call that must give every post RED, SKIP or a pick; RED blocks the
    posting account (`gigs_blocked.json`), only picks are sent, a post with no verdict
@@ -235,9 +228,7 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
    for it), any heading level, one retry told why, digest lists only the latest draft.
    **Check next morning:** g3's first `paper.md`; later, the first live revision.
    The 10-18 drafts ranked AdSense blogs first on hype sources - the content-quality
-   risk predicted for this goal. Meanwhile Claude Code ran the wide income scan
-   directly; the user is still choosing a direction (not prizes, not their own apps,
-   not a records-monitoring subscription).
+   risk predicted for this goal.
 2. **Done 2026-10-17:** typed proposal decisions ("reject p1 and p2", any case) are
    carried out in code via `_proposal_decisions`, with the tool's own words as the
    reply - no model, so no wrong-case id and no false "done". Ids are case-insensitive
@@ -435,29 +426,12 @@ live: it ranked support and QA roles above specialised annotation work and said 
 both versions of his history; `_is_private` makes it unreachable. Ranking sends only
 the profile - skills and work history, no name, phone, email or address.
 
-**Resolved 2026-10-09: K&J and New Dimension are two jobs, not one.** They were
-never a contradiction between the two source resumes. K&J Comics and Games stemmed
-from New Dimension Comics, the companies were near identical, and he worked at both -
-New Dimension first, K&J after. The duties read the same because it was the same work
-at a sibling company. Both are now on the resume in sequence, and `profile.md`
-describes them as two sibling retailers rather than one 2024-2026 block.
-
-**Also added 2026-10-09: his current job.** Electronics Salesperson, Walmart, Delmont
-PA, 09/2026 to present. It was missing entirely, so the job watch had been ranking
-against a profile that showed no current employment. `profile.md` now carries it
-de-identified as a big-box electronics role, and calls customer-facing technical
-work - support, success, solutions, sales engineering - a direct fit rather than a
-stretch, because explaining consumer technology to non-technical buyers is the day
-job now.
-
-**Settled 2026-10-12, both of them.** On his instruction the handover months go to
-K&J: the role is now one continuous entry, 05/2024 to 04/2026 under K&J Comics and
-Games, with New Dimension Comics named in a bullet as the sibling store it started
-at. No invented month, no gap, no overlap, nothing marked unknown. **Do not re-split
-this into two dated entries.** He also confirmed Delmont PA is the correct spelling.
-`resume.md` now has no TBC markers and a continuous timeline: Walmart 09/2026 to
-present, K&J 05/2024 to 04/2026, Pizzeria Davide 11/2022 to 05/2024, Cheesecake
-Factory 2020 to 2022. A pre-edit copy is at `memory/resume.md.bak` on the server.
+**Resume timeline settled with the user, 2026-10-09 to 10-12.** Two source resumes
+were reconciled, a missing current job added and the profile used for ranking
+updated to match, de-identified. The user's decisions on how each role is dated are
+recorded in `memory/resume.md` itself, not here: this file is public. Do not
+re-split or re-date any entry without the user. A pre-edit copy is at
+`memory/resume.md.bak` on the server.
 
 ## Job watch went silent for five days, and why (2026-09-30)
 
@@ -522,12 +496,11 @@ Three non-obvious things, each a test:
   the second time in two days a substring match looked fine offline and matched
   something absurd against real data.
 
-**Also corrected:** ARCHITECTURE claimed "No working self-modification -
-`restart_self` writes a sentinel nothing acts on." False. `watchdog.py` watches
-`/opt/igor/restart_requested`, reads it, unlinks it and runs `systemctl restart igor`
-with a cooldown. `restart_self` works; what IGOR cannot do is pull, gate or roll back
-its own code. That claim sat in the self-summary, so IGOR was telling people
-something untrue about itself.
+**Corrected 2026-10-21:** a note here once said `restart_self` worked through
+`watchdog.py`. On this host it never could: the watchdog ran as `igor`, and
+`sudo -l -U igor` says igor may not run sudo, so its `sudo systemctl restart igor`
+always failed. The watchdog is deleted; `restart_self` now tells the user the change
+needs deploying, which is what actually happens.
 
 **The self-summary budget is the recurring tax here.** Documenting the stock watch
 pushed it over 5000 twice. The three watchers are now one combined block above the
@@ -990,9 +963,9 @@ user, not made quietly.
 
 ## Known broken
 
-1. **The old safety stack still does not execute** - but deploys are gated.
-   `start.sh` is bypassed (`igor.service` runs `main.py` directly) and the watchdog
-   has no sudoers entry, so Layers 1-3 remain dead. S.3 deletes all of it.
+1. **FIXED 2026-10-21: the old safety stack is gone.** `start.sh` (bypassed:
+   `igor.service` runs `main.py` directly) and `watchdog.py` (no sudo rights) were
+   deleted, and the service removed from the host.
 
    What replaced them: **S.1 health-gated deploy with automatic rollback**, at
    `/usr/local/lib/igor-deploy/deploy.sh`, root-owned and outside `/opt/igor`. Syntax
@@ -1091,7 +1064,8 @@ Windows Scheduled Task "IGOR memory backup" at 3am. Run on demand with
 - Pulls `memory/` and `.env` to `C:\Dev\IGOR_backup\` as dated archives, last 30
   retained. `memory/scheduled.json` is covered by this. Pull-based because the
   server has no git push credentials.
-- Checks that `igor` and `igor-watchdog` are active, and compares systemd's
+- Checks that `igor` is active (and `igor-watchdog`, until it was removed
+  2026-10-21), and compares systemd's
   restart count against the previous run to catch crash loops.
 - Alerts to a Discord webhook on: unreachable host, service not active, backup
   failure, or restart count jumping by 3 or more. A webhook is used rather than
@@ -1103,8 +1077,8 @@ Windows Scheduled Task "IGOR memory backup" at 3am. Run on demand with
 - Sends one all-clear on Sundays, so prolonged silence means the task stopped
   running rather than everything being fine.
 
-Webhook URL lives at `C:\Users\Nucbox\Documents\IGOR_Keys\discord_webhook.txt`,
-outside the repo. Test the alert path with `-TestAlert`.
+The webhook URL file and the host details live outside the repo; their paths are in
+`scripts/backup_memory.local.ps1` and `CLAUDE.local.md`, both gitignored. Test the alert path with `-TestAlert`.
 
 **Hourly server push (T.4, 2026-10-20):** root's `memory-push.sh`, on
 `igor-memory-push.timer`, pushes `memory/**/*.md` except `private/` and `resume.md`

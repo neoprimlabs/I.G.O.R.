@@ -7,7 +7,7 @@ Status: draft for the user's approval, 2026-10-19. GAMEPLAN Phase K.
 One engine, many agents. The user's IGOR stays private and unchanged. The first clone,
 **IGOR-C**, is the customer-facing version: invited testers first, then a demo and a
 template for client work (the freelance route chosen 2026-10-18). Later clones (the
-brother's, a "different feel" one) reuse the same base.
+a second tester's, a "different feel" one) reuse the same base.
 
 ## How Hermes does it (checked 2026-10-19)
 

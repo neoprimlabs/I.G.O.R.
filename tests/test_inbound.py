@@ -176,8 +176,8 @@ def test_documents() -> None:
     _check("a scanned PDF says it has no text layer", "no text layer" in parts[0] and "No text could be taken" in parts[0],
            parts[0])
 
-    parts, _ = _run([_Att("cv.docx", None, _docx(["Brian, builder", "Python &amp; Flutter"]))])
-    _check("Word documents are read", "Brian, builder" in parts[0] and "Python & Flutter" in parts[0], parts[0])
+    parts, _ = _run([_Att("cv.docx", None, _docx(["Sam, builder", "Python &amp; Flutter"]))])
+    _check("Word documents are read", "Sam, builder" in parts[0] and "Python & Flutter" in parts[0], parts[0])
 
     long_text = ("line of the contract\n" * 400).encode()
     parts, tools = _run([_Att("contract.txt", "text/plain", long_text)])

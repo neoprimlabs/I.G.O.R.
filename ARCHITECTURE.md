@@ -15,8 +15,8 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
   maps typography; refusals come from the models, not from IGOR.
 - **No external accounts.** No posting, email or social media. IGOR drafts; a
   human publishes. It never buys anything and never applies for a job.
-- **No self-restart.** `restart_self` writes a sentinel, but the watchdog has no
-  sudo rights, so nothing restarts. Only the deploy script below restarts IGOR.
+- **No self-restart.** `restart_self` only tells the user a change needs deploying.
+  Only the deploy script below restarts IGOR.
 - **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
   network, secrets or sealed memory, read-only but `/tmp` and `.git`; refused if
   it cannot start. The shell also refuses a blocklist and asks before risky ones.
@@ -609,7 +609,7 @@ default, so the prompt in the source is the prompt in play.
 ## Startup checks
 
 `main._smoke_test()` runs after `_ensure_memory_files()` and exits 1 rather than
-raising, so `start.sh` crash recovery restores the last good commit. It verifies:
+raising, so the deploy gate rolls back. It verifies:
 
 - seven `config.MODELS` roles present and non-empty (`worker` is not checked)
 - `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
@@ -624,10 +624,9 @@ raising, so `start.sh` crash recovery restores the last good commit. It verifies
 
 ## Safety stack
 
-**What executes today.** `igor.service` runs `main.py` directly, so `start.sh` (compile
-check, crash revert) never runs, and `watchdog.py` is active but powerless: user
-`igor` has no sudoers entry (checked 2026-10-16), so only root-owned scripts
-restart IGOR. What protects the system:
+**What executes today.** `igor.service` runs `main.py`. User `igor` has no sudoers
+entry, so only root-owned scripts restart IGOR (`start.sh` and `watchdog.py`, which
+could not, were deleted 2026-10-21). What protects the system:
 
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start
