@@ -47,6 +47,30 @@ and Markdown plus SQLite for memory, on an Oracle Always Free VM (1 OCPU, 956 MB
 [ARCHITECTURE.md](ARCHITECTURE.md) is the full description, kept verified against the
 source; the agent reads it to answer questions about itself.
 
+## Memory and shared context
+
+Memory is split by how long it lives and how far it can be trusted.
+
+| Layer | Where it lives | Who sees it |
+|---|---|---|
+| Recent conversation | SQLite, kept 90 days and searchable | The chat and task agents get the last 6 messages, within a character budget each (7,000 for tasks, 24,000 for chat) |
+| Older conversation | A running summary a separate model updates as messages leave that window | Placed first in their context, capped at a fifth of the budget, marked as a record and not instructions |
+| The user | `user.md`, capped at 1,500 characters | Every chat prompt; a write past the cap is refused with how much to free |
+| Approved preferences | `preferences.md`, capped at 1,500 characters, written only when the user approves a proposal | The chat and task agents' prompts |
+| Notes and tasks | Markdown files behind an allowlist | Tools that must name the file they read or write |
+| Watch history | SQLite, one row per observation | Watchers write it; the task agent queries what changed |
+| Overnight work | Findings, one living paper and proposals per goal | The research pipeline, its evaluator and the morning digest |
+
+How it is shared and kept apart:
+
+- A sub-agent starts with an empty context and a restricted tool list, never wider than its parent's.
+- Private files, such as the resume, open only in a turn that has not read the web, and reading one closes
+  the web for the rest of that turn.
+- Two files derived from untrusted text, logged corrections and drafts, are readable by no agent.
+- Facts about the system live in `ARCHITECTURE.md`, not in memory: copies kept in memory drifted and were
+  repeated as truth.
+- Every file the agent changes is checkpointed first, and memory notes are pushed to a private repo hourly.
+
 ## Engineering decisions worth a look
 
 **Prompt injection is contained by structure, not by a classifier.** The moment a web
