@@ -26,6 +26,16 @@ Last updated: **2026-10-19**
 
 ## Next action
 
+**Showcase for AI agent engineer applications (started 2026-10-21).** The user is
+applying to AI agent engineer roles and wants IGOR shown off. Agreed story: "an
+always-on personal agent, run in production on free tiers, with the safety
+engineering most agents skip." Done: `README.md` (first public README; numbers from
+the record only). Discussed, not yet scoped with the user: screenshots from the user
+for the README, an eval results table kept current, a cost and latency summary of
+model calls, a recorded 2-3 minute demo, a cleanup pass on the public repo (dead
+code from S.3, personal details in STATE/GAMEPLAN), an MCP server. Research behind
+the list: reviewers favour one deep project with evals, safety work, measured cost.
+
 **Hermes parity run, 2026-10-19 (the user away, Claude Code working through the
 docket; order: attachments, always-on memory, a backup provider, asking before risky
 commands; clones parked by the user, design in `docs/superpowers/specs/`):**
