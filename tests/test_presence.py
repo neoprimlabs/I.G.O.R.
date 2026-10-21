@@ -255,6 +255,54 @@ def test_the_daily_checkin() -> None:
            "SILENT" not in presence._SYSTEM_CHECKIN)
 
 
+def test_checkin_waits_after_a_conversation() -> None:
+    """2026-10-20: a check-in 30 minutes after the user said they would start a job
+    application tomorrow asked how today's prep was going."""
+    from agents import presence
+
+    _fresh(_state())
+    due = _utc(2026, 9, 21, 16, 33)             # 12:33 EDT
+    state = presence._load_state()
+    state["checkin"] = {"day": "2026-09-21", "at": due.isoformat(), "sent": False}
+    presence._save_state(state)
+    talked = due - timedelta(minutes=23)        # 12:10 EDT
+    _check("a check-in due soon after the user spoke waits",
+           "checkin" not in presence.due_triggers(due + timedelta(minutes=7), last_user_at=talked))
+    moved = presence._parse(presence._load_state()["checkin"]["at"])
+    _check("until two hours after they spoke", moved == talked + timedelta(hours=2), str(moved))
+    _check("and is due then",
+           "checkin" in presence.due_triggers(moved + timedelta(minutes=1), last_user_at=talked))
+
+    _fresh(_state())
+    late = _utc(2026, 9, 22, 2, 0)              # 22:00 EDT
+    state = presence._load_state()
+    state["checkin"] = {"day": "2026-09-21", "at": late.isoformat(), "sent": False}
+    presence._save_state(state)
+    presence.due_triggers(late + timedelta(minutes=1), last_user_at=late - timedelta(minutes=30))
+    checkin = presence._load_state()["checkin"]
+    _check("pushed past the last check-in hour, it is dropped for the day",
+           checkin.get("sent") is True and "skipped" in checkin, str(checkin))
+
+
+def test_the_bundle_says_when() -> None:
+    """So "tomorrow" in a message from today reads as tomorrow."""
+    from agents import presence
+    import context_store
+
+    path = _fresh(_state())
+    original_db = context_store._DB_PATH
+    try:
+        context_store._DB_PATH = path / "context.db"
+        context_store.append("user", "we will work on the application tomorrow")
+        bundle = presence._facts("checkin", datetime.now(timezone.utc), None)
+    finally:
+        context_store._DB_PATH = original_db
+    _check("each line says when it was said", "user, today " in bundle, bundle[-300:])
+    _check("the check-in prompt reads the times",
+           "tomorrow" in presence._SYSTEM_CHECKIN and "not happening today" in presence._SYSTEM_CHECKIN)
+    _check("and keeps I.G.O.R.'s voice", 'No "Hey"' in presence._SYSTEM_CHECKIN)
+
+
 def test_which_prompt_each_trigger_gets() -> None:
     """drafts and stale_task only fire once the code has established a fact, so the
     model writes the message. lull is the only one where it still judges - and on
@@ -465,8 +513,15 @@ if __name__ == "__main__":
     asyncio.run(test_never_interrupts_a_live_conversation())
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
+    test_the_bundle_says_when()
     print("\nwrite mode versus judge mode")
     test_which_prompt_each_trigger_gets()
+    print("\nclaimed work")
+    test_claimed_work_is_dropped()
+    print("\nthe daily check-in")
+    # These two were defined and never called by this runner until 2026-10-20.
+    test_the_daily_checkin()
+    test_checkin_waits_after_a_conversation()
     print("\nits own messages are not material")
     asyncio.run(test_own_messages_are_not_material())
     asyncio.run(test_an_answered_question_does_not_look_unanswered())

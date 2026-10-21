@@ -43,6 +43,12 @@ _MAX_PER_DAY = 2
 _MAX_CALLS_PER_DAY = 6
 _CONVERSATION_LIVE = timedelta(minutes=20)
 
+# 2026-10-20: the check-in came 30 minutes after the user said they would start a job
+# application tomorrow, and asked how today's prep was going. A check-in is for a
+# quiet stretch; right after a conversation it only repeats it. It waits until this
+# long after the user last spoke, and is dropped for the day if that runs late.
+_CHECKIN_AFTER_TALK = timedelta(hours=2)
+
 # Written by orchestrator.record_outbound (orchestrator.py, _STORE_CAP block) onto
 # the sends IGOR makes without being asked, and onto nothing else. It is the only
 # thing distinguishing an unprompted alert from an ordinary reply once both are rows
@@ -80,7 +86,11 @@ _INVENTED_ACTIVITY = [
     re.compile(p, re.IGNORECASE) for p in (
         r"\bI(?:'ve| have| ve)?\s*(?:been\s+)?(?:working|built|build|finished|made|"
         r"completed|implemented|fixed|prepared|drafted|wrote|written|started|set up|"
-        r"put together|looked into|investigated|researched)\b",
+        r"put together|looked into|investigated|researched|"
+        # The -ing forms after "been". Missed until 2026-10-20, because this file's
+        # runner never called the test that names "I have been looking into".
+        r"building|looking into|investigating|researching|preparing|drafting|writing|"
+        r"fixing)\b",
         r"\bI(?:'m| am)\s+(?:working|building|looking into|putting together)\b",
         r"\bI\s+(?:can|will|could)\s+(?:have|get)\s+(?:it|that|this)\s+(?:ready|done)\b",
         r"\bready (?:for you )?to (?:look|review|check)\b",
@@ -134,9 +144,10 @@ Style:
 
 _SYSTEM_CHECKIN = """You are I.G.O.R., writing a short check-in to the one person you talk to. They asked you to check in on them.
 
-This is a message to a person, not a status report. Write what someone would actually type.
+This is a message to a person, not a status report, in I.G.O.R.'s own voice: formal but warm, composed, never chummy. No "Hey", no "just checking in".
 
 - One or two sentences. Often one is enough.
+- Each line of the conversation says when it was said. Something they said they would do tomorrow, or on a later day, is not happening today.
 - If the facts show something specific and current, you may mention it in passing, the way a person would. It is never the point of the message.
 - Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
 - Do not ask for a status update, do not list anything, do not offer a menu of things you could do.
@@ -283,6 +294,32 @@ def _checkin_time(now: datetime, state: dict) -> Optional[datetime]:
     return at.astimezone(timezone.utc)
 
 
+def _postpone_checkin(state: dict, at: datetime, now: datetime) -> None:
+    """Move today's check-in to `at`, or drop it for the day if `at` runs past the
+    latest check-in hour or into tomorrow."""
+    local = at.astimezone(clock.USER_TZ)
+    if local.date() != now.astimezone(clock.USER_TZ).date() or local.hour >= _CHECKIN_LATEST:
+        state["checkin"]["sent"] = True
+        state["checkin"]["skipped"] = "the user talked too recently and the day ran out"
+        logger.info("Check-in dropped for today: the user spoke at %s",
+                    (at - _CHECKIN_AFTER_TALK).astimezone(clock.USER_TZ).strftime("%H:%M"))
+    else:
+        state["checkin"]["at"] = at.astimezone(timezone.utc).isoformat()
+        logger.info("Check-in moved to %s, two hours after the user last spoke",
+                    local.strftime("%H:%M %Z"))
+    _save_state(state)
+
+
+def _when(ts: Optional[int], now: datetime) -> str:
+    """When a message was said, as the user's clock reads it: "today 12:10"."""
+    if not ts:
+        return "time unknown"
+    at = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
+    days = (now.astimezone(clock.USER_TZ).date() - at.date()).days
+    day = "today" if days == 0 else "yesterday" if days == 1 else f"{at:%a} {at:%b} {at.day}"
+    return f"{day} {at:%H:%M}"
+
+
 def _open_tasks() -> list[str]:
     try:
         text = (config.MEMORY_DIR / "tasks.md").read_text(encoding="utf-8")
@@ -319,7 +356,7 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
 
     try:
         import context_store
-        recent = context_store.load(8)
+        recent = context_store.load_timed(8)
     except Exception:
         recent = []
 
@@ -342,12 +379,14 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
         content = " ".join((turn.get("content") or "").split())
         if not content:
             continue
+        # When it was said, so "tomorrow" in a message from today can be read right.
+        when = _when(turn.get("ts"), now)
         if turn.get("role") == "user":
-            conversation.append(("user", content))
+            conversation.append((f"user, {when}", content))
         elif _PROACTIVE_MARK in content:
             unprompted.append(content.replace(_PROACTIVE_MARK, "").strip())
         else:
-            conversation.append(("you", content))
+            conversation.append((f"you, {when}", content))
 
     if conversation:
         lines.append(CONVERSATION_HEADER)
@@ -465,7 +504,10 @@ def due_triggers(now: Optional[datetime] = None,
     # one fixed number when the model was asked to choose.
     checkin_at = _checkin_time(now, state)
     if checkin_at is not None and now >= checkin_at:
-        due.append("checkin")
+        if last_user_at is not None and now - last_user_at < _CHECKIN_AFTER_TALK:
+            _postpone_checkin(state, last_user_at + _CHECKIN_AFTER_TALK, now)
+        else:
+            due.append("checkin")
 
     # Once per lull, not once per tick. The window is an hour wide and the job runs
     # every ten minutes, so without this it fires six times for one quiet spell.

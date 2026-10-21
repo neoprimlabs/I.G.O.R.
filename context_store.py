@@ -39,6 +39,19 @@ def load(limit: int = config.CONTEXT_WINDOW) -> list[dict]:
         return []
 
 
+def load_timed(limit: int = config.CONTEXT_WINDOW) -> list[dict]:
+    """As load(), with each message's unix time under "ts"."""
+    try:
+        with _conn() as conn:
+            rows = conn.execute(
+                "SELECT role, content, ts FROM messages ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [{"role": r, "content": c, "ts": t} for r, c, t in reversed(rows)]
+    except Exception:
+        return []
+
+
 def last_timestamp() -> "datetime.datetime | None":
     """When anything was last stored, IGOR's own proactive sends included."""
     import datetime

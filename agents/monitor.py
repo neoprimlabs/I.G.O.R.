@@ -452,7 +452,7 @@ async def _check_model_update() -> None:
 # ~2150 tokens on the 6000 TPM summary bucket, leaving room for max_tokens 1536.
 _NEWS_SNIPPET_CHARS = 1500
 
-_AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into exactly 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.
+_AI_NEWS_SYNTHESIS_PROMPT = """Summarize the following search results into up to 3 bullet points for a morning digest. Each bullet is one sentence covering one distinct AI development.
 
 Format:
 - [Topic]: One sentence. Source: [2]
@@ -460,8 +460,8 @@ Format:
 End each bullet with "Source: [n]", where n is the bracketed number of the result you used. Just the number. Do not write the URL, the site name, or the article title.
 
 Rules:
-- Exactly 3 bullets - no more, no fewer
-- Cover distinct topics - do not repeat similar stories
+- At most 3 bullets, one per distinct development. If only two results are distinct, write two
+- Never two bullets from the same result or about the same story
 - Lead with the most significant development
 - Stay inside what the result actually says. Do not add detail it does not contain, and do not resolve an unfamiliar or technical claim into a more familiar one - keep each story in the field its source puts it in.
 - Reuse the source's own wording for the key nouns rather than substituting your own
@@ -564,6 +564,24 @@ async def _fetch_weather() -> str | None:
 
 
 _SOURCE_INDEX_RE = re.compile(r"Source:\s*\[?(\d+)\]?\.?\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _one_bullet_per_source(text: str) -> str:
+    """Drop a bullet that cites a result an earlier bullet already used.
+
+    Live 2026-10-20 the digest ran Muse Glimmer 30B twice from one article: the prompt
+    demanded exactly three bullets and only two stories were distinct.
+    """
+    seen, kept = set(), []
+    for block in re.split(r"\n(?=\s*-\s)", (text or "").strip()):
+        m = _SOURCE_INDEX_RE.search(block)
+        if m and m.group(1) in seen:
+            logger.info("AI news: dropped a second bullet citing result %s", m.group(1))
+            continue
+        if m:
+            seen.add(m.group(1))
+        kept.append(block)
+    return "\n".join(kept)
 
 
 def _attach_sources(text: str, results: list[dict]) -> str:
@@ -725,7 +743,7 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             label="AI news",
         )
         _remember_news([r.get("url", "") for r in unique_results if r.get("url")])
-        return _attach_sources(synthesis, unique_results)
+        return _attach_sources(_one_bullet_per_source(synthesis), unique_results)
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
         return None

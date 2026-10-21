@@ -116,6 +116,21 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   **Discord test for the user:** `heartbeat every 1h tell me when <a page> changes`.
 - main.py's startup import check now covers checkpoints, compression, heartbeats and
   url_safety.
+- **Review of the user's 10-20 Discord day, fixed:** the 12:40 check-in asked how
+  "today's" application prep was going, 30 minutes after the user said they would do
+  it tomorrow, and opened "Hey, just checking in". The check-in now waits until 2h
+  after the user last spoke (dropped for the day past 23:00), each conversation line
+  in its facts says when it was said, and its prompt asks for I.G.O.R.'s formal voice.
+  The digest ran Muse Glimmer 30B twice from one article because the prompt demanded
+  exactly 3 bullets; now "up to 3", and code drops a second bullet citing the same
+  result. Direct's reminder offer invented the syntax "schedule X for tomorrow at
+  07:00 EST"; it now gives a plain sentence that routes to scheduling ("remind me
+  tomorrow at 9am to ..."). Two test runners listed tests by hand and had never
+  called four of them; one, in test_presence, was failing: "I have been looking
+  into" passed the claimed-work gate. Fixed, and all four now run. Working as
+  designed: the gig watch (HN live, 3 equity-only posts blocked, nothing worth
+  sending), the 07:21 paper revision, the memory push, compression (2 runs, ~1500
+  tokens each).
 - **Egress check - built (2026-10-20).** `fetch_url` takes its URL from the model,
   which reads untrusted pages, and nothing stopped it fetching the cloud metadata
   service, localhost or the private network. `url_safety.py` follows Hermes'
