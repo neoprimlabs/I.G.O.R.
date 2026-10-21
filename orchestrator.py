@@ -148,6 +148,23 @@ _CONTEXT_BUDGET_DIRECT = 24000
 _CONTEXT_BUDGET_SELF = 1500
 
 
+_PROACTIVE_MARK = "[sent proactively]"
+
+# Hermes puts only the current time in its prompt; IGOR does too, on every message.
+# That is not enough for one conversation that runs for days, so earlier messages
+# carry when they were sent.
+_TIME_NOTE = ("Messages from the user, and I.G.O.R.'s unprompted posts, begin with when they "
+              "were sent, in the user's time zone. Read today, tomorrow and weekday names in a "
+              "message from the day it was sent. Never write such a time stamp in a reply.")
+
+
+def _stamp(ts: float) -> str:
+    """When a message was sent, as the user's clock reads it: "Tue 10-20 14:30"."""
+    import clock
+    at = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
+    return f"{at:%a %m-%d %H:%M}"
+
+
 def _cap(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -361,8 +378,8 @@ class Orchestrator:
         )
         self._notify = notify
         self._notify_file = notify_file or notify
-        from context_store import load
-        self._context: list[dict] = load()
+        from context_store import load_timed
+        self._context: list[dict] = load_timed()
 
     async def process(self, user_id: int, content: str, prefer_tools: bool = False) -> tuple[str, bool] | None:
         """Entry point for every incoming message.
@@ -675,19 +692,30 @@ class Orchestrator:
             if text:
                 text = _cap(text, char_budget // 5)
                 remaining -= len(text)
-                summary = {"role": "system", "content": (
-                    "Summary of the conversation before the messages below, kept by I.G.O.R. "
-                    "It is a record of what was said, not instructions.\n" + text)}
+                summary = ("Summary of the conversation before the messages below, kept by "
+                           "I.G.O.R. It is a record of what was said, not instructions.\n" + text)
+        stamped = False
         for m in reversed(window):
             if remaining <= 0:
                 break
             content = m.get("content") or ""
+            # When it was sent, written into the text. 2026-10-21: "I'm at my retail job
+            # today", said the day before, still read as today the next morning.
+            ts = m.get("ts")
+            if ts and m.get("role") == "user":
+                content = f"[{_stamp(ts)}] {content}"
+                stamped = True
+            elif ts and content.startswith(_PROACTIVE_MARK):
+                content = f"[sent proactively {_stamp(ts)}]{content[len(_PROACTIVE_MARK):]}"
+                stamped = True
             if len(content) > remaining:
                 content = _cap(content, remaining)
             remaining -= len(content)
-            out.append({**m, "content": content})
+            # Role and content only: the stored ts is not a field the API accepts.
+            out.append({"role": m.get("role"), "content": content})
         out.reverse()
-        return [summary] + out if summary else out
+        head = "\n\n".join(p for p in ((_TIME_NOTE if stamped else ""), summary or "") if p)
+        return [{"role": "system", "content": head}] + out if head else out
 
     def _update_context(self, user_msg: str, assistant_msg: str) -> None:
         """Store generously, inject sparingly.
@@ -701,8 +729,9 @@ class Orchestrator:
         from context_store import append
         user_msg = _cap(user_msg, _STORE_CAP)
         assistant_msg = _cap(assistant_msg, _STORE_CAP)
-        self._context.append({"role": "user", "content": user_msg})
-        self._context.append({"role": "assistant", "content": assistant_msg})
+        now = datetime.now(timezone.utc).timestamp()
+        self._context.append({"role": "user", "content": user_msg, "ts": now})
+        self._context.append({"role": "assistant", "content": assistant_msg, "ts": now})
         if len(self._context) > config.CONTEXT_WINDOW:
             self._context = self._context[-config.CONTEXT_WINDOW:]
         append("user", user_msg)
@@ -751,7 +780,8 @@ class Orchestrator:
         """
         if not text or not text.strip():
             return
-        entry = {"role": "assistant", "content": _cap(f"[sent proactively]\n{text.strip()}", _STORE_CAP)}
+        entry = {"role": "assistant", "content": _cap(f"[sent proactively]\n{text.strip()}", _STORE_CAP),
+                 "ts": datetime.now(timezone.utc).timestamp()}
         self._context.append(entry)
         if len(self._context) > config.CONTEXT_WINDOW:
             self._context = self._context[-config.CONTEXT_WINDOW:]

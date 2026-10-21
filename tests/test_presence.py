@@ -297,10 +297,44 @@ def test_the_bundle_says_when() -> None:
         bundle = presence._facts("checkin", datetime.now(timezone.utc), None)
     finally:
         context_store._DB_PATH = original_db
-    _check("each line says when it was said", "user, today " in bundle, bundle[-300:])
-    _check("the check-in prompt reads the times",
-           "tomorrow" in presence._SYSTEM_CHECKIN and "not happening today" in presence._SYSTEM_CHECKIN)
+    _check("each line says when it was said, with the weekday", "user, today, " in bundle,
+           bundle[-300:])
+    _check("the check-in prompt reads the times from the day each line was said",
+           "\"tomorrow\" in yesterday's message means today" in presence._SYSTEM_CHECKIN)
+    _check("and never assumes something mentioned has happened",
+           "Never assume something they mentioned has started, finished or gone well"
+           in presence._SYSTEM_CHECKIN)
     _check("and keeps I.G.O.R.'s voice", 'No "Hey"' in presence._SYSTEM_CHECKIN)
+
+
+def test_posts_do_not_crowd_out_the_conversation() -> None:
+    """2026-10-21: four morning posts took half of an eight-row view, and the message
+    saying the user worked that day fell out of the check-in's facts."""
+    from agents import presence
+    import compression
+    import context_store
+
+    path = _fresh(_state())
+    original_db = context_store._DB_PATH
+    try:
+        context_store._DB_PATH = path / "context.db"
+        context_store.append("user", "we'll do the application tomorrow before I work")
+        context_store.append("assistant", "Understood.")
+        context_store.append("user", "I'm at my retail job today")
+        context_store.append("assistant", "Noted.")
+        for post in ("digest", "idea", "job list", "gig list", "news", "draft"):
+            context_store.append("assistant", f"[sent proactively]\nThe {post}")
+        compression._save({"summary": "## Open\n- Application planned for Wed Oct 21",
+                           "through_id": 1})
+        bundle = presence._facts("checkin", datetime.now(timezone.utc), None)
+    finally:
+        context_store._DB_PATH = original_db
+    _check("the user's older message is still in view behind six posts",
+           "tomorrow before I work" in bundle, bundle[-900:])
+    _check("the posts are listed as already sent, not as conversation",
+           "Already sent" in bundle and "The gig list" in bundle)
+    _check("the summary of older conversation is included, with its real dates",
+           "Summary of older conversation" in bundle and "Wed Oct 21" in bundle, bundle[-400:])
 
 
 def test_which_prompt_each_trigger_gets() -> None:
@@ -514,6 +548,7 @@ if __name__ == "__main__":
     print("\nthe bundle")
     asyncio.run(test_the_bundle_is_facts_only())
     test_the_bundle_says_when()
+    test_posts_do_not_crowd_out_the_conversation()
     print("\nwrite mode versus judge mode")
     test_which_prompt_each_trigger_gets()
     print("\nclaimed work")

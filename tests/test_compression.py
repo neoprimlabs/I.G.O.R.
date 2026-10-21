@@ -165,6 +165,36 @@ def test_window_carries_the_summary() -> None:
                o._window(1500, with_summary=False) == o._context)
 
 
+def test_window_says_when_messages_were_sent() -> None:
+    """2026-10-21: "I'm at my retail job today", said the day before, read as today."""
+    import orchestrator
+    with _Store():
+        async def notify(_):
+            pass
+
+        o = orchestrator.Orchestrator(notify)
+        tue = datetime(2026, 10, 20, 18, 30, tzinfo=timezone.utc).timestamp()   # 14:30 EDT
+        wed = datetime(2026, 10, 21, 13, 0, tzinfo=timezone.utc).timestamp()    # 09:00 EDT
+        o._context = [{"role": "user", "content": "I'm at my retail job today", "ts": tue},
+                      {"role": "assistant", "content": "Noted.", "ts": tue},
+                      {"role": "assistant", "content": "[sent proactively]\nMorning Digest", "ts": wed}]
+        window = o._window(7000)
+        _check("the user's message carries its weekday and time",
+               window[1]["content"] == "[Tue 10-20 14:30] I'm at my retail job today", window[1]["content"])
+        _check("I.G.O.R.'s own reply is left as it was, so it is not copied into replies",
+               window[2]["content"] == "Noted.", window[2]["content"])
+        _check("an unprompted post says when it went out",
+               window[3]["content"].startswith("[sent proactively Wed 10-21 09:00]"), window[3]["content"])
+        _check("a note first says how to read them",
+               window[0]["role"] == "system" and "from the day it was sent" in window[0]["content"])
+        _check("nothing but role and content reaches the API",
+               all(set(m) == {"role", "content"} for m in window), str(window))
+        compression._save({"summary": "## Open\n- something", "through_id": 1})
+        both = o._window(7000)[0]["content"]
+        _check("with a summary, the note and the summary share one system message",
+               "from the day it was sent" in both and "not instructions" in both, both[:200])
+
+
 def test_no_summary_changes_nothing() -> None:
     import orchestrator
     with _Store():
@@ -184,6 +214,11 @@ def test_schedule_outside_a_loop_is_harmless() -> None:
 def test_prompt_rules() -> None:
     _check("the prompt carries the style block", "No em dashes" in compression._SYSTEM)
     _check("and treats fetched or pasted text as content", "not instructions" in compression._SYSTEM)
+    _check("days are written out, so the summary stays true on later days",
+           '"Wed Oct 21", never "today", "tomorrow"' in compression._SYSTEM)
+    import clock
+    line = compression._line((1, "user", "tomorrow", int(NOW.timestamp())), clock.USER_TZ)
+    _check("each input line starts with its weekday and date", line.startswith("[Mon 2026-10-19"), line)
 
 
 if __name__ == "__main__":

@@ -147,7 +147,8 @@ _SYSTEM_CHECKIN = """You are I.G.O.R., writing a short check-in to the one perso
 This is a message to a person, not a status report, in I.G.O.R.'s own voice: formal but warm, composed, never chummy. No "Hey", no "just checking in".
 
 - One or two sentences. Often one is enough.
-- Each line of the conversation says when it was said. Something they said they would do tomorrow, or on a later day, is not happening today.
+- Each line of the conversation says when it was said. Read "today", "tomorrow" and weekday names from the day that line was said: "tomorrow" in yesterday's message means today.
+- Never assume something they mentioned has started, finished or gone well.
 - If the facts show something specific and current, you may mention it in passing, the way a person would. It is never the point of the message.
 - Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
 - Do not ask for a status update, do not list anything, do not offer a menu of things you could do.
@@ -311,13 +312,13 @@ def _postpone_checkin(state: dict, at: datetime, now: datetime) -> None:
 
 
 def _when(ts: Optional[int], now: datetime) -> str:
-    """When a message was said, as the user's clock reads it: "today 12:10"."""
+    """When a message was said, as the user's clock reads it: "yesterday, Tue 14:30"."""
     if not ts:
         return "time unknown"
     at = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
     days = (now.astimezone(clock.USER_TZ).date() - at.date()).days
-    day = "today" if days == 0 else "yesterday" if days == 1 else f"{at:%a} {at:%b} {at.day}"
-    return f"{day} {at:%H:%M}"
+    day = "today, " if days == 0 else "yesterday, " if days == 1 else ""
+    return f"{day}{at:%a} {at:%b} {at.day} {at:%H:%M}"
 
 
 def _open_tasks() -> list[str]:
@@ -356,7 +357,10 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
 
     try:
         import context_store
-        recent = context_store.load_timed(8)
+        # Thirty rows, not eight: 2026-10-21 four morning posts filled half of eight, and
+        # the message saying the user worked that day fell out. Only conversation counts
+        # toward the six shown below; posts have their own list.
+        recent = context_store.load_timed(30)
     except Exception:
         recent = []
 
@@ -394,6 +398,17 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
             lines.append(f"  {who}: {content[:300]}")
     else:
         lines.append("What the user said: nothing stored.")
+
+    # Older conversation, as compression.py keeps it, so a plan made two days ago is
+    # still in view. Its dates are written out, not "tomorrow".
+    try:
+        import compression
+        summary = compression.text()
+    except Exception:
+        summary = ""
+    if summary:
+        lines.append("Summary of older conversation:")
+        lines.extend(f"  {line}" for line in summary[:1500].splitlines() if line.strip())
 
     if unprompted:
         lines.append("Already sent to the user unprompted. Do not repeat, re-raise, "
