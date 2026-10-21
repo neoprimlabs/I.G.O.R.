@@ -108,6 +108,35 @@ heartbeat are parsed in code, so no model decides to undo anything.
 out of the six-message window is folded into a running summary instead of lost. Memory
 notes are pushed hourly to a private repo by a key the agent cannot read.
 
+## Cost and logging
+
+Every model call logs its agent, model and tokens in and out, and from 2026-10-22 its
+wall time. `scripts/usage_report.py` turns that log into the table below, and the
+monitor agent answers "how much have I used today" from a rolling 25-hour ledger.
+
+From 2026-10-16 to 2026-10-21, the six days logged so far: about 33 model calls and
+69,000 tokens a day, all on Groq's free tier. The main model used a median 11% of its
+200,000-token daily cap, 14% on the busiest day.
+
+| Agent | Calls | Tokens per call | Share of tokens |
+|---|---:|---:|---:|
+| Overnight research loop | 133 | 1,948 | 63.0% |
+| ReAct task agent | 11 | 5,046 | 13.5% |
+| Direct chat | 11 | 3,375 | 9.0% |
+| AI news digest | 6 | 2,774 | 4.0% |
+| Check-ins | 9 | 895 | 2.0% |
+| Scheduled messages | 3 | 2,368 | 1.7% |
+| Gig screening | 3 | 2,313 | 1.7% |
+| Job ranking | 6 | 1,106 | 1.6% |
+| Router | 14 | 421 | 1.4% |
+| Conversation summary | 4 | 1,473 | 1.4% |
+| Advocacy draft | 1 | 2,608 | 0.6% |
+
+The overnight loop is most of the spend by design: it runs on a separate model's
+budget while chat is idle. Beyond model calls, every routing decision, tool call and
+approval is logged, and deploys, heartbeat restarts and backups log to a separate
+root-owned file the agent cannot write to.
+
 ## Results
 
 | Measure | Value |
