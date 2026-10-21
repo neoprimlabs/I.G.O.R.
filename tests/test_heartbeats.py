@@ -193,10 +193,13 @@ def test_waits_for_the_conversation_and_pauses() -> None:
                run.tick(real_now) == "waiting for the conversation to pause")
         _check("and runs once they have paused",
                run.tick(real_now + timedelta(minutes=3)) == "no change")
-        _cmd("heartbeat pause")
-        _check("paused: nothing runs", run.tick(NOW + timedelta(days=2)) == "idle")
-        _cmd("heartbeat resume", now=NOW + timedelta(days=2))
-        _check("resume checks once, soon", run.tick(NOW + timedelta(days=2, minutes=1)) == "no change")
+        # The real clock from here on, as above: the message just stored carries real time,
+        # and a fixed date earlier than it would read as the user talking right now.
+        later = real_now + timedelta(days=2)
+        _cmd("heartbeat pause", now=later)
+        _check("paused: nothing runs", run.tick(later) == "idle")
+        _cmd("heartbeat resume", now=later)
+        _check("resume checks once, soon", run.tick(later + timedelta(minutes=1)) == "no change")
         _cmd("heartbeat clear")
         _check("clear removes it", "No heartbeat" in _cmd("heartbeat"))
 
