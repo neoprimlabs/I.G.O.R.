@@ -75,6 +75,11 @@ PROVIDERS = {
 
 # Overnight loop budget per night, on gpt-oss-20b whose daily cap is unmeasured, so kept modest.
 OVERNIGHT_MODEL = "openai/gpt-oss-20b"
+# Only the paper write and revise call. Live 2026-10-21, 20b failed all three of the
+# night's revisions: it replaced a 15-source paper (kept 1), cited 3 links that were
+# not in the findings, and ran to 1087 words over a 7500-char cap. This shares chat's
+# daily cap, at about 7000-13000 tokens a night; OVERNIGHT_TOKENS counts both models.
+OVERNIGHT_WRITE_MODEL = "openai/gpt-oss-120b"
 OVERNIGHT_TOKENS = 60000
 OVERNIGHT_SEARCHES = 12
 

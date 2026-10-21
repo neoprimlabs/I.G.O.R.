@@ -38,7 +38,7 @@ flowchart LR
     R -->|MONITOR| M["Monitor: status, gpt-oss-20b"]
     A --> B["Shell and Python in a bubblewrap sandbox"]
     J["Scheduler"] --> W["Watchers: code first, model on change"]
-    J --> N["Overnight loop: gpt-oss-20b, token budget"]
+    J --> N["Overnight loop: 20b researches, 120b writes, token budget"]
     J --> G["Digest, scheduled messages, check-ins"]
 ```
 

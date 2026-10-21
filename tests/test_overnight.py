@@ -795,6 +795,13 @@ def test_overnight_model_is_one_pinned_name() -> None:
     finally:
         llm.complete, research_loop._get_client = real_c, real_cl
     _check("_real_complete targets it", seen.get("model") == config.OVERNIGHT_MODEL, str(seen))
+    llm.complete, research_loop._get_client = fake_complete, lambda: None
+    try:
+        _a.run(overnight._real_complete()(overnight._REVISE_SYSTEM, "u", 1024))
+    finally:
+        llm.complete, research_loop._get_client = real_c, real_cl
+    _check("except the paper write, which goes to the write model",
+           seen.get("model") == config.OVERNIGHT_WRITE_MODEL, str(seen))
 
     goals.add("Study autonomous systems", "research")
     _run(overnight.tick(NIGHT_TIME, search=_Stubs().search, complete=_Stubs(findings_per_step=5).complete))
@@ -802,9 +809,11 @@ def test_overnight_model_is_one_pinned_name() -> None:
            str(calls))
     import usage
     real_u = usage.last_24h
-    usage.last_24h = lambda: {config.OVERNIGHT_MODEL: {"Overnight": 77}}
+    usage.last_24h = lambda: {config.OVERNIGHT_MODEL: {"Overnight": 77},
+                              config.OVERNIGHT_WRITE_MODEL: {"Overnight": 23, "Chat": 999}}
     try:
-        _check("overnight_tokens reads that model", work.overnight_tokens() == 77)
+        _check("overnight_tokens counts the night's calls on both models, and nothing else",
+               work.overnight_tokens() == 100, str(work.overnight_tokens()))
     finally:
         usage.last_24h = real_u
     tmp.cleanup()

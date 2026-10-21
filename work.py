@@ -101,4 +101,6 @@ def stopped(night: str) -> str:
 
 def overnight_tokens() -> int:
     import usage
-    return usage.last_24h().get(config.OVERNIGHT_MODEL, {}).get("Overnight", 0)
+    spent = usage.last_24h()
+    models = {config.OVERNIGHT_MODEL, config.OVERNIGHT_WRITE_MODEL}
+    return sum(spent.get(m, {}).get("Overnight", 0) for m in models)
