@@ -42,9 +42,11 @@ def _load() -> dict:
         return {}
 
 
-def record(model: str, response, label: str = "", now: Optional[datetime] = None) -> None:
+def record(model: str, response, label: str = "", now: Optional[datetime] = None,
+           ms: Optional[int] = None) -> None:
     """Add one response's usage to the ledger. Never raises: accounting must not
-    cost the user a reply."""
+    cost the user a reply. The log line it writes is also the record
+    scripts/usage_report.py reads back from the journal, so keep its shape."""
     try:
         used = getattr(response, "usage", None)
         total = int(getattr(used, "total_tokens", 0) or 0)
@@ -61,9 +63,10 @@ def record(model: str, response, label: str = "", now: Optional[datetime] = None
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
         os.replace(tmp, path)
-        logger.info("%s used %d tokens (%d in, %d out) on %s", key, total,
+        logger.info("%s used %d tokens (%d in, %d out) on %s%s", key, total,
                     int(getattr(used, "prompt_tokens", 0) or 0),
-                    int(getattr(used, "completion_tokens", 0) or 0), model)
+                    int(getattr(used, "completion_tokens", 0) or 0), model,
+                    f" in {ms} ms" if ms is not None else "")
     except Exception as e:
         logger.warning("Token ledger not updated - %s: %s", type(e).__name__, e)
 

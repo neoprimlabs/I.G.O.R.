@@ -238,6 +238,7 @@ async def create(client: openai.AsyncOpenAI, model: str, label: str, *,
     for i, use in enumerate(order[start:], start):
         extra = model_params(use, reasoning_effort=reasoning_effort) if params else {}
         target, model_id = _client_for(use, client)
+        started = time.monotonic()
         try:
             response = await target.chat.completions.create(model=model_id, **kwargs, **extra)
         except Exception as e:
@@ -249,7 +250,8 @@ async def create(client: openai.AsyncOpenAI, model: str, label: str, *,
             _note(model, order[i + 1])
             logger.warning("%s falling back from %s to %s", label or model, use, order[i + 1])
             continue
-        usage.record(use, response, label)
+        # Wall time, including the client's own retries after a 429: the wait a user sees.
+        usage.record(use, response, label, ms=int((time.monotonic() - started) * 1000))
         return response
     raise RuntimeError("unreachable")
 
