@@ -57,7 +57,7 @@ log to `history.db`.
 a day behind code gates, off unless `memory/presence_config.md` says `state: on`.
 
 **Overnight loop**: hourly 00:00-06:59 local, a fixed code pipeline on `gpt-oss-20b`
-with no acting tools works the standing goals in `memory/goals.md`, writing sourced
+(the paper write on 120b) with no acting tools works the standing goals in `memory/goals.md`, writing sourced
 papers and self-improvement proposals into `memory/work/`. The morning digest reports
 them. Nothing is applied without the user's yes.
 
@@ -432,7 +432,8 @@ one session. A failed session also marks its goal reviewed, so it cannot wedge t
 rotation. It never raises. A session is a fixed pipeline: model calls with no tools,
 web search done by code, files written by code only under `memory/work/` plus each
 goal's progress line in `memory/goals.md`. Nothing it runs can message anyone; its only
-outbound call is the web search. All calls use `config.OVERNIGHT_MODEL`.
+outbound call is the web search. Calls use `config.OVERNIGHT_MODEL`, the paper write
+`OVERNIGHT_WRITE_MODEL` (120b); the budget counts both.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3

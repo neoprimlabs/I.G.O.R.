@@ -131,8 +131,10 @@ def _real_complete():
 
     async def call(system: str, user: str, max_tokens: int, cap: Optional[int] = None) -> str:
         extra = {} if cap is None else {"cap": cap}
+        writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM)
+        model = config.OVERNIGHT_WRITE_MODEL if writing else config.OVERNIGHT_MODEL
         return await llm.complete(
-            research_loop._get_client(), config.OVERNIGHT_MODEL, system, user,
+            research_loop._get_client(), model, system, user,
             max_tokens=max_tokens, label="Overnight", reasoning_effort=_REASONING_EFFORT, **extra)
 
     return call
