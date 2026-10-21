@@ -158,7 +158,7 @@ A Discord DM travels this path every time:
    Any failure - unparseable output, exception, timeout - falls through to React.
    The verdict is logged as `Router: <verdict> -> <destination>`.
 
-   The router bypasses `call_claude`'s 30s rate-limit sleeps and fails fast.
+   The router skips `call_claude`'s 30s rate-limit sleeps.
 
 5. **`orchestrator._route`** - builds a bound `call_claude`, sets max_tokens
    (2048 chat, 3072 file mode), dispatches to the destination.
@@ -167,7 +167,7 @@ A Discord DM travels this path every time:
 7. **`orchestrator.process` tail** - critic (disabled), context update (each
    side stored up to 20000 chars, in memory and in SQLite), `[Monitor]` suffix
    when applicable. Each agent gets the running summary and the last 6 entries
-   within its own character budget, newest in full.
+   within its own character budget, user messages and posts stamped with their time.
 8. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
    chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
 

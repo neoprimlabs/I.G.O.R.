@@ -136,6 +136,21 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   **Discord test for the user:** `heartbeat every 1h tell me when <a page> changes`.
 - main.py's startup import check now covers checkpoints, compression, heartbeats and
   url_safety.
+- **Sense of time, 2026-10-21.** The 11:39 check-in said "I trust your shift at the
+  store went smoothly" on a day the shift had not begun. Its 8-row view held four
+  morning posts, so "tomorrow before I work" (Tue 12:10) had fallen out; it saw only
+  Tue's "I'm at my retail job today". The summary had the same flaw: "tomorrow or
+  Thursday", undated, read wrong a day later. Hermes only puts the current time in its
+  prompt (rebuilt per session); IGOR already did that on every message, and one
+  conversation that runs for days needs more. Now: the check-in reads 30 rows (posts
+  no longer count toward its six turns), plus the summary, with weekday-and-date
+  labels and "never assume something mentioned has happened"; the summary writes days
+  as dates; Direct, React and SelfDescribe see each user message and post stamped
+  "[Tue 10-20 14:30]", with one system note on reading them (stamps are written into
+  the text; the stored `ts` never reaches the API). My 10-20 rule "tomorrow is not
+  today" was backwards for older messages and is rewritten.
+  **Discord test for the user:** mention a plan for tomorrow, then ask about it the
+  next day.
 - **Review of the user's 10-20 Discord day, fixed:** the 12:40 check-in asked how
   "today's" application prep was going, 30 minutes after the user said they would do
   it tomorrow, and opened "Hey, just checking in". The check-in now waits until 2h
