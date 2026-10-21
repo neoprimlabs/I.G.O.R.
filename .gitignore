@@ -41,3 +41,7 @@ Thumbs.db
 
 # Claude Code worktrees (isolated build branches)
 .claude/worktrees/
+
+# Host address, key paths and webhook location. The repo is public; these stay local.
+CLAUDE.local.md
+scripts/*.local.ps1

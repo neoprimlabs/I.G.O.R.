@@ -75,7 +75,10 @@ The runtime is the server. There is no local run.
 
 ## Deployment Workflow (Claude Code runs all of this directly via the Bash tool)
 Local repo: `c:\Dev\IGOR`. Server: `/opt/igor`, service `igor`, user `igor`.
-Current host IP is in `STATE.md`.
+The host address, SSH key path and the exact deploy command are in `CLAUDE.local.md`,
+which is gitignored because this repo is public. Never write them into a tracked file.
+
+@CLAUDE.local.md
 
 1. Edit locally, then `python -m py_compile <changed files>` - never skip. Then run
    the offline suite: every `tests/test_*.py` except `test_models_live.py` and
@@ -89,7 +92,7 @@ Current host IP is in `STATE.md`.
 4. Deploy through the gate. **Do not `git pull && systemctl restart` by hand** - that
    path has no health check and nothing that reverts a bad change:
 ```
-ssh -i C:/Users/Nucbox/Documents/IGOR_Keys/ssh-key-2026-05-26.key -o BatchMode=yes ubuntu@129.80.181.77 "sudo /usr/local/lib/igor-deploy/deploy.sh"
+ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "sudo /usr/local/lib/igor-deploy/deploy.sh"
 ```
 5. Expected last line: `=== deploy OK: <sha> healthy ===`, exit 0. The script pulls,
    syntax-checks, imports every module, restarts, and waits up to 90s for the

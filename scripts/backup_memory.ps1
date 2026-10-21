@@ -47,9 +47,14 @@ $ErrorActionPreference = 'Stop'
 # Without this the alert fails silently at exactly the moment it is needed.
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$SshKey      = 'C:\Users\Nucbox\Documents\IGOR_Keys\ssh-key-2026-05-26.key'
-$WebhookFile = 'C:\Users\Nucbox\Documents\IGOR_Keys\discord_webhook.txt'
-$ServerHost  = 'ubuntu@129.80.181.77'
+# The host, the SSH key and the webhook file stay out of the repo, which is public.
+# backup_memory.local.ps1 (gitignored, beside this script) sets $SshKey, $WebhookFile
+# and $ServerHost. Without it there is no way to reach the server or to alert.
+$LocalSettings = Join-Path $PSScriptRoot 'backup_memory.local.ps1'
+if (-not (Test-Path $LocalSettings)) {
+    throw "Missing $LocalSettings - it must set `$SshKey, `$WebhookFile and `$ServerHost."
+}
+. $LocalSettings
 $BackupRoot  = 'C:\Dev\IGOR_backup'
 $StateFile   = Join-Path $BackupRoot '.watchdog-state.json'
 $TaskName    = 'IGOR memory backup'
@@ -69,8 +74,8 @@ function Send-Alert {
     }
     $url = (Get-Content $WebhookFile -Raw).Trim()
     $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
-    $text = "**$Title**`n$Detail`n`nHost: 129.80.181.77`nChecked: $stamp"
-    $body = @{ username = 'IGOR Watchdog'; content = $text } | ConvertTo-Json -Compress
+    $text = "**$Title**`n$Detail`n`nHost: $($ServerHost.Split('@')[-1])`nChecked: $stamp"
+    $body = @{ username = 'IGOR PC check'; content = $text } | ConvertTo-Json -Compress
     try {
         Invoke-WebRequest -Uri $url -Method Post -Body $body `
             -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30 | Out-Null
@@ -165,7 +170,6 @@ $remote  = '/tmp/igor-memory-backup.tar.gz'
 # value in this block ever contains a space.
 $remoteScript = @'
 echo ACTIVE=$(systemctl is-active igor)
-echo WATCHDOG=$(systemctl is-active igor-watchdog)
 mono=$(systemctl show igor --property=ActiveEnterTimestampMonotonic --value)
 up=$(cut -d. -f1 /proc/uptime)
 echo UPTIME_S=$(( up - mono/1000000 ))
@@ -180,7 +184,7 @@ Write-Output "[$(Get-Date -Format 'HH:mm:ss')] Checking IGOR and archiving memor
 # stderr. In PowerShell 5.1, 2>&1 on an exe wraps each stderr line in a
 # NativeCommandError, which under Stop terminates the script. That killed this
 # script before it could alert - on the unreachable-host path, which is the one
-# case the whole watchdog exists for.
+# case this script exists for.
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 $raw = & ssh -i $SshKey -o BatchMode=yes -o ConnectTimeout=20 $ServerHost $remoteScript 2>&1
@@ -201,12 +205,11 @@ foreach ($line in $raw) {
 }
 
 $active    = $info['ACTIVE']
-$watchdog  = $info['WATCHDOG']
 $uptime    = [int]($info['UPTIME_S']    | ForEach-Object { if ($_) { $_ } else { -1 } })
 $nrestarts = [int]($info['NRESTARTS']   | ForEach-Object { if ($_) { $_ } else { 0 } })
 $tarSize   = [int64]($info['TAR_SIZE']  | ForEach-Object { if ($_) { $_ } else { 0 } })
 
-Write-Output "  igor=$active watchdog=$watchdog uptime=${uptime}s restarts=$nrestarts"
+Write-Output "  igor=$active uptime=${uptime}s restarts=$nrestarts"
 
 # --- Download the archive -------------------------------------------------
 $backupOk = $false
@@ -228,9 +231,6 @@ $problems = @()
 
 if ($active -ne 'active') {
     $problems += "The igor service is **$active**, not active. IGOR is offline."
-}
-if ($watchdog -ne 'active') {
-    $problems += "The igor-watchdog service is **$watchdog**. Automatic restarts are not covered."
 }
 if (-not $backupOk) {
     $problems += "Memory backup FAILED. The server answered but memory/ and .env were not retrieved."

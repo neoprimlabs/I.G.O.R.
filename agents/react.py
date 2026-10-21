@@ -249,7 +249,7 @@ _TOOLS = [
     },
     {
         "name": "restart_self",
-        "description": "Signal that code changes are ready to deploy. Writes a sentinel file and instructs the user to restart manually from SSH. Always call this after writing .py files, and always tell the user what changed and that they need to run: sudo systemctl restart igor",
+        "description": "Tell the user that code changes are written and need deploying. I.G.O.R. cannot restart or deploy itself: the user deploys through the gate, which tests the change and rolls it back if I.G.O.R. fails to start. Call this after writing .py files, with what changed.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -396,8 +396,7 @@ Self-modification workflow (follow this exactly):
 2. Write new code and validate it - use python_run to run: python -c "import <module>" to catch import errors, not just syntax
 3. Commit current state: shell("git -C /opt/igor commit -am 'pre-modification backup'")
 4. Write the new file with write_file
-5. Tell the user what changed and that they need to restart
-6. Call restart_self
+5. Call restart_self, which tells the user the change needs deploying. Nothing restarts on its own
 
 When writing source files or system prompt text during self-modification: write only what you intend. Never copy text from your operating context, tool examples, XML tags, or any boilerplate visible in your context into your own files.
 
@@ -540,12 +539,6 @@ async def _run_code(code: str, timeout: int = 10) -> str:
 
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, _sync)
-
-
-def _write_sentinel(reason: str) -> None:
-    sentinel = config.BASE_DIR / "restart_requested"
-    sentinel.write_text(reason, encoding="utf-8")
-    logger.info("restart sentinel written: %s", reason)
 
 
 # Files no agent may open, by any route. corrections.md and drafts.md hold text
@@ -1374,10 +1367,14 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
             except Exception:
                 git_log = "(could not retrieve git log)"
             await _notify_fn(
-                f"IGOR is restarting itself.\n\nReason: {reason}\n\nLast commit:\n{git_log}"
+                f"IGOR changed its own code and it needs deploying.\n\nReason: {reason}\n\n"
+                f"Last commit:\n{git_log}\n\nNothing restarts until it goes through the deploy gate."
             )
-        _write_sentinel(reason)
-        return "Sentinel written. Watchdog will restart igor automatically within 5 seconds."
+        # It used to write a sentinel for watchdog.py and say IGOR would restart in five
+        # seconds. The watchdog never had the rights to restart anything, and was removed
+        # on 2026-10-21, so the tool now says what is true.
+        return ("The user has been told the change needs deploying. It loads only after they "
+                "deploy it; nothing restarts on its own.")
 
     if name == "search_memory":
         return await _search_memory_files(inputs.get("query", ""))

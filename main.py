@@ -57,8 +57,9 @@ def _smoke_test() -> None:
     AUTHORIZED_USER_ID is the clearest case - the bot connects, looks healthy, and
     silently drops every message the user sends.
 
-    On failure this exits 1 rather than raising, so start.sh's crash recovery
-    restores the last good commit on the next boot.
+    On failure this exits 1 rather than raising. During a deploy the gate sees IGOR
+    fail to come up and restores the last good commit; otherwise systemd's restarts
+    make it a visible crash loop.
     """
     log = logging.getLogger(__name__)
     problems: list[str] = []
