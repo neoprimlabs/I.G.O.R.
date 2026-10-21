@@ -35,9 +35,14 @@ the record only); the public repo cleanup (2026-10-21: host details to gitignore
 local files, personal history out of STATE/GAMEPLAN, watchdog and start.sh deleted);
 the I.G.O.R. entry in `memory/resume.md` brought up to date (backup
 `resume.md.bak-20261021`). Still in git history: the old host address and personal
-notes; rewriting public history is the user's decision. Discussed, not yet scoped:
-screenshots from the user for the README, an eval results table kept current, a
-cost and latency summary of model calls, a recorded 2-3 minute demo, an MCP server.
+notes; rewriting public history is the user's decision. Done 2026-10-21 evening:
+README sections on memory and shared context and on cost and logging;
+`scripts/usage_report.py` (per-agent calls, tokens and, from 10-22, call time, read
+from the journal; run with sudo on the server); call timing in `llm.create`; router
+eval rerun, 27/28; the overnight paper write moved to 120b. Next, with the user: their
+Discord screenshots for the README, their wording of the two application answers,
+the resume doc exported as a PDF, then sending the application. Later: a recorded
+demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind
 the list: reviewers favour one deep project with evals, safety work, measured cost.
