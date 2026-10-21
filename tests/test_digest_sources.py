@@ -92,5 +92,17 @@ _attach_sources("- A bullet the model gave no source for at all.", RESULTS)
 check("a genuinely sourceless bullet still warns", "no usable source" in buf.getvalue(),
       repr(buf.getvalue()))
 
+# Live 2026-10-20 the digest ran Muse Glimmer 30B twice from one article.
+from agents.monitor import _one_bullet_per_source
+
+doubled = ("- Muse Glimmer 30B: an on-device agentic model. Source: [1]\n"
+           "- Nvidia launches open models for agents. Source: [2]\n"
+           "- Muse Glimmer 30B is released under Apache 2.0. Source: [1]")
+kept = _one_bullet_per_source(doubled)
+check("a second bullet citing the same result is dropped",
+      kept.count("Source: [1]") == 1 and "Nvidia" in kept, kept)
+check("the first of them is the one kept", "on-device" in kept and "Apache" not in kept, kept)
+check("distinct sources are untouched", _one_bullet_per_source(healthy) == healthy.strip(), healthy)
+
 print(f"\n  {_passed} passed, {_failed} failed")
 sys.exit(1 if _failed else 0)

@@ -360,7 +360,7 @@ holds the 60s delivery job, so the next ticks are skipped, not lost.
 
 Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
-conversation.
+conversation; the daily check-in waits until 2h after the user last spoke.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
 `heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,
@@ -404,7 +404,7 @@ handles both silent failures of a reasoning model on a tight budget (empty and
 clipped output are valid 200 OKs). **Both calls run at `reasoning_effort` low**,
 4x to 7x fewer completion tokens than unset.
 
-Gathering and synthesis stay in separate contexts; one loop doing both only searched.
+Gathering and synthesis stay in separate contexts.
 
 Findings are delivered as a **raw file attachment with no model pass over them**,
 followed by an offer to synthesize on request. A `synthesize research` fast path

@@ -158,6 +158,11 @@ if __name__ == "__main__":
     test_react_still_cannot_reach_it()
     print("\nimports resolve")
     test_the_import_that_py_compile_cannot_see()
+    # These two were defined and never called by this runner until 2026-10-20.
+    print("\nfollow-ups")
+    test_follow_ups_keep_it_loaded()
+    print("\nwhat direct is told")
+    test_direct_is_told_what_is_true()
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
