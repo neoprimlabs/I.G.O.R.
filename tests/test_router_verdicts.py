@@ -54,7 +54,9 @@ CASES = [
 
     # 2026-10-14. The first went to ConfigEdit, which passed it on; the follow-ups
     # went to Direct, which has no tools, and promised a 1am rewrite it could not do.
-    ("Ok thanks could you message me around 100am with some thought provoking material?", "React"),
+    # Expected React when written; since 2026-10-16 the _SCHEDULING fast path sends it
+    # to Schedule, which is React with the scheduling tool required - the better route.
+    ("Ok thanks could you message me around 100am with some thought provoking material?", "Schedule"),
     ("I said 1am", "React"),
     ("Not too bad. You could go deeper than that. Just be sure to draft something new at the scheduled time.", "React"),
 

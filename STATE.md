@@ -1109,14 +1109,16 @@ machine returns, so time away means late alerts rather than none.
 - **Direct's chat replies:** 33 since 2026-08-18.
 - **Scheduled messages, end to end:** two requests on 2026-09-14, scheduled by React
   itself and both delivered on time on 2026-09-15.
-- **Router accuracy on `qwen/qwen3.8-27b`:** 23/24, three consecutive runs, the same
+- **Router accuracy on `qwen/qwen3.8-27b`:** 27/28 on 2026-10-21 (one case corrected:
+  "message me around 100am" now expects Schedule, the fast path added 10-16). Before
+  that 23/24, three consecutive runs, the same
   single miss each time - "We could have you use your autonomous scheduled system to
   promote and inform." goes to Direct instead of SelfDescribe. That is one of the two
   messages behind the 2026-08-13 fabrications, though Direct has no tools and is told
   to say it cannot check how IGOR is built, so the likely failure is a non-answer
   rather than an invention. **No router score was ever recorded on qwen3.6 and Groq
   has deleted it, so this cannot be called a regression** - there is nothing left to
-  compare against. Baseline to beat from here: 23/24.
+  compare against. Baseline to beat from here: 27/28.
 
 ## Open: React has never been measured at different reasoning_effort
 
