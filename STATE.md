@@ -31,10 +31,15 @@ Last updated: **2026-10-19**
 applying to AI agent engineer roles and wants IGOR shown off. Agreed story: "an
 always-on personal agent, run in production on free tiers, with the safety
 engineering most agents skip." Done: `README.md` (first public README; numbers from
-the record only). Discussed, not yet scoped with the user: screenshots from the user
-for the README, an eval results table kept current, a cost and latency summary of
-model calls, a recorded 2-3 minute demo, a cleanup pass on the public repo (dead
-code from S.3, personal details in STATE/GAMEPLAN), an MCP server. Research behind
+the record only); the public repo cleanup (2026-10-21: host details to gitignored
+local files, personal history out of STATE/GAMEPLAN, watchdog and start.sh deleted);
+the I.G.O.R. entry in `memory/resume.md` brought up to date (backup
+`resume.md.bak-20261021`). Still in git history: the old host address and personal
+notes; rewriting public history is the user's decision. Discussed, not yet scoped:
+screenshots from the user for the README, an eval results table kept current, a
+cost and latency summary of model calls, a recorded 2-3 minute demo, an MCP server.
+First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
+for production multi-agent work, memory and shared context, and safeguards. Research behind
 the list: reviewers favour one deep project with evals, safety work, measured cost.
 
 **Hermes parity run, 2026-10-19 (the user away, Claude Code working through the
