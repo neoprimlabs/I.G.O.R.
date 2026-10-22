@@ -39,7 +39,7 @@ README sections on memory and shared context and on cost and logging;
 `scripts/usage_report.py` (per-agent calls, tokens and, from 10-22, call time, read
 from the journal; run with sudo on the server); call timing in `llm.create`; router
 eval rerun, 27/28; the overnight paper write moved to 120b. Later that night: the
-deploy gate runs the whole offline suite as Gate 3 (47 files, ~150s; failure path
+deploy gate runs the whole offline suite as Gate 3 (48 files, ~150s; failure path
 checked with an untracked failing test, which blocked the dry run without a
 restart); chat's window shows the last 6 conversation messages plus 3 posts, so posts
 cannot push out the user's words; the user's own schedule routes CHAT and Monitor
