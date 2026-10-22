@@ -101,6 +101,10 @@ LOG_FILE = BASE_DIR / "igor.log"
 # Number of individual messages (user + assistant counted separately) kept in
 # rolling session context and passed with every API call.
 CONTEXT_WINDOW = 6
+# Unprompted posts (digest, job and gig lists) shown beside those six conversation
+# messages. Counted apart since 2026-10-21: four morning posts used to fill the window
+# and push out the user's own words.
+CONTEXT_POSTS = 3
 # Stored conversation is kept by age, as Hermes prunes sessions inactive 90 days.
 # IGOR_SPEC: "no hoarding of conversation history" (ratified by the user 2026-10-17).
 HISTORY_RETENTION_DAYS = 90

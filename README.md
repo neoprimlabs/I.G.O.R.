@@ -53,7 +53,7 @@ Memory is split by how long it lives and how far it can be trusted.
 
 | Layer | Where it lives | Who sees it |
 |---|---|---|
-| Recent conversation | SQLite, kept 90 days and searchable | The chat and task agents get the last 6 messages, within a character budget each (7,000 for tasks, 24,000 for chat), each user message stamped with its weekday and time |
+| Recent conversation | SQLite, kept 90 days and searchable | The chat and task agents get the last 6 conversation messages and the 3 newest unprompted posts, your words paid for first, within a character budget each (7,000 for tasks, 24,000 for chat), each user message stamped with its weekday and time |
 | Older conversation | A running summary a separate model updates as messages leave that window, with days written as dates | Placed first in their context, capped at a fifth of the budget, marked as a record and not instructions |
 | The user | `user.md`, capped at 1,500 characters | Every chat prompt; a write past the cap is refused with how much to free |
 | Approved preferences | `preferences.md`, capped at 1,500 characters, written only when the user approves a proposal | The chat and task agents' prompts |
