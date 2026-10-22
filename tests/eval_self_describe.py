@@ -78,8 +78,9 @@ CASES = [
     # The question that started this. It must produce a real answer.
     {"q": "How can we utilize your autonomous scheduled system to promote UBI?",
      "want": "ANSWER",
-     # 2026-10-21: a right answer named scheduled_message and scheduled.json, not "scheduler".
-     "groups": [["apscheduler", "scheduler", "scheduled_message", "scheduled.json"],
+     # 2026-10-21: two right answers said "scheduled_message", "scheduled jobs" and
+     # "scheduling", never "scheduler". The stem names the mechanism either way.
+     "groups": [["schedul"],
                 ["monitor.setup", "code change", "deploy"],
                 ["publish", "publishing", "external", "accounts"]]},
 
