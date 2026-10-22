@@ -677,7 +677,7 @@ of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cove
 
 ## Known sharp edges
 
-1. **The router can misroute at the margins** (31 of 31 live, 2026-10-22). Guards
+1. **The router can misroute at the margins** (35 of 35 live, 2026-10-22). Guards
    cover the harmful cases; Monitor and SelfDescribe hand off what is not theirs.
 2. **Still on Oracle Always Free.** An entitlement change can terminate the
    instance again, as it did in July 2026.
