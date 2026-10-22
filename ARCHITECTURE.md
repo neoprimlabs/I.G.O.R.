@@ -62,8 +62,8 @@ papers and self-improvement proposals into `memory/work/`. The morning digest re
 them. Nothing is applied without the user's yes.
 
 **Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
-`memory_write` take names from a fixed list. `corrections.md` and `drafts.md` are
-sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
+`memory_write` take names from a fixed list; `memory_write` edits one dated entry at a
+time (add, patch, remove), as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for the rest of that turn.
 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
@@ -231,8 +231,8 @@ Tested by `tests/test_llm.py`.
 
 One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
 `call_claude` passed to it (rate-limit backoff and user notification). Its prompt
-ends with `memory/user.md`, Hermes' USER.md, which `memory_write` keeps under 1500
-characters by refusing a write past it.
+ends with `memory/user.md` (Hermes' USER.md) and how full it is; `memory_write` refuses
+a write past 1500 characters and lists the entries.
 
 Its prompt forbids claiming anything about IGOR's state, features or performance,
 which it cannot check: it states the limitation and the check that would answer. It
@@ -288,7 +288,7 @@ in `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews
 `rollback N [all|<file>]` restores, keeping files edited since unless `all`.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
-editing in place, where `memory_write` would rewrite it whole. The digest and presence
+editing in place. The digest and presence
 both read this file. An ambiguous `done` is refused with the candidates listed rather than
 guessed, and it shares `monitor._parse_tasks` with the digest so the two can never
 disagree about what is open.
@@ -385,8 +385,8 @@ router is an 8B model and questions have classified as `CONFIG`; a write agent
 reachable by a question needs a guard that does not depend on classification being
 right.
 
-`prod_memory._write_to_memory` is still used separately by React's `memory_write`
-tool, with a wider allowlist.
+React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
+whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
 
 ### ResearchLoop
 
@@ -676,9 +676,8 @@ of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cove
 
 ## Known sharp edges
 
-1. **The router misroutes at the margins.** 31 of 31 live cases on 2026-10-22.
-   Structural guards exist where a misroute would be harmful (ConfigEdit's
-   no-op check); the rest degrade into a worse answer rather than a wrong action.
+1. **The router can misroute at the margins** (31 of 31 live, 2026-10-22). Guards
+   cover the harmful cases; Monitor and SelfDescribe hand off what is not theirs.
 2. **Still on Oracle Always Free.** An entitlement change can terminate the
    instance again, as it did in July 2026.
 

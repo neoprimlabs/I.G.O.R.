@@ -126,7 +126,9 @@ async def handle(
 
     profile = _user_profile()
     if profile:
-        system_text = f"{system_text}\n\n=== Notes about the user, kept by IGOR (memory/user.md) ===\n{profile}"
+        import memory_entries
+        system_text = (f"{system_text}\n\n=== Notes about the user, kept by IGOR (memory/user.md, "
+                       f"{memory_entries.fullness('user.md')}) ===\n{profile}")
 
     resume = _resume_if_asked(message, context)
     if resume:
