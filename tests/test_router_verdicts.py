@@ -57,6 +57,12 @@ CASES = [
     # 2026-10-22: the SELF rule quotes "We could have you use your scheduled system..."
     # as its example, so that case partly tests memory. This one is not in the prompt.
     ("Maybe we could use your overnight loop to research grants for me", "SelfDescribe"),
+    # 2026-10-22: "Remember that..." went to Direct, which has no tools, said "Got it"
+    # and saved nothing. Its follow-up went to ConfigEdit. Saving belongs to React.
+    ("Remember that I want to record a demo video for IGOR this week", "React"),
+    ("Actually change that to next week.", "React"),
+    ("Forget what I told you about preferring tables", "React"),
+    ("Do you remember what I said about the demo video?", "Direct"),
 
     # 2026-10-14. The first went to ConfigEdit, which passed it on; the follow-ups
     # went to Direct, which has no tools, and promised a 1am rewrite it could not do.
