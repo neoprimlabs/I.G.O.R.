@@ -38,7 +38,7 @@ until Groq's stated reset, and the reply says so.
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
 | React | `TASK`, router failure | 120b | all 20 |
-| Monitor | `MONITOR`, digest | 20b | none; no history, status block only |
+| Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
@@ -271,8 +271,8 @@ past 6h) and the cheapest match, labelled unchecked.
 
 **Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
 `available` boolean and a price in cents: keyless, no model call. `aoostar.com`
-blocks Oracle's IPs (429s), so fetches fall back to the `r.jina.ai` relay (a
-third-party dependency, sent only public URLs). A failed fetch carries the old state
+blocks Oracle's IPs (429s), so fetches fall back to the `r.jina.ai` relay (third-party,
+public URLs only). A failed fetch carries the old state
 forward (or the next success fakes a restock); state is kept raw and available-AND-under-ceiling, so an
 over-target restock cannot suppress a later alert; the variant filter is anchored
 to the region option, since `variant: us` once matched "warehouse".
