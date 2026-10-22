@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-19**
+Last updated: **2026-10-22**
 
 ---
 
@@ -18,10 +18,9 @@ Last updated: **2026-10-19**
 
 ## Code
 
-- Server `/opt/igor` runs the overnight work loop (A.4), merged to master and deployed
-  through the S.1 gate on 2026-10-17. Check with `git -C /opt/igor log -1`.
-  commits; those need no deploy, because nothing at runtime reads STATE.md or
-  GAMEPLAN.md.
+- Server `/opt/igor` runs master as deployed through the S.1 gate. Check with
+  `git -C /opt/igor log -1`. Doc-only commits need no deploy, except ARCHITECTURE.md,
+  which SelfDescribe reads at runtime.
 - The server tree was copied off the rescued disk rather than cloned, but its
   `.git` tracks the same remote and pulls normally.
 
@@ -45,9 +44,15 @@ checked with an untracked failing test, which blocked the dry run without a
 restart); chat's window shows the last 6 conversation messages plus 3 posts, so posts
 cannot push out the user's words; the user's own schedule routes CHAT and Monitor
 hands non-status questions to Direct; Direct no longer reports user.md notes as what
-the user said. Router 29/30, SelfDescribe 11/11 after a scorer fix. Next, with the user: their
-Discord screenshots for the README, their wording of the two application answers,
-the resume doc exported as a PDF, then sending the application. Later: a recorded
+the user said. Router 31/31, SelfDescribe 11/11 after a scorer fix. Memory is
+edited one entry at a time (add, patch, remove), as Hermes does. Fixed 2026-10-22
+from that day's Discord output: the check-in assumed a shift on the user's stated
+day off (presence moved from 20b to 120b, which named the day off when the same facts
+were replayed); the weekday idea treated the previous idea as built (the series is
+now marked as sent, never built, plus a 200-word cap); the job watch sent three
+postings under "no postings worth applying to" (a ranking that picks none now sends
+nothing). Next, with the user: their wording of the two application answers, the
+resume doc exported as a PDF, then sending the application. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind

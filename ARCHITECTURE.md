@@ -355,10 +355,9 @@ the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 acr
 daylight saving. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run is shown the series' last three
-messages and told not to repeat them. A long agent run
-holds the 60s delivery job, so the next ticks are skipped, not lost.
+messages, marked as sent, never built, and told not to repeat them.
 
-Presence gates, all in code before any model call: silent 03:00-10:00 local, 4h
+Presence writes on 120b. Gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits until 2h after the user last spoke.
 
@@ -367,11 +366,11 @@ conversation; the daily check-in waits until 2h after the user last spoke.
 plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
-The job watch reads RemoteOK, WWR, Greenhouse and Remotive. Code decides what it
-can be right about and a model judges the rest. The gig watch (`agents/gigs.py`)
-reads the n8n forum Jobs board, r/forhire [Hiring] and contract posts in HN's "Who is
-hiring?"; red flags drop in code or a
-daily 120b screen, blocking the poster, and a failed screen holds the gigs.
+The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
+ranks, and if it picks none nothing is sent. The gig watch (`agents/gigs.py`)
+reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
+posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
+failed screen holds the gigs.
 
 ### ConfigEdit
 
@@ -522,6 +521,7 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
 | `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
+| `presence` | `openai/gpt-oss-120b` | shares chat's 8000; check-ins |
 | `vision` | `qwen/qwen3.8-27b` | shares router's 8000; 2048 an image, when sent |
 | `speech` | `whisper-large-v3-turbo` | audio seconds, not tokens |
 
@@ -626,8 +626,7 @@ raising, so the deploy gate rolls back. It verifies:
 ## Safety stack
 
 **What executes today.** `igor.service` runs `main.py`. User `igor` has no sudoers
-entry, so only root-owned scripts restart IGOR (`start.sh` and `watchdog.py`, which
-could not, were deleted 2026-10-21). What protects the system:
+entry, so only root-owned scripts restart IGOR. What protects the system:
 
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start
