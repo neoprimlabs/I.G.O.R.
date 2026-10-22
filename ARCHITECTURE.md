@@ -66,8 +66,8 @@ them. Nothing is applied without the user's yes.
 sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for the rest of that turn.
 
-**Deployment**: a root-owned script outside `/opt/igor` compiles, imports, restarts,
-waits for Discord and rolls back on failure.
+**Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
+offline tests, restarts, waits for Discord and rolls back on failure.
 
 <!-- END SELF SUMMARY -->
 
@@ -645,16 +645,17 @@ could not, were deleted 2026-10-21). What protects the system:
 `/opt/igor` so `write_file` cannot reach it. Logs every attempt to
 `/var/log/igor-deploy.log`, which the `igor` user also cannot write.
 
-Three gates in order. The first two run before any restart, so a change that fails
+Four gates in order. The first three run before any restart, so a change that fails
 them never takes IGOR down:
 
 | Gate | Catches | On failure |
 |---|---|---|
 | syntax | compiles every `.py` in memory | reset to previous commit, no restart |
 | imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
+| tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-The third gate is the point: a process that starts and never reaches Discord is not
+The last gate is the point: a process that starts and never reaches Discord is not
 a working assistant. The probe is anchored to a timestamp taken before the restart,
 or the previous run's `online` line would satisfy it.
 
@@ -668,8 +669,6 @@ of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cove
 
 ## Dead weight
 
-- `config.ANTHROPIC_API_KEY` is read and unused. Deliberate - the standing hook
-  for GAMEPLAN R4.1.
 - **Critic is off** (`ENABLE_CRITIC = False`), so `_critic_pass` and
   `_CRITIC_PROMPT` never execute. `_write_skill` and `skills_react.md` are gone. GAMEPLAN V.1.
 
@@ -677,8 +676,8 @@ of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cove
 
 ## Known sharp edges
 
-1. **The router misroutes at the margins.** 26 of 27 live cases passed on
-   2026-10-16. Structural guards exist where a misroute would be harmful (ConfigEdit's
+1. **The router misroutes at the margins.** 29 of 30 live cases on 2026-10-22.
+   Structural guards exist where a misroute would be harmful (ConfigEdit's
    no-op check); the rest degrade into a worse answer rather than a wrong action.
 2. **Still on Oracle Always Free.** An entitlement change can terminate the
    instance again, as it did in July 2026.
@@ -694,7 +693,7 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 - **Learned skills.** Preferences are learned with the user's approval; Hermes-style
   skills are designed and parked (GAMEPLAN V.1).
 - **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
-- **Spoken replies.** Voice notes are transcribed (Whisper); Orpheus speech needs
-  its terms accepted in the Groq console. Local TTS does not fit the host.
+- **Spoken replies.** Voice notes are transcribed; speech waits for IGOR's own app,
+  the user's choice.
 - **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
   global, `context.db` has no user column. Single-user is assumed throughout.
