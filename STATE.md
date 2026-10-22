@@ -1145,7 +1145,10 @@ machine returns, so time away means late alerts rather than none.
   to say it cannot check how IGOR is built, so the likely failure is a non-answer
   rather than an invention. **No router score was ever recorded on qwen3.6 and Groq
   has deleted it, so this cannot be called a regression** - there is nothing left to
-  compare against. Baseline to beat from here: 29/30.
+  compare against. Baseline to beat from here: 31/31 (2026-10-22). The
+  long-standing miss was fixed by naming suggestions in the SELF rule; that rule
+  quotes the case as its example, so a reworded case not in the prompt was added
+  and passed too.
 - **SelfDescribe eval, 2026-10-22:** 9/11 on a full run after the day's router and
   summary changes; both misses were correct answers the scorer rejected ("is handled
   by" React; "scheduled_message" and "scheduling" instead of "scheduler"). Scorer
