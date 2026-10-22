@@ -48,8 +48,12 @@ the user said. Router 31/31, SelfDescribe 11/11 after a scorer fix. Memory is
 edited one entry at a time (add, patch, remove), as Hermes does. Fixed 2026-10-22
 from that day's Discord output: the check-in assumed a shift on the user's stated
 day off (presence moved from 20b to 120b, which named the day off when the same facts
-were replayed); the weekday idea treated the previous idea as built (the series is
-now marked as sent, never built, plus a 200-word cap); the job watch sent three
+were replayed); the weekday idea treated the previous idea as built (each earlier
+item is marked sent, never built, the self-summary is read last, a 200-word cap;
+the cause was the 10-22 message itself, stored in the series saying "the model you
+already use for the auto-tagging step", so that clause was cut from
+`scheduled.json`, backup `scheduled.json.bak-20261022`; replayed clean, 145 words);
+the job watch sent three
 postings under "no postings worth applying to" (a ranking that picks none now sends
 nothing). Next, with the user: their wording of the two application answers, the
 resume doc exported as a PDF, then sending the application. Later: a recorded
