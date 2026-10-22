@@ -130,24 +130,27 @@ async def write(brief: str, now: Optional[datetime] = None,
     """
     from agents import react
     task = f"What this message is for: {brief}"
-    if _ABOUT_IGOR.search(brief):
-        from agents import self_describe
-        summary = self_describe._load_document()
-        if summary:
-            task += ("\n\nThe brief is about I.G.O.R. itself. This is what I.G.O.R. is today, "
-                     "verified against its source code. Anything you suggest must fit this setup, "
-                     "and must not propose something it already does. Describe a tool, file or "
-                     "step as existing only if this names it:\n" + summary)
     # 2026-10-22: the idea run called the previous day's idea "the auto-tagging step"
-    # and built on it as if it existed. The series is what was sent, not what was built.
+    # and built on it as if it existed. A label in the header alone did not stop it on
+    # a replay, so each item carries it and the self-summary, read last, has the say.
     if recent:
-        earlier = "\n".join(f"- {r}" for r in recent)
+        earlier = "\n".join(f"- (sent, never built) {r}" for r in recent)
         task += ("\n\nThis message repeats. Earlier ones in the series, newest first - say "
                  "something new, and do not repeat their ideas or wording. These are messages "
                  "already sent, not work done: nothing in them was built, so never refer to "
                  "one as existing or build on it as if it did. If the brief names "
                  "one specific idea, take it as an example of the kind wanted, not as the "
                  f"content of every message:\n{earlier}")
+    if _ABOUT_IGOR.search(brief):
+        from agents import self_describe
+        summary = self_describe._load_document()
+        if summary:
+            task += ("\n\nThe brief is about I.G.O.R. itself. This is what I.G.O.R. is today, "
+                     "verified against its source code. Anything you suggest must fit this setup, "
+                     "and must not propose something it already does:\n" + summary +
+                     "\n\nAnything you call existing - a tool, a command, a model's job, a file, "
+                     "a step - must appear in that summary, by the name it uses there. "
+                     "Everything else is part of your proposal and must be described as new.")
     try:
         text = await asyncio.wait_for(
             react.handle(
