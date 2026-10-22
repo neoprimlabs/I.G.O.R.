@@ -57,7 +57,7 @@ Memory is split by how long it lives and how far it can be trusted.
 | Older conversation | A running summary a separate model updates as messages leave that window, with days written as dates | Placed first in their context, capped at a fifth of the budget, marked as a record and not instructions |
 | The user | `user.md`, capped at 1,500 characters | Every chat prompt; a write past the cap is refused with how much to free |
 | Approved preferences | `preferences.md`, capped at 1,500 characters, written only when the user approves a proposal | The chat and task agents' prompts |
-| Notes and tasks | Markdown files behind an allowlist | Tools that must name the file they read or write |
+| Notes and tasks | Markdown files behind an allowlist, edited one dated entry at a time (add, patch, remove), as Hermes does | Tools that must name the file; duplicates, injection-shaped text and whole-file rewrites are refused |
 | Watch history | SQLite, one row per observation | Watchers write it; the task agent queries what changed |
 | Overnight work | Findings, one living paper and proposals per goal | The research pipeline, its evaluator and the morning digest |
 

@@ -157,6 +157,15 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   today" was backwards for older messages and is rewritten.
   **Discord test for the user:** mention a plan for tomorrow, then ask about it the
   next day.
+- **Memory edited one entry at a time, 2026-10-22.** Hermes' memory tool, on IGOR's
+  Markdown notes (`memory_entries.py`): `memory_write` takes add (dated, optionally
+  under a section), patch (old_text appearing once) or remove (the entry holding
+  old_text: a bullet with its continuation lines, or a paragraph). Exact duplicates,
+  injection-shaped text and invisible characters are refused; whole-file overwrite is
+  gone (the old schema's append still adds). user.md's cap refusal lists the
+  entries; Direct's header shows how full it is. Live user.md: 34 entries, 1488 of
+  1500 characters, so the next add will ask for a remove first. Writes are
+  checkpointed. **Discord test for the user:** ask IGOR to remember something.
 - **Review of the user's 10-20 Discord day, fixed:** the 12:40 check-in asked how
   "today's" application prep was going, 30 minutes after the user said they would do
   it tomorrow, and opened "Hey, just checking in". The check-in now waits until 2h

@@ -337,23 +337,21 @@ _TOOLS = [
     },
     {
         "name": "memory_write",
-        "description": "Write content to a memory file. Use to save tasks, notes, project updates, or user preferences. Never save how IGOR works (ARCHITECTURE.md holds that, and a copy goes stale) or facts a search would find again.",
+        "description": "Save to a memory file one entry at a time. add: a new entry, dated for you, optionally under a section heading. patch: replace old_text, which must appear exactly once, with content. remove: delete the entry containing old_text. Exact duplicates are refused. Never save how IGOR works (ARCHITECTURE.md holds that, and a copy goes stale) or facts a search would find again.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "file": {
                     "type": "string",
                     "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md", "presence_config.md"],
-                    "description": "The file to write",
+                    "description": "The file to edit",
                 },
-                "content": {"type": "string", "description": "Content to write"},
-                "mode": {
-                    "type": "string",
-                    "enum": ["append", "overwrite"],
-                    "description": "append adds to end of file, overwrite replaces entire file",
-                },
+                "action": {"type": "string", "enum": ["add", "patch", "remove"]},
+                "content": {"type": "string", "description": "add: the entry. patch: the replacement text"},
+                "old_text": {"type": "string", "description": "patch and remove: text copied exactly from the file, appearing once"},
+                "section": {"type": "string", "description": "add: the heading to file it under, without #"},
             },
-            "required": ["file", "content", "mode"],
+            "required": ["file", "action"],
         },
     },
 ]
@@ -1492,24 +1490,12 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
             return f"[proposal failed: {type(e).__name__}. Check the id is plain text.]"
 
     if name == "memory_write":
-        from agents import prod_memory
-        filename = inputs.get("file", "")
-        content = inputs.get("content", "")
-        mode = inputs.get("mode", "append")
-        if filename == "user.md":
-            # Hermes refuses a memory write past the cap and says how much to free, so
-            # the profile gets tidied rather than cut off in the prompt that reads it.
-            try:
-                existing = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
-            except OSError:
-                existing = ""
-            after = content if mode == "overwrite" else f"{existing.rstrip()}\n{content}"
-            if len(after.strip()) > config.USER_PROFILE_CAP:
-                return (f"Not written: user.md would be {len(after.strip())} characters, over its "
-                        f"{config.USER_PROFILE_CAP} cap. Read it, shorten or drop older entries to free "
-                        f"{len(after.strip()) - config.USER_PROFILE_CAP}, and write it whole with overwrite.")
-        success = prod_memory._write_to_memory(filename, content, mode)
-        return "Written successfully." if success else "Write failed - check filename."
+        # Hermes' memory tool: one entry at a time (memory_entries.py). A model still
+        # using the old schema sends mode; append maps to add, overwrite is refused.
+        import memory_entries
+        action = inputs.get("action") or {"append": "add"}.get(inputs.get("mode", ""), inputs.get("mode") or "add")
+        return memory_entries.apply(inputs.get("file", ""), action, inputs.get("content", ""),
+                                    inputs.get("old_text", ""), inputs.get("section", ""))
 
     return f"Unknown tool: {name}"
 

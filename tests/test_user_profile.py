@@ -52,30 +52,38 @@ def test_profile_reaches_direct() -> None:
 def test_an_overlong_profile_is_cut() -> None:
     (config.MEMORY_DIR / "user.md").write_text("x" * (config.USER_PROFILE_CAP + 400), encoding="utf-8")
     prompt = _direct_prompt()
-    block = prompt.split("(memory/user.md) ===\n", 1)[1]
+    header, block = prompt.split("=== Notes about the user", 1)[1].split(" ===\n", 1)
     _check("it is cut at the cap and says so",
            block.startswith("x" * config.USER_PROFILE_CAP + "\n[cut at"), block[-80:])
+    _check("the header says how full the profile is, as Hermes' does",
+           f"{config.USER_PROFILE_CAP + 400:,}/{config.USER_PROFILE_CAP:,} characters" in header, header)
     (config.MEMORY_DIR / "user.md").unlink()
 
 
 def test_memory_write_keeps_the_cap() -> None:
     from agents import react
     path = config.MEMORY_DIR / "user.md"
-    path.write_text("# User\n" + "a" * 1400, encoding="utf-8")
+    fixture = "# User\n- Old note " + "a" * 1382
+    path.write_text(fixture, encoding="utf-8")
 
-    def write(content, mode):
-        return asyncio.run(react._execute_tool("memory_write", {"file": "user.md", "content": content, "mode": mode}))
+    def write(**inputs):
+        return asyncio.run(react._execute_tool("memory_write", {"file": "user.md", **inputs}))
 
-    reply = write("- New fact: " + "b" * 200, "append")
-    _check("an append past the cap is refused", reply.startswith("Not written") and "free" in reply, reply)
-    _check("and the file is untouched", len(path.read_text(encoding="utf-8")) == len("# User\n") + 1400)
-    reply = write("# User\n- Short", "overwrite")
-    _check("a tidy overwrite goes through", reply == "Written successfully.", reply)
-    reply = write("- Another fact", "append")
-    _check("an append under the cap goes through", reply == "Written successfully.", reply)
+    reply = write(action="add", content="New fact: " + "b" * 200)
+    _check("an add past the cap is refused, saying how much to free",
+           reply.startswith("Not written") and "Free at least" in reply, reply)
+    _check("and lists the current entries, as Hermes does", "Current entries:" in reply, reply)
+    _check("and the file is untouched", path.read_text(encoding="utf-8") == fixture)
+    reply = write(action="remove", old_text="Old note")
+    _check("removing an entry frees the room", reply.startswith("Removed from user.md"), reply)
+    reply = write(action="add", content="Another fact")
+    _check("an add under the cap goes through, dated", reply.startswith("Added to user.md: Another fact ("), reply)
+    reply = write(content="# User\n- Short", mode="overwrite")
+    _check("a whole-file overwrite is refused, even in the old schema",
+           reply.startswith("Not written: whole-file overwrite is gone"), reply)
     (config.MEMORY_DIR / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
     reply = asyncio.run(react._execute_tool("memory_write", {"file": "tasks.md", "content": "c" * 5000, "mode": "append"}))
-    _check("other files are not capped", reply == "Written successfully.", reply)
+    _check("other files are not capped, and the old append still adds", reply.startswith("Added to tasks.md"), reply)
 
 
 if __name__ == "__main__":
