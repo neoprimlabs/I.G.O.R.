@@ -648,9 +648,16 @@ def test_findings_rotate_after_finished_paper() -> None:
 
 def test_self_improve_without_input_makes_no_call() -> None:
     overnight, goals, work, tmp, _ = _fresh()
+    # Its own empty log. It read config.LOG_FILE, which on the server is IGOR's real log
+    # with real ERROR lines, so this passed on a laptop and failed on the server.
+    real_log = config.LOG_FILE
+    config.LOG_FILE = str(Path(tmp.name) / "missing.log")
     goals.add("Review recent mistakes", "self_improve")
     s = _Stubs()
-    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    try:
+        _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    finally:
+        config.LOG_FILE = real_log
     _check("no model call", s.systems == [] and s.queries == [])
     _check("the session is logged", "no new" in work._load()[-1]["summary"], str(work._load()))
     tmp.cleanup()
