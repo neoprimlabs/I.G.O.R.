@@ -1,7 +1,7 @@
 # ARCHITECTURE.md - What IGOR Actually Is
 
-**IGOR: this section answers questions about yourself.** It fits one `read_file`
-window on purpose; the rest is reachable with `offset`. Describe nothing unread.
+**IGOR: this section answers questions about yourself.** The rest of the file is
+reachable with `offset`. Describe nothing unread.
 
 ## The whole system, in one page
 
@@ -16,7 +16,6 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No external accounts.** No posting, email or social media. IGOR drafts; a
   human publishes. It never buys anything and never applies for a job.
 - **No self-restart.** `restart_self` only tells the user a change needs deploying.
-  Only the deploy script below restarts IGOR.
 - **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
   network, secrets or sealed memory, read-only but `/tmp` and `.git`; refused if
   it cannot start. The shell also refuses a blocklist and asks before risky ones.
@@ -47,19 +46,18 @@ until Groq's stated reset, and the reply says so.
 UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
-Retiming one needs a deploy.
 
 **Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and
 log to `history.db`.
 
 **Scheduled messages**: `scheduled_message` keeps timed messages in
-`memory/scheduled.json` (America/New_York). **Presence** is separate: one check-in
+`memory/scheduled.json`. **Presence** is separate: one check-in
 a day behind code gates, off unless `memory/presence_config.md` says `state: on`.
 
-**Overnight loop**: hourly 00:00-06:59 local, a fixed code pipeline on `gpt-oss-20b`
-(the paper write on 120b) with no acting tools works the standing goals in `memory/goals.md`, writing sourced
-papers and self-improvement proposals into `memory/work/`. The morning digest reports
-them. Nothing is applied without the user's yes.
+**Overnight loop**: hourly 00:00-06:59 local, a fixed pipeline (20b researches, 120b
+writes) with no acting tools works the standing goals in `memory/goals.md` into sourced
+papers and proposals in `memory/work/`, reported in the digest. Nothing is applied
+without the user's yes.
 
 **Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
 `memory_write` take names from a fixed list; `memory_write` edits one dated entry at a
@@ -68,6 +66,10 @@ with no web content, and reading one closes the web for the rest of that turn.
 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
+
+**MCP**: `mcp_server.py` serves six read-only tools (notes, conversation and watch
+search, usage, this summary) to the user's other agents, over SSH on stdio. No port,
+no writes, no private files.
 
 <!-- END SELF SUMMARY -->
 
@@ -80,8 +82,8 @@ offline tests, restarts, waits for Discord and rolls back on failure.
 
 Describes the system **as it exists today**, verified against the source on
 2026-10-17. **This file is reality**; when it disagrees with the code it is wrong -
-fix it in the same commit. IGOR quotes it. **Keep the summary above inside one
-`read_file` window, 3700 characters**, and the whole file inside ten.
+fix it in the same commit. IGOR quotes it. **Keep the summary above short**,
+and the whole file inside ten 3700-character `read_file` windows.
 
 ---
 

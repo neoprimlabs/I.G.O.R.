@@ -24,6 +24,9 @@ nearly every design decision below.
   the user approves or rejects. Nothing changes without a yes.
 - **Senses.** Voice notes are transcribed, images described, and PDFs, Word, Excel and
   notebook files read.
+- **An MCP server for other agents.** Claude Code or any MCP client can search its
+  notes, conversation and watch history, check its token use and read its architecture.
+  Six read-only tools over SSH: no open port, no writes, no private files.
 
 ## How it is built
 
@@ -144,7 +147,7 @@ root-owned file the agent cannot write to.
 |---|---|
 | Router accuracy, live | 31 of 31 cases (2026-10-22), including a reworded case that is not in the prompt |
 | Self-description eval, live | 11 of 11 (2026-10-22, after the scorer was widened to accept two correct phrasings; history in [STATE.md](STATE.md)) |
-| Offline test suite | 48 files, 1,650 checks, no API calls; the deploy gate refuses any change that fails one |
+| Offline test suite | 49 files, 1,675 checks, no API calls; the deploy gate refuses any change that fails one |
 | Daily token budget | 200,000 on the main model, measured from a 429 response |
 | Host | 1 OCPU, 956 MB RAM, Oracle Always Free |
 | History | 392 commits since May 2026 |
@@ -153,7 +156,8 @@ Features are benchmarked against the documentation of Nous Research's
 [Hermes Agent](https://hermes-agent.nousresearch.com/docs): where IGOR matches it, where
 it deliberately differs (bubblewrap instead of Docker on a 1 GB host, page diffs instead
 of a full agent turn per heartbeat), and where it does more (structural injection
-containment, a deploy gate the agent cannot modify).
+containment, a deploy gate the agent cannot modify, and serving its own tools over MCP
+where Hermes is only a client).
 
 ## Limits, honestly
 
@@ -174,4 +178,5 @@ containment, a deploy gate the agent cannot modify).
 | [IGOR_SPEC.md](IGOR_SPEC.md) | The original vision |
 | [CLAUDE.md](CLAUDE.md) | Working rules for the coding agent used to build it |
 | `agents/` | Direct, ReAct, Monitor, research, overnight loop, watchers |
+| `mcp_server.py` | The read-only MCP server, started over SSH on stdio |
 | `tests/` | The offline suite (`python tests/test_<name>.py`) and live evals |
