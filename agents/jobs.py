@@ -378,11 +378,11 @@ async def rank(found: list[dict], ask=None) -> str:
         import openai
         import llm
         client = openai.AsyncOpenAI(api_key=config.GROQ_API_KEY,
-                                    base_url="https://api.groq.com/openai/v1")
+                                    base_url="https://api.groq.com/openai/v1", max_retries=5)
         out = await llm.complete(
             client, config.MODELS["summary"], _RANK_SYSTEM,
             f"Their profile:\n{profile}\n\nPostings:\n{listing}",
-            max_tokens=700, label="Job ranking")
+            max_tokens=1024, label="Job ranking")
         return (out or "").strip()
     except Exception as e:
         logger.error("Job ranking failed - %s: %s", type(e).__name__, e)
@@ -405,7 +405,18 @@ def heartbeat(now: Optional[datetime] = None) -> str:
             f"already sent in the last {_SEEN_DAYS} days, and the feeds are answering.")
 
 
+_PICK = re.compile(r"^\s*\d+\.\s", re.MULTILINE)
+
+
 def format_for_discord(found: list[dict], notes: str = "") -> str:
+    """The message, or empty when the ranking ran and picked nothing.
+
+    2026-10-22 sent three postings under "(No postings worth applying to.)" with an
+    offer to draft applications for them. Empty notes mean the ranking did not run
+    or failed, which is not a verdict, so the listing still goes out.
+    """
+    if notes and not _PICK.search(notes):
+        return ""
     lines = ["**New remote postings**"]
     for job in found[:_MAX_REPORTED]:
         company = f" - {job['company']}" if job.get("company") else ""

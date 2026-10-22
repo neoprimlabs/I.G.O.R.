@@ -356,9 +356,13 @@ async def _job_watch() -> None:
             if note:
                 await _send_fn(note)
             return
-        # Remember only what actually reached the user, or a failed send loses them.
+        # Remember what reached the user or was judged not worth sending. A failed
+        # send keeps them for the next run.
         notes = await jobs.rank(found)
-        if await _send_fn(jobs.format_for_discord(found, notes)):
+        text = jobs.format_for_discord(found, notes)
+        if not text:
+            logger.info("Job watch: none of %d worth applying to, nothing sent", len(found))
+        if not text or await _send_fn(text):
             jobs.remember(found)
             # Kept so "which of these fits me best" can be answered later. The
             # Discord message scrolls out of the context window within a few turns.

@@ -354,6 +354,32 @@ def test_which_prompt_each_trigger_gets() -> None:
            "Already sent" in presence._SYSTEM_JUDGE)
 
 
+async def test_the_model_and_its_budget() -> None:
+    """2026-10-22: on 20b with 400 tokens the check-in assumed a shift on the user's
+    stated day off. Replayed on the same facts, 120b named the day off."""
+    import llm
+    from agents import presence
+
+    seen = {}
+    real_complete, real_key = llm.complete, config.GROQ_API_KEY
+
+    async def fake(client, model, system, user, max_tokens, **kw):
+        seen.update(model=model, max_tokens=max_tokens, retries=client.max_retries)
+        return "Good afternoon."
+
+    try:
+        llm.complete, config.GROQ_API_KEY = fake, "test-key"
+        await presence._ask_model("facts", "checkin")
+    finally:
+        llm.complete, config.GROQ_API_KEY = real_complete, real_key
+    _check("check-ins are written on the presence model",
+           seen.get("model") == config.MODELS["presence"] == "openai/gpt-oss-120b", str(seen))
+    _check("with at least the 1024 floor a reasoning model needs",
+           seen.get("max_tokens", 0) >= 1024, str(seen))
+    _check("and the client retries rate limits like every other",
+           seen.get("retries") == 5, str(seen))
+
+
 async def test_own_messages_are_not_material() -> None:
     """2026-09-18 and 09-20: presence sent the user a resolved "qwen3.6 is gone"
     alert, twice. It was not reporting anything. record_outbound stores IGOR's own
@@ -551,6 +577,7 @@ if __name__ == "__main__":
     test_posts_do_not_crowd_out_the_conversation()
     print("\nwrite mode versus judge mode")
     test_which_prompt_each_trigger_gets()
+    asyncio.run(test_the_model_and_its_budget())
     print("\nclaimed work")
     test_claimed_work_is_dropped()
     print("\nthe daily check-in")

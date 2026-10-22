@@ -445,13 +445,14 @@ async def _ask_model(bundle: str, reason: str = "lull") -> str:
     client = openai.AsyncOpenAI(
         api_key=config.GROQ_API_KEY,
         base_url="https://api.groq.com/openai/v1",
+        max_retries=5,
     )
     return await llm.complete(
         client,
-        config.MODELS["summary"],
+        config.MODELS["presence"],
         _system_for(reason),
         bundle,
-        max_tokens=400,
+        max_tokens=1024,
         label="Presence",
     )
 

@@ -25,6 +25,9 @@ MODELS = {
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
     "screening": "openai/gpt-oss-120b",  # shares chat's bucket: one ~2000 token gig screen a day
+    # 2026-10-22: on 20b the check-in assumed a shift on the user's stated day off.
+    # Replayed on the same facts, 120b named the day off. One or two calls a day.
+    "presence": "openai/gpt-oss-120b",   # shares chat's bucket
     "vision": "qwen/qwen3.8-27b",        # shares router's bucket: 2048 tokens an image, only when one is sent
     "speech": "whisper-large-v3-turbo",  # voice notes; audio is limited in seconds, not tokens
 }

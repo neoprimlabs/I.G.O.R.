@@ -482,6 +482,13 @@ async def test_write_at_delivery() -> None:
         _check("a brief about IGOR carries the self-summary, so ideas fit the real setup",
                "What does NOT exist" in seen.get("message", "")
                and "DMs only" in seen.get("message", ""), seen.get("message", "")[:300])
+        await compose.write("Practical idea for IGOR",
+                            recent=["Consider an auto-tagging layer that runs on every note."])
+        message = seen.get("message", "")
+        _check("earlier ideas in a series are marked as sent, not built",
+               "auto-tagging" in message and "nothing in them was built" in message, message[-400:])
+        _check("and the writer is told to keep it short",
+               "Under 200 words" in seen.get("system_override", ""))
         banned = {"shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
                   "send_message", "scheduled_message", "delegate_task", "task_update"}
         tools = set(seen.get("allowed_tools") or [])

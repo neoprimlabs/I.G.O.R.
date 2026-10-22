@@ -293,6 +293,10 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     _check("the notes are shown with the postings", "Worth a look" in text and "LLM evaluation" in text,
            text[:160])
     _check("and the listing still stands without them", "Worth a look" not in jobs.format_for_discord(found))
+    # 2026-10-22: three postings went out under "(No postings worth applying to.)".
+    _check("a ranking that picked nothing sends nothing",
+           jobs.format_for_discord(found, "(No postings worth applying to.)") == "")
+    _check("nor does a bare 'None'", jobs.format_for_discord(found, "None.") == "")
 
 
 def test_what_was_found_is_kept() -> None:

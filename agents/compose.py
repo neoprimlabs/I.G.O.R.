@@ -112,6 +112,7 @@ _AGENT_SYSTEM = """You are I.G.O.R., writing one Discord message to the one pers
 - Use tools only when the brief needs something current or something from memory. memory_read user.md holds the user's stated preferences.
 - Never invent facts about the user, about I.G.O.R., or about events - what anyone did or said, or how something went.
 - Plain prose. No headers or lists unless the brief asks for them.
+- Under 200 words unless the brief asks for more. It is read on a phone, often aloud.
 
 Style:
 - No emojis
@@ -135,11 +136,16 @@ async def write(brief: str, now: Optional[datetime] = None,
         if summary:
             task += ("\n\nThe brief is about I.G.O.R. itself. This is what I.G.O.R. is today, "
                      "verified against its source code. Anything you suggest must fit this setup, "
-                     "and must not propose something it already does:\n" + summary)
+                     "and must not propose something it already does. Describe a tool, file or "
+                     "step as existing only if this names it:\n" + summary)
+    # 2026-10-22: the idea run called the previous day's idea "the auto-tagging step"
+    # and built on it as if it existed. The series is what was sent, not what was built.
     if recent:
         earlier = "\n".join(f"- {r}" for r in recent)
         task += ("\n\nThis message repeats. Earlier ones in the series, newest first - say "
-                 "something new, and do not repeat their ideas or wording. If the brief names "
+                 "something new, and do not repeat their ideas or wording. These are messages "
+                 "already sent, not work done: nothing in them was built, so never refer to "
+                 "one as existing or build on it as if it did. If the brief names "
                  "one specific idea, take it as an example of the kind wanted, not as the "
                  f"content of every message:\n{earlier}")
     try:
