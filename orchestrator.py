@@ -40,7 +40,7 @@ Reply with the single word only.
 Six rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
-Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR.
+Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR. So is suggesting a use for one of IGOR's own systems: "We could have you use your scheduled system to promote and inform" is SELF.
 Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF.
 Asking IGOR to message the user later, or to change, correct or cancel a message already planned, is TASK - including short follow-ups like "I said 1am" or "write something new when it sends". It is never CONFIG and never CHAT.
 Asking what the user said or told IGOR earlier, or about the user's own plans or work hours, is CHAT. "What did I tell you about my work schedule" is CHAT. Asking which messages IGOR has scheduled for the user is MONITOR."""
