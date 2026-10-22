@@ -136,6 +136,10 @@ _COMMON = {
     "february", "march", "april", "june", "july", "august", "september",
     "october", "november", "december", "monday", "tuesday", "wednesday",
     "thursday", "friday", "saturday", "sunday", "handover", "month",
+    # The user's town is also an English word, so alone it flagged four files for
+    # "export" (2026-10-21, the first run on the server). The town is still guarded,
+    # as "town, ST" - see _private_identifiers.
+    "export",
     # His own brand, deliberately public: it is the GitHub org and the portfolio
     # domain. Finding it in the repo is not a leak.
     "neoprimlabs",
@@ -185,6 +189,9 @@ def _private_identifiers() -> set:
             for word in re.findall(r"[A-Za-z][A-Za-z'\-]{4,}", block):
                 if word.lower() not in _COMMON:
                     tokens.add(word.lower())
+            # Places as "Town, ST", so a town that is also a common word still counts.
+            for town, state in re.findall(r"\b([A-Z][a-z]+), ([A-Z]{2})\b", block):
+                tokens.add(f"{town}, {state}".lower())
         for digits in re.findall(r"(?<!\d)\d{7,}(?!\d)", text):
             tokens.add(digits)
         # The boundaries matter: without them this sliced "022-2024" out of the date
