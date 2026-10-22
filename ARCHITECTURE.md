@@ -166,8 +166,8 @@ A Discord DM travels this path every time:
    feedback, then delivers with an `[Evaluator warning: ...]` prefix. Fails open.
 7. **`orchestrator.process` tail** - critic (disabled), context update (each
    side stored up to 20000 chars, in memory and in SQLite), `[Monitor]` suffix
-   when applicable. Each agent gets the running summary and the last 6 entries
-   within its own character budget, user messages and posts stamped with their time.
+   when applicable. Each agent gets the running summary, the last 6 conversation
+   messages, then the last 3 posts, within its budget, stamped with their time.
 8. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
    chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
 
@@ -571,7 +571,7 @@ a failed push.
 **Overnight loop files:** `goals.md` and `goals_archive.md`, `preferences.md`
 (approved standing preferences, 1500 character cap, read per call) and `work/`.
 
-**Data:** `context.db` (rolling context, `CONTEXT_WINDOW = 6`; kept 90 days,
+**Data:** `context.db` (`CONTEXT_WINDOW = 6`, `CONTEXT_POSTS = 3`; kept 90 days,
 `HISTORY_RETENTION_DAYS`), plus `tasks.md`, `projects.md`, `user.md`, `agents.md`,
 `research*.md`.
 

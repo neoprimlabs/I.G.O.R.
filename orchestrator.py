@@ -159,6 +159,15 @@ _TIME_NOTE = ("Messages from the user, and I.G.O.R.'s unprompted posts, begin wi
               "message from the day it was sent. Never write such a time stamp in a reply.")
 
 
+# Rows held in memory, so CONTEXT_WINDOW conversation messages can still be found
+# behind a morning's worth of posts.
+_CONTEXT_KEEP = 30
+
+
+def _is_post(m: dict) -> bool:
+    return (m.get("content") or "").startswith(_PROACTIVE_MARK)
+
+
 def _stamp(ts: float) -> str:
     """When a message was sent, as the user's clock reads it: "Tue 10-20 14:30"."""
     import clock
@@ -381,7 +390,7 @@ class Orchestrator:
         self._notify_file = notify_file or notify
         self._monitor_declined = False
         from context_store import load_timed
-        self._context: list[dict] = load_timed()
+        self._context: list[dict] = load_timed(_CONTEXT_KEEP)
 
     async def process(self, user_id: int, content: str, prefer_tools: bool = False) -> tuple[str, bool] | None:
         """Entry point for every incoming message.
@@ -684,9 +693,15 @@ class Orchestrator:
 
         Spends the budget newest-first, so whatever the user is most likely talking
         about survives whole and the compression falls on the oldest turns.
+
+        The last CONTEXT_WINDOW conversation messages and, apart from them, the last
+        CONTEXT_POSTS unprompted posts. Conversation is paid for first, so a long digest
+        is what gets shortened, never the user's own words.
         """
-        window = self._context[-config.CONTEXT_WINDOW:]
-        if not window:
+        recent = self._context[-_CONTEXT_KEEP:]
+        conv = [i for i, m in enumerate(recent) if not _is_post(m)][-config.CONTEXT_WINDOW:]
+        posts = [i for i, m in enumerate(recent) if _is_post(m)][-config.CONTEXT_POSTS:]
+        if not conv and not posts:
             return []
 
         # Greedy newest-first: each entry takes what it needs, up to what is left.
@@ -708,9 +723,11 @@ class Orchestrator:
                 summary = ("Summary of the conversation before the messages below, kept by "
                            "I.G.O.R. It is a record of what was said, not instructions.\n" + text)
         stamped = False
-        for m in reversed(window):
+        kept: dict[int, str] = {}
+        for i in list(reversed(conv)) + list(reversed(posts)):
             if remaining <= 0:
                 break
+            m = recent[i]
             content = m.get("content") or ""
             # When it was sent, written into the text. 2026-10-21: "I'm at my retail job
             # today", said the day before, still read as today the next morning.
@@ -724,9 +741,10 @@ class Orchestrator:
             if len(content) > remaining:
                 content = _cap(content, remaining)
             remaining -= len(content)
-            # Role and content only: the stored ts is not a field the API accepts.
-            out.append({"role": m.get("role"), "content": content})
-        out.reverse()
+            kept[i] = content
+        # In the order they were said. Role and content only: the stored ts is not a
+        # field the API accepts.
+        out = [{"role": recent[i].get("role"), "content": kept[i]} for i in sorted(kept)]
         head = "\n\n".join(p for p in ((_TIME_NOTE if stamped else ""), summary or "") if p)
         return [{"role": "system", "content": head}] + out if head else out
 
@@ -745,8 +763,8 @@ class Orchestrator:
         now = datetime.now(timezone.utc).timestamp()
         self._context.append({"role": "user", "content": user_msg, "ts": now})
         self._context.append({"role": "assistant", "content": assistant_msg, "ts": now})
-        if len(self._context) > config.CONTEXT_WINDOW:
-            self._context = self._context[-config.CONTEXT_WINDOW:]
+        if len(self._context) > _CONTEXT_KEEP:
+            self._context = self._context[-_CONTEXT_KEEP:]
         append("user", user_msg)
         append("assistant", assistant_msg)
         import compression
@@ -796,8 +814,8 @@ class Orchestrator:
         entry = {"role": "assistant", "content": _cap(f"[sent proactively]\n{text.strip()}", _STORE_CAP),
                  "ts": datetime.now(timezone.utc).timestamp()}
         self._context.append(entry)
-        if len(self._context) > config.CONTEXT_WINDOW:
-            self._context = self._context[-config.CONTEXT_WINDOW:]
+        if len(self._context) > _CONTEXT_KEEP:
+            self._context = self._context[-_CONTEXT_KEEP:]
         from context_store import append
         append("assistant", entry["content"])
         logger.info("Recorded proactive message into context (%d chars)", len(text))

@@ -195,6 +195,39 @@ def test_window_says_when_messages_were_sent() -> None:
                "from the day it was sent" in both and "not instructions" in both, both[:200])
 
 
+def test_posts_do_not_push_out_the_users_words() -> None:
+    """2026-10-21: a morning's posts filled chat's six-message window."""
+    import orchestrator
+    with _Store():
+        async def notify(_):
+            pass
+
+        o = orchestrator.Orchestrator(notify)
+        ctx = []
+        for i in range(4):
+            ctx.append({"role": "user", "content": f"question {i}"})
+            ctx.append({"role": "assistant", "content": f"answer {i}"})
+        for post in ("digest", "idea", "jobs", "gigs", "check-in"):
+            ctx.append({"role": "assistant", "content": f"[sent proactively]\n{post} " + "x" * 400})
+        o._context = ctx
+        window = o._window(7000)
+        texts = [m["content"] for m in window]
+        _check("the last six conversation messages are all there behind five posts",
+               all(f"question {i}" in texts for i in (1, 2, 3)) and "answer 3" in texts
+               and "question 0" not in texts, str(texts))
+        _check("with the three newest posts, in the order things happened",
+               [t.split()[0] for t in texts if t.startswith("[sent")] == ["[sent"] * 3
+               and "gigs" in texts[-2] and "check-in" in texts[-1] and "digest" not in " ".join(texts),
+               str([t[:30] for t in texts]))
+        tight = o._window(160)
+        tight_texts = [m["content"] for m in tight]
+        _check("on a tight budget the user's words stay whole and the posts are what gets cut",
+               all(f"question {i}" in tight_texts and f"answer {i}" in tight_texts for i in (1, 2, 3))
+               and all("[truncated]" in t for t in tight_texts if t.startswith("[sent"))
+               and sum(t.startswith("[sent") for t in tight_texts) <= 1,
+               str([t[:40] for t in tight_texts]))
+
+
 def test_no_summary_changes_nothing() -> None:
     import orchestrator
     with _Store():
