@@ -39,7 +39,7 @@ README sections on memory and shared context and on cost and logging;
 `scripts/usage_report.py` (per-agent calls, tokens and, from 10-22, call time, read
 from the journal; run with sudo on the server); call timing in `llm.create`; router
 eval rerun, 27/28; the overnight paper write moved to 120b. Later that night: the
-deploy gate runs the whole offline suite as Gate 3 (48 files, ~150s; failure path
+deploy gate runs the whole offline suite as Gate 3 (49 files, ~150s; failure path
 checked with an untracked failing test, which blocked the dry run without a
 restart); chat's window shows the last 6 conversation messages plus 3 posts, so posts
 cannot push out the user's words; the user's own schedule routes CHAT and Monitor
@@ -55,8 +55,12 @@ already use for the auto-tagging step", so that clause was cut from
 `scheduled.json`, backup `scheduled.json.bak-20261022`; replayed clean, 145 words);
 the job watch sent three
 postings under "no postings worth applying to" (a ranking that picks none now sends
-nothing). Next, with the user: their wording of the two application answers, the
-resume doc exported as a PDF, then sending the application. Later: a recorded
+nothing). Built 2026-10-22 evening: `mcp_server.py`, six read-only tools over SSH on
+stdio for the user's other agents (Hermes is only an MCP client). `mcp==2.3.0` was
+installed by hand as igor, since the deploy script never runs pip; a fresh venv needs
+it before the gate's import check. Verified end to end from the PC: ready in 3.2s,
+resume.md and ../.env refused. The connect command is in `CLAUDE.local.md`. Next,
+with the user: their wording of the two application answers, then sending it. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind
