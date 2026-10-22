@@ -80,7 +80,8 @@ for the rest of that turn. Private files and the open web never share a turn. Fe
 text arrives wrapped in untrusted-content markers.
 
 **The agent cannot reach what judges it.** Deploys go through a root-owned script
-outside the repo: it compiles, imports every module, restarts, waits for the Discord
+outside the repo: it compiles, imports every module, runs the whole offline test
+suite, restarts, waits for the Discord
 gateway and rolls back to the previous commit on any failure. A separate timer restarts
 the bot if its gateway connection goes silent. The agent can edit its own code, but not
 the gate that decides whether that code ships.
@@ -143,7 +144,7 @@ root-owned file the agent cannot write to.
 |---|---|
 | Router accuracy, live | 29 of 30 cases (2026-10-22); the one miss is the same message every run |
 | Self-description eval, live | 11 of 11 (2026-10-22, after the scorer was widened to accept two correct phrasings; history in [STATE.md](STATE.md)) |
-| Offline test suite | 47 files, 1,580 checks, no API calls |
+| Offline test suite | 47 files, 1,615 checks, no API calls; the deploy gate refuses any change that fails one |
 | Daily token budget | 200,000 on the main model, measured from a 429 response |
 | Host | 1 OCPU, 956 MB RAM, Oracle Always Free |
 | History | 366 commits since May 2026 |

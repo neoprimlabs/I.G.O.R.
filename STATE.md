@@ -39,7 +39,13 @@ notes; rewriting public history is the user's decision. Done 2026-10-21 evening:
 README sections on memory and shared context and on cost and logging;
 `scripts/usage_report.py` (per-agent calls, tokens and, from 10-22, call time, read
 from the journal; run with sudo on the server); call timing in `llm.create`; router
-eval rerun, 27/28; the overnight paper write moved to 120b. Next, with the user: their
+eval rerun, 27/28; the overnight paper write moved to 120b. Later that night: the
+deploy gate runs the whole offline suite as Gate 3 (47 files, ~150s; failure path
+checked with an untracked failing test, which blocked the dry run without a
+restart); chat's window shows the last 6 conversation messages plus 3 posts, so posts
+cannot push out the user's words; the user's own schedule routes CHAT and Monitor
+hands non-status questions to Direct; Direct no longer reports user.md notes as what
+the user said. Router 29/30, SelfDescribe 11/11 after a scorer fix. Next, with the user: their
 Discord screenshots for the README, their wording of the two application answers,
 the resume doc exported as a PDF, then sending the application. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.

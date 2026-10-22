@@ -95,7 +95,8 @@ which is gitignored because this repo is public. Never write them into a tracked
 ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "sudo /usr/local/lib/igor-deploy/deploy.sh"
 ```
 5. Expected last line: `=== deploy OK: <sha> healthy ===`, exit 0. The script pulls,
-   syntax-checks, imports every module, restarts, and waits up to 90s for the
+   syntax-checks, imports every module, runs the offline test suite (about 150s),
+   restarts, and waits up to 90s for the
    Discord gateway to connect. On failure it resets to the previous commit,
    restarts, and alerts the webhook. Full log: `/var/log/igor-deploy.log`.
    - A gate failure before the restart means **IGOR never went down** and the repo
