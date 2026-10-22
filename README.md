@@ -141,8 +141,8 @@ root-owned file the agent cannot write to.
 
 | Measure | Value |
 |---|---|
-| Router accuracy, live | 27 of 28 cases (2026-10-21); the one miss is the same message every run |
-| Self-description eval, live | 11 of 11 (first run 7 of 11; fixes in [STATE.md](STATE.md)) |
+| Router accuracy, live | 29 of 30 cases (2026-10-22); the one miss is the same message every run |
+| Self-description eval, live | 11 of 11 (2026-10-22, after the scorer was widened to accept two correct phrasings; history in [STATE.md](STATE.md)) |
 | Offline test suite | 47 files, 1,580 checks, no API calls |
 | Daily token budget | 200,000 on the main model, measured from a 429 response |
 | Host | 1 OCPU, 956 MB RAM, Oracle Always Free |
