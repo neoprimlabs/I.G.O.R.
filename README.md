@@ -145,7 +145,7 @@ root-owned file the agent cannot write to.
 
 | Measure | Value |
 |---|---|
-| Router accuracy, live | 31 of 31 cases (2026-10-22), including a reworded case that is not in the prompt |
+| Router accuracy, live | 35 of 35 cases (2026-10-22), including a reworded case that is not in the prompt |
 | Self-description eval, live | 11 of 11 (2026-10-22, after the scorer was widened to accept two correct phrasings; history in [STATE.md](STATE.md)) |
 | Offline test suite | 49 files, 1,675 checks, no API calls; the deploy gate refuses any change that fails one |
 | Daily token budget | 200,000 on the main model, measured from a 429 response |

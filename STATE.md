@@ -44,7 +44,7 @@ checked with an untracked failing test, which blocked the dry run without a
 restart); chat's window shows the last 6 conversation messages plus 3 posts, so posts
 cannot push out the user's words; the user's own schedule routes CHAT and Monitor
 hands non-status questions to Direct; Direct no longer reports user.md notes as what
-the user said. Router 31/31, SelfDescribe 11/11 after a scorer fix. Memory is
+the user said. Router 35/35 (after a rule for remember requests), SelfDescribe 11/11 after a scorer fix. Memory is
 edited one entry at a time (add, patch, remove), as Hermes does. Fixed 2026-10-22
 from that day's Discord output: the check-in assumed a shift on the user's stated
 day off (presence moved from 20b to 120b, which named the day off when the same facts
@@ -1167,7 +1167,7 @@ machine returns, so time away means late alerts rather than none.
   to say it cannot check how IGOR is built, so the likely failure is a non-answer
   rather than an invention. **No router score was ever recorded on qwen3.6 and Groq
   has deleted it, so this cannot be called a regression** - there is nothing left to
-  compare against. Baseline to beat from here: 31/31 (2026-10-22). The
+  compare against. Baseline to beat from here: 35/35 (2026-10-22). The
   long-standing miss was fixed by naming suggestions in the SELF rule; that rule
   quotes the case as its example, so a reworded case not in the prompt was added
   and passed too.
