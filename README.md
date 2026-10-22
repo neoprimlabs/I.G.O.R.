@@ -35,7 +35,7 @@ flowchart LR
     R -->|CHAT| D["Direct: gpt-oss-120b, no tools"]
     R -->|TASK| A["ReAct: gpt-oss-120b, 20 tools"]
     R -->|SELF| S["SelfDescribe: answers from ARCHITECTURE.md"]
-    R -->|MONITOR| M["Monitor: status, gpt-oss-20b"]
+    R -->|MONITOR| M["Monitor: status, gpt-oss-120b"]
     A --> B["Shell and Python in a bubblewrap sandbox"]
     J["Scheduler"] --> W["Watchers: code first, model on change"]
     J --> N["Overnight loop: 20b researches, 120b writes, token budget"]

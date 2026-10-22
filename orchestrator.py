@@ -32,17 +32,18 @@ _ROUTER_PROMPT = """Classify the user message into exactly one word from this li
 CHAT - greetings, small talk, opinions, what you think about something, how you are doing, anything social
 SELF - questions ABOUT how IGOR is built or what it can do: its agents, models, routing, tools, memory, scheduler, architecture, design, limits. Also asking what IGOR can or cannot do, or how one of its capabilities could be used or extended
 TASK - requests to DO work: search, write, analyze, code, read files, produce documents, calculations
-MONITOR - asking for a current value: schedule times, watchlist contents, digest contents, system health, token or rate-limit budget
+MONITOR - asking for a current value of IGOR itself: its job schedule times, watchlist contents, digest contents, system health, token or rate-limit budget
 CONFIG - requests to CHANGE a saved setting: add or remove a digest section, change a schedule time, edit the watchlist
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-Five rules that override the above:
+Six rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
 Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR.
 Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF.
-Asking IGOR to message the user later, or to change, correct or cancel a message already planned, is TASK - including short follow-ups like "I said 1am" or "write something new when it sends". It is never CONFIG and never CHAT."""
+Asking IGOR to message the user later, or to change, correct or cancel a message already planned, is TASK - including short follow-ups like "I said 1am" or "write something new when it sends". It is never CONFIG and never CHAT.
+Asking what the user said or told IGOR earlier, or about the user's own plans or work hours, is CHAT. "What did I tell you about my work schedule" is CHAT. Asking which messages IGOR has scheduled for the user is MONITOR."""
 
 _VERDICT_MAP = {
     "CHAT": "Direct",
@@ -378,6 +379,7 @@ class Orchestrator:
         )
         self._notify = notify
         self._notify_file = notify_file or notify
+        self._monitor_declined = False
         from context_store import load_timed
         self._context: list[dict] = load_timed()
 
@@ -423,6 +425,7 @@ class Orchestrator:
         if destination == "StopResearch":
             file_mode = True
 
+        self._monitor_declined = False
         turn = llm.start_turn()
         try:
             response = await self._route(destination, task, file_mode=file_mode)
@@ -452,7 +455,7 @@ class Orchestrator:
         if file_mode:
             return response, file_mode
         parts = []
-        if destination == "Monitor":
+        if destination == "Monitor" and not self._monitor_declined:
             parts.append("`[Monitor]`")
         if skill_captured:
             parts.append("`[Skill captured]`")
@@ -579,7 +582,17 @@ class Orchestrator:
             # while its own status block said none. Monitor reports current values,
             # and the status block is the only source for them - SelfDescribe learned
             # the same lesson about prior turns.
-            return await monitor.handle(content, [], call)
+            result = await monitor.handle(content, [], call)
+            if not (result or "").strip().upper().startswith("NOT_STATUS"):
+                return result
+            # 2026-10-21: "what did I tell you about my work schedule this week?" routed
+            # MONITOR on the word "schedule", and Monitor, which sees no conversation,
+            # said nothing about the user's schedule was stored. Like SelfDescribe, it can
+            # now hand a message on; the conversation is Direct's.
+            logger.info("Monitor declined the message, forwarding to Direct")
+            self._monitor_declined = True
+            from agents import direct
+            return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
 
         if destination == "ProposalDecision":
             import proposals
