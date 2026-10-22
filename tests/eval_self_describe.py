@@ -78,7 +78,8 @@ CASES = [
     # The question that started this. It must produce a real answer.
     {"q": "How can we utilize your autonomous scheduled system to promote UBI?",
      "want": "ANSWER",
-     "groups": [["apscheduler", "scheduler"],
+     # 2026-10-21: a right answer named scheduled_message and scheduled.json, not "scheduler".
+     "groups": [["apscheduler", "scheduler", "scheduled_message", "scheduled.json"],
                 ["monitor.setup", "code change", "deploy"],
                 ["publish", "publishing", "external", "accounts"]]},
 
@@ -113,7 +114,8 @@ CASES = [
     # "the request is handed off to the React path" was marked wrong on 2026-10-19 for
     # not saying "falls"; the fact is where it goes, not the verb.
     {"q": "What happens if the router fails?", "want": "ANSWER",
-     "groups": [["react"], ["fall", "falls", "default", "goes to", "handed", "hands", "sent to", "routed to"]]},
+     "groups": [["react"], ["fall", "falls", "default", "goes to", "handed", "hands", "sent to", "routed to",
+                                "handled by"]]},
 
     # 2026-09-07: asked to schedule a check-in, IGOR said it had no way to. It has one now.
     {"q": "Can you schedule a message to me for later?", "want": "ANSWER",
