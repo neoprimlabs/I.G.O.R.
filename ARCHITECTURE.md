@@ -633,14 +633,14 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
   rather than raising, so a broken commit refuses to start
 - systemd `Restart=always` - a bad deploy is a visible crash loop
 - `scripts/backup_memory.ps1` - off-host backup, and an alert on a crash loop
-- `heartbeat.sh`, beside the deploy script, on a 2-minute timer: `monitor._heartbeat`
-  touches `memory/heartbeat.txt` each minute only while Discord is connected; past
-  300s it restarts IGOR and alerts the webhook, once per half hour, never during a
-  deploy or in the 5 minutes after a start
+- `heartbeat.sh`, 2-minute timer: Discord silent past 300s restarts IGOR and alerts, once per half hour, never during a deploy
+- `prestart.sh`, systemd `ExecStartPre`, root: a start runs only the tree the last
+  deploy approved (commit, tracked diff, untracked `.py`). Anything else is set
+  aside for review, reset and alerted; it fails closed. The file tools refuse
+  `venv/`, `.git/` and caches, which git cannot see
 
 ### Health-gated deploy (S.1, built 2026-08-10)
 
-**This is the layer that actually executes**, and it is the one that reverts.
 `/usr/local/lib/igor-deploy/deploy.sh`, root-owned and deliberately outside
 `/opt/igor` so `write_file` cannot reach it. Logs every attempt to
 `/var/log/igor-deploy.log`, which the `igor` user also cannot write.
@@ -659,10 +659,10 @@ A process that starts and never reaches Discord is not working. The probe is
 anchored to a timestamp taken before the restart, or the last run's line would pass.
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
-heartbeat check above. Self-written code sits unloaded until a deploy (see the
-summary). Below the host (terminated once, July 2026), the PC's
-`scripts/backup_memory.ps1` (daily `memory/` and `.env`, health check, alerts, a copy
-of `memory/work/` in `Documents\IGOR Work`) and the hourly `memory-push.sh` cover it.
+heartbeat check above. Self-written code runs only once a deploy passes it; any
+other start sets it aside. Below the host (terminated once, July 2026), the PC's
+`scripts/backup_memory.ps1` (daily backup, health check, alerts) and the hourly
+`memory-push.sh` cover it.
 
 ---
 

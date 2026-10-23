@@ -67,7 +67,12 @@ replay (it proposed a notes archiver). Also 10-23: "remember that..." and a
 correction right after it go to React with memory_write required, the saved entry's
 exact text handed to the correction; an end-to-end run on a copy of memory saved
 one line and patched it in two calls. Prompts list the next seven dates, after Direct
-and React both put Oct 28 on a Monday. Next: the walkthrough with the user, a demo
+and React both put Oct 28 on a Monday. Closed the same evening: any start that was
+not a deploy (crash, heartbeat restart, reboot) ran whatever IGOR had written to disk
+with no gate. `prestart.sh` now runs before every start (systemd drop-in, root) and
+lets through only the tree deploy.sh approved; IGOR's file tools refuse `venv/` and
+`.git/`. Canary runs passed, including a `sitecustomize.py` set aside before it could
+run and a locked git that made it refuse to start. Next: the walkthrough with the user, a demo
 script run until it holds, and no new features before an interview. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

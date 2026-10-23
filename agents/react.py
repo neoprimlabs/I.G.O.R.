@@ -1101,6 +1101,20 @@ async def _search_source(pattern: str, glob: Optional[str] = None,
     return out
 
 
+# The file tools write source, never the environment it runs in. A sitecustomize.py
+# under venv/ would run on every start and git cannot see it, so the start-up check
+# outside IGOR's reach (prestart.sh) could not catch it either. .git and caches the same.
+_UNWRITABLE_PARTS = frozenset({"venv", ".venv", ".git", ".cache", "site-packages", "__pycache__"})
+
+
+def _unwritable(resolved) -> bool:
+    try:
+        parts = resolved.relative_to(config.BASE_DIR.resolve()).parts
+    except ValueError:
+        return True
+    return any(part in _UNWRITABLE_PARTS for part in parts)
+
+
 async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
     from pathlib import Path
     problem = _path_problem(path)
@@ -1111,6 +1125,8 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
         return "[access denied: outside the IGOR root, or a private file]"
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
+    if _unwritable(resolved):
+        return "[access denied: the Python environment, .git and caches are not editable]"
     if not resolved.exists():
         return f"[not found: {path}]"
     try:
@@ -1141,6 +1157,8 @@ async def _write_server_file(path: str, content: str) -> str:
         return "[access denied: outside the IGOR root, or a private file]"
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
+    if _unwritable(resolved):
+        return "[access denied: the Python environment, .git and caches are not editable]"
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         import checkpoints

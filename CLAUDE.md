@@ -108,7 +108,10 @@ ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "
 6. Ask the user for a Discord test after changes to routing, react.py, or the bot.
    The gate proves IGOR connected, not that it answers well.
 7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
-   `/opt/igor` so `write_file` cannot reach it. Edit it from the copy in
+   `/opt/igor` so `write_file` cannot reach it. Beside it, `prestart.sh` runs before
+   every start of the service and restores the tree the last deploy approved, so a
+   hand `git pull` - even of docs - is set aside at the next restart. Every change
+   goes through the gate. Edit it from the copy in
    `C:\Dev\IGOR_backup\deploy-machinery\` and scp it up. **Never move it into the
    repo** - S.1's whole premise is that IGOR cannot reach what judges IGOR.
 
