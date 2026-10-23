@@ -94,7 +94,8 @@ def test_patch() -> None:
     with _Home() as path:
         reply = _apply("patch", old_text="Time zone: EST", content="Time zone: Eastern")
         _check("a unique span is patched in place",
-               "- Time zone: Eastern\n" in path.read_text(encoding="utf-8") and reply == "Patched projects.md.", reply)
+               "- Time zone: Eastern\n" in path.read_text(encoding="utf-8")
+               and reply == "Patched projects.md: - Time zone: Eastern", reply)
         reply = _apply("patch", old_text="- ", content="* ")
         _check("an ambiguous span is refused with its count", "appears" in reply and "times" in reply, reply)
         reply = _apply("patch", old_text="not in the file", content="x")
@@ -146,6 +147,33 @@ def test_fullness() -> None:
         _check("fullness reads against the cap",
                memory_entries.fullness("user.md") == f"750/{config.USER_PROFILE_CAP:,} characters, 50%",
                memory_entries.fullness("user.md"))
+
+
+def test_what_a_correction_needs() -> None:
+    """2026-10-23: forced to patch, the model reached for memory_read to copy the
+    entry's exact text, failed four times, and its reply had quoted the entry with
+    curly apostrophes the file did not hold."""
+    with _Home() as path:
+        _apply("add", content="Try IGOR’s MCP server this weekend (Sat Oct 24 – Sun Oct 25)")
+        text = path.read_text(encoding="utf-8")
+        _check("saved text is plain: no curly quote, no en dash",
+               "IGOR's MCP server this weekend (Sat Oct 24 - Sun Oct 25)" in text, text[-120:])
+        line = "- Try IGOR's MCP server this weekend (Sat Oct 24 - Sun Oct 25) (2026-10-22)"
+        _check("the entry just written is kept for a correction",
+               memory_entries.last_written == ("projects.md", line), str(memory_entries.last_written))
+        reply = _apply("patch", old_text="IGOR’s MCP server this weekend (Sat Oct 24 – Sun Oct 25)",
+                       content="IGOR's MCP server on Monday (Mon 2026-10-26)")
+        text = path.read_text(encoding="utf-8")
+        _check("a patch quoting curly punctuation still finds the plain entry",
+               reply.startswith("Patched") and "on Monday (Mon 2026-10-26) (2026-10-22)" in text
+               and "this weekend" not in text, reply)
+        _check("and the patched entry is what is kept next",
+               memory_entries.last_written == ("projects.md",
+                                               "- Try IGOR's MCP server on Monday (Mon 2026-10-26) (2026-10-22)"),
+               str(memory_entries.last_written))
+        _apply("remove", old_text="MCP server on Monday")
+        _check("a removal leaves nothing to correct", memory_entries.last_written is None,
+               str(memory_entries.last_written))
 
 
 if __name__ == "__main__":

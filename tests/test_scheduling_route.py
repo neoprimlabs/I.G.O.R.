@@ -136,10 +136,18 @@ async def test_remember_requires_the_memory_tool() -> None:
         reply, _ = await o.process(42, "Remember that I want to try IGOR's MCP server this weekend")
         _check("a save request reaches React with the memory tool required",
                seen.get("force_tool") == "memory_write" and reply.startswith("Saved"), str(seen))
+        _check("and is told a duplicate is refused for it, so it need not read first",
+               "do not read the file first" in seen.get("message", ""), seen.get("message", ""))
+        import memory_entries
+        memory_entries.last_written = ("tasks.md", "- Try IGOR's MCP server this weekend (2026-10-23)")
         seen.clear()
         await o.process(42, "Actually make that Monday.")
-        _check("and so does the correction that follows it",
+        _check("the correction that follows has the tool required too",
                seen.get("force_tool") == "memory_write", str(seen))
+        _check("and carries the saved entry's exact text, so the patch needs no read",
+               "reads exactly: - Try IGOR's MCP server this weekend (2026-10-23)" in seen.get("message", ""),
+               seen.get("message", ""))
+        memory_entries.last_written = None
     finally:
         config.MEMORY_DIR, context_store._DB_PATH, react.handle, config.AUTHORIZED_USER_ID = real
         tmp.cleanup()
