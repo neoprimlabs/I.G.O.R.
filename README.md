@@ -87,7 +87,10 @@ outside the repo: it compiles, imports every module, runs the whole offline test
 suite, restarts, waits for the Discord
 gateway and rolls back to the previous commit on any failure. A separate timer restarts
 the bot if its gateway connection goes silent. The agent can edit its own code, but not
-the gate that decides whether that code ships.
+the gate that decides whether that code ships. Every other start, after a crash, a
+heartbeat restart or a reboot, runs only the code the last deploy approved: anything
+else is set aside for review first. That gap was found while explaining this design,
+and closed with a canary edit that never ran.
 
 **Shell commands run in a sandbox.** bubblewrap gives each command no network, a clean
 environment, its own process table and a read-only filesystem apart from a scratch

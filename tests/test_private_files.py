@@ -132,6 +132,23 @@ async def test_writes() -> None:
     out = await react._patch_server_file("memory/corrections.md", "digest", "nonsense")
     _check("patch_file refuses one too", "sealed" in out.lower(), out[:90])
 
+    # 2026-10-23: a sitecustomize.py under venv/ would run on every start, invisible to
+    # git and so to the start-up check outside IGOR's reach.
+    planted = "venv/lib/python3.10/site-packages/sitecustomize.py"
+    out = await react._write_server_file(planted, "import os")
+    _check("write_file refuses the Python environment",
+           "not editable" in out and not (root / planted).exists(), out[:90])
+    out = await react._write_server_file(".git/hooks_helper.py", "x = 1")
+    _check("and .git", "not editable" in out and not (root / ".git").exists(), out[:90])
+    (root / "venv" / "lib").mkdir(parents=True)
+    (root / "venv" / "lib" / "site.py").write_text("ok = True\n", encoding="utf-8")
+    out = await react._patch_server_file("venv/lib/site.py", "ok = True", "ok = False")
+    _check("patch_file refuses the environment too",
+           "not editable" in out and "True" in (root / "venv" / "lib" / "site.py").read_text(), out[:90])
+    out = await react._write_server_file("agents/new_helper.py", "x = 1\n")
+    _check("while IGOR's own source stays writable",
+           out.startswith("Written") and (root / "agents" / "new_helper.py").exists(), out[:90])
+
 
 if __name__ == "__main__":
     print("read_file")
