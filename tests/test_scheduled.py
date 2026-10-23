@@ -487,6 +487,29 @@ async def test_write_at_delivery() -> None:
         message = seen.get("message", "")
         _check("earlier ideas in a series are marked as sent, not built",
                "auto-tagging" in message and "nothing in them was built" in message, message[-400:])
+        # 2026-10-23: four weekday ideas in a row were all about analysing notes.
+        _check("and to change subject when the series keeps to one",
+               "choose a different one this time" in message, message[-400:])
+        # Telling it was not enough: a replay still proposed a notes archiver. Code
+        # picks the subject of an IGOR series by date.
+        await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 23, 14, 0),
+                            recent=["Consider an auto-tagging layer."])
+        thursday = seen.get("message", "")
+        await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 24, 14, 0),
+                            recent=["Consider an auto-tagging layer."])
+        friday = seen.get("message", "")
+        picked = lambda m: m[m.find("make this one about"):]
+        _check("a series about IGOR is given a subject",
+               "make this one about" in thursday, thursday[-300:])
+        _check("and the next day's subject is a different one",
+               picked(thursday) != picked(friday), picked(friday)[:120])
+        await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 23, 14, 0))
+        _check("a one-off brief about IGOR is not steered",
+               "make this one about" not in seen.get("message", ""))
+        await compose.write("a deep philosophical question", now=_utc(2026, 10, 23, 14, 0),
+                            recent=["What is courage?"])
+        _check("nor is a series about something else",
+               "make this one about" not in seen.get("message", ""))
         _check("and the writer is told to keep it short",
                "Under 200 words" in seen.get("system_override", ""))
         banned = {"shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",

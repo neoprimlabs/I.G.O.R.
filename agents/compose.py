@@ -102,6 +102,20 @@ _AGENT_TOOLS = ["search", "fetch_url", "memory_read", "search_memory"]
 # SelfDescribe answers from, about 950 tokens, only when the brief is about IGOR.
 _ABOUT_IGOR = re.compile(r"\bI\.?G\.?O\.?R\b", re.IGNORECASE)
 _AGENT_MAX_TOKENS = 2048
+
+# 2026-10-23: four weekday ideas running were about analysing notes, and telling the
+# model to change subject did not move it - a replay proposed a "stale-note archiver".
+# A repeating series about IGOR gets its subject from code, by date, so it rotates.
+_IGOR_AREAS = (
+    "the watchers: prices, restocks, job and gig postings, page heartbeats",
+    "the overnight research loop and the paper it revises",
+    "the morning digest",
+    "scheduled messages and check-ins",
+    "routing: which agent answers which message",
+    "safety: approvals, the shell sandbox, checkpoints and rollback",
+    "cost: the daily token budget and which model does each job",
+    "memory: notes, the conversation store and its running summary",
+)
 _AGENT_TIMEOUT_S = 180
 
 _AGENT_SYSTEM = """You are I.G.O.R., writing one Discord message to the one person you talk to. They asked for it earlier and it is being sent now. You have no conversation history: the brief is everything you know about what they want.
@@ -136,7 +150,9 @@ async def write(brief: str, now: Optional[datetime] = None,
     if recent:
         earlier = "\n".join(f"- (sent, never built) {r}" for r in recent)
         task += ("\n\nThis message repeats. Earlier ones in the series, newest first - say "
-                 "something new, and do not repeat their ideas or wording. These are messages "
+                 "something new, and do not repeat their ideas or wording. When they keep to "
+                 "one subject or one part of the system, choose a different one this time. "
+                 "These are messages "
                  "already sent, not work done: nothing in them was built, so never refer to "
                  "one as existing or build on it as if it did. If the brief names "
                  "one specific idea, take it as an example of the kind wanted, not as the "
@@ -149,8 +165,13 @@ async def write(brief: str, now: Optional[datetime] = None,
                      "verified against its source code. Anything you suggest must fit this setup, "
                      "and must not propose something it already does:\n" + summary +
                      "\n\nAnything you call existing - a tool, a command, a model's job, a file, "
-                     "a step - must appear in that summary, by the name it uses there. "
-                     "Everything else is part of your proposal and must be described as new.")
+                     "a step - must appear in that summary, by the name it uses there, doing only "
+                     "what the summary says it does. Everything else is part of your proposal and "
+                     "must be described as new.")
+        if recent:
+            area = _IGOR_AREAS[(now or datetime.now()).toordinal() % len(_IGOR_AREAS)]
+            task += (f"\n\nUnless the brief names a subject, make this one about {area}, "
+                     "whatever the earlier ones covered.")
     try:
         text = await asyncio.wait_for(
             react.handle(
