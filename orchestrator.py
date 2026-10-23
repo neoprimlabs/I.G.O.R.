@@ -650,9 +650,21 @@ class Orchestrator:
 
         if destination == "Remember":
             # The memory tool is required on the first call, as above: see _REMEMBERING.
+            # Forced, the model still reached for memory_read first - to dedupe a save,
+            # or to copy a patch's exact text - and on 2026-10-23 a correction failed
+            # four times that way. Code supplies what it wanted to read.
+            import memory_entries
+            last = memory_entries.last_written
+            if not _REMEMBERING.search(content) and last:
+                note = (f"[The note saved just before this, in {last[0]}, reads exactly: {last[1]}\n"
+                        "If this message corrects it, patch it with memory_write, copying old_text "
+                        "from that line. Do not read the file first.]")
+            else:
+                note = ("[Save it with memory_write now. An exact duplicate is refused for you, "
+                        "so do not read the file first.]")
             logger.info("Remember: memory_write required on the first call")
             react.set_notify(self._notify)
-            return await react.handle(content, self._window(), max_tokens=2048,
+            return await react.handle(f"{content}\n\n{note}", self._window(), max_tokens=2048,
                                       force_tool="memory_write")
 
         if destination == "Direct":

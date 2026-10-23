@@ -39,6 +39,28 @@ _BULLET = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _DATE_TAIL = re.compile(r"\s*\(\d{4}-\d{2}-\d{2}\)\s*$")
 
+# (file, the entry exactly as written) after each add or patch. The orchestrator
+# hands it to a correction that follows, so the model can patch without reading.
+last_written: Optional[tuple[str, str]] = None
+
+
+def _entry_around(text: str, needle: str) -> str:
+    at = text.find(needle)
+    for a, b in entries(text):
+        if a <= at < b:
+            return text[a:b].strip()
+    return needle.strip()
+
+
+def _exact(text: str, old_text: str) -> str:
+    """old_text as the file has it. Quoted from a reply it can carry curly quotes or a
+    dash the file never held, since saved text is cleaned."""
+    if text.count(old_text) == 0:
+        import sanitize
+        if text.count(sanitize.clean(old_text)) == 1:
+            return sanitize.clean(old_text)
+    return old_text
+
 
 def _scan(text: str) -> Optional[str]:
     if _INVISIBLE.search(text):
@@ -138,7 +160,11 @@ def apply(filename: str, action: str, content: str = "", old_text: str = "",
         text = path.read_text(encoding="utf-8") if path.exists() else ""
     except OSError as e:
         return f"Not written: {filename} could not be read ({type(e).__name__})."
-    content = (content or "").strip()
+    import sanitize
+    content = sanitize.clean((content or "").strip())
+    old_text = _exact(text, old_text) if old_text else old_text
+    global last_written
+    written = None
 
     if action == "add":
         if not content:
@@ -155,6 +181,7 @@ def apply(filename: str, action: str, content: str = "", old_text: str = "",
         line = f"- {' '.join(_BULLET.sub('', content).split())} ({today})"
         new = _insert(text or f"# {filename[:-3].capitalize()}\n", line, section)
         done = f"Added to {filename}: {line[2:]}"
+        written = line
     elif action == "patch":
         if not old_text:
             return "Not written: patch needs old_text, copied exactly from the file."
@@ -167,7 +194,8 @@ def apply(filename: str, action: str, content: str = "", old_text: str = "",
             logger.warning("memory_write refused for %s: %s", filename, why)
             return f"Not written: {why}. Save the fact itself, in plain words."
         new = text.replace(old_text, content, 1)
-        done = f"Patched {filename}."
+        written = _entry_around(new, content) if content else None
+        done = f"Patched {filename}: {written}" if written else f"Patched {filename}."
     elif action == "remove":
         if not old_text:
             return "Not written: remove needs old_text that identifies one entry."
@@ -200,6 +228,7 @@ def apply(filename: str, action: str, content: str = "", old_text: str = "",
     checkpoints.before_write(path)
     path.write_text(new, encoding="utf-8")
     checkpoints.after_write(path)
+    last_written = (filename, written) if written else None
     return done
 
 
