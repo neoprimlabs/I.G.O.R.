@@ -63,7 +63,11 @@ resume.md and ../.env refused. The connect command is in `CLAUDE.local.md`. The
 Helfen application went in on 2026-10-22. Fixed 10-23 from that day's output: the job
 watch sends only the ranking's picks, counting the rest; an IGOR idea series gets its
 subject from code by date, because telling the model to change subject failed on a
-replay (it proposed a notes archiver). Next: the walkthrough with the user, a demo
+replay (it proposed a notes archiver). Also 10-23: "remember that..." and a
+correction right after it go to React with memory_write required, the saved entry's
+exact text handed to the correction; an end-to-end run on a copy of memory saved
+one line and patched it in two calls. Prompts list the next seven dates, after Direct
+and React both put Oct 28 on a Monday. Next: the walkthrough with the user, a demo
 script run until it holds, and no new features before an interview. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
