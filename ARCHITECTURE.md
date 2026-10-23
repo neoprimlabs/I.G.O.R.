@@ -357,7 +357,8 @@ the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 acr
 daylight saving. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run is shown the series' last three
-messages, marked as sent, never built, and told not to repeat them.
+messages, marked as sent, never built, and told not to repeat them. An IGOR
+series gets its subject from code, by date.
 
 Presence writes on 120b. Gates, all in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
@@ -369,7 +370,7 @@ plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring t
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
-ranks, and if it picks none nothing is sent. The gig watch (`agents/gigs.py`)
+ranks, and only its picks are sent. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
 failed screen holds the gigs.

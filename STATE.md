@@ -59,8 +59,12 @@ nothing). Built 2026-10-22 evening: `mcp_server.py`, six read-only tools over SS
 stdio for the user's other agents (Hermes is only an MCP client). `mcp==2.3.0` was
 installed by hand as igor, since the deploy script never runs pip; a fresh venv needs
 it before the gate's import check. Verified end to end from the PC: ready in 3.2s,
-resume.md and ../.env refused. The connect command is in `CLAUDE.local.md`. Next,
-with the user: their wording of the two application answers, then sending it. Later: a recorded
+resume.md and ../.env refused. The connect command is in `CLAUDE.local.md`. The
+Helfen application went in on 2026-10-22. Fixed 10-23 from that day's output: the job
+watch sends only the ranking's picks, counting the rest; an IGOR idea series gets its
+subject from code by date, because telling the model to change subject failed on a
+replay (it proposed a notes archiver). Next: the walkthrough with the user, a demo
+script run until it holds, and no new features before an interview. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind

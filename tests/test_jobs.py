@@ -290,13 +290,26 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
            seen.get("listing", "")[:160])
 
     text = jobs.format_for_discord(found, notes)
-    _check("the notes are shown with the postings", "Worth a look" in text and "LLM evaluation" in text,
-           text[:160])
-    _check("and the listing still stands without them", "Worth a look" not in jobs.format_for_discord(found))
+    _check("the pick is shown with its note", "worth a look" in text and "LLM evaluation" in text
+           and "AI Trainer" in text and "https://x/1" in text, text[:160])
+    _check("and the listing still stands without notes", "worth a look" not in jobs.format_for_discord(found))
     # 2026-10-22: three postings went out under "(No postings worth applying to.)".
     _check("a ranking that picked nothing sends nothing",
            jobs.format_for_discord(found, "(No postings worth applying to.)") == "")
     _check("nor does a bare 'None'", jobs.format_for_discord(found, "None.") == "")
+
+    # 2026-10-23: three accounting and CRM postings went out beside the one pick.
+    three = [{"title": "Accounting Operations", "company": "Plaid", "url": "https://x/a"},
+             {"title": "QA/DevOps Engineer", "company": "Discord", "url": "https://x/b"},
+             {"title": "CRM Retention Junior", "company": "Bullfinch", "url": "https://x/c"}]
+    text = jobs.format_for_discord(three, "2. QA/DevOps Engineer - Discord - Fits the deploy work.")
+    _check("only the pick goes out", "QA/DevOps" in text and "Plaid" not in text and "Bullfinch" not in text,
+           text)
+    _check("its echoed title is not repeated", text.count("QA/DevOps Engineer - Discord") == 1, text)
+    _check("and the rest are counted, not listed", "2 other new postings did not fit" in text, text)
+    text = jobs.format_for_discord(three, "9. Something that matches no posting.")
+    _check("a pick number that matches nothing falls back to the plain listing",
+           all(name in text for name in ("Plaid", "Discord", "Bullfinch")) and "worth a look" not in text, text)
 
 
 def test_what_was_found_is_kept() -> None:

@@ -405,25 +405,53 @@ def heartbeat(now: Optional[datetime] = None) -> str:
             f"already sent in the last {_SEEN_DAYS} days, and the feeds are answering.")
 
 
-_PICK = re.compile(r"^\s*\d+\.\s", re.MULTILINE)
+_PICK = re.compile(r"^\s*(\d+)\.\s+(.+)$", re.MULTILINE)
+_OFFER = "Say the word on any of these and I will draft the application for you to send."
+
+
+def _name(job: dict) -> str:
+    return f"{job['title']} - {job['company']}" if job.get("company") else job["title"]
+
+
+def _picks(found: list[dict], notes: str) -> list[tuple[dict, str]]:
+    """The postings the ranking named, by their number in its listing, with its note."""
+    out, seen = [], set()
+    for number, note in _PICK.findall(notes):
+        i = int(number) - 1
+        if i in seen or not 0 <= i < min(len(found), _MAX_RANKED):
+            continue
+        seen.add(i)
+        note = note.strip()
+        if note.startswith(_name(found[i])):
+            note = note[len(_name(found[i])):].lstrip(" -:")
+        out.append((found[i], note))
+    return out
 
 
 def format_for_discord(found: list[dict], notes: str = "") -> str:
-    """The message, or empty when the ranking ran and picked nothing.
+    """The postings the ranking picked, or empty when it picked none.
 
-    2026-10-22 sent three postings under "(No postings worth applying to.)" with an
-    offer to draft applications for them. Empty notes mean the ranking did not run
-    or failed, which is not a verdict, so the listing still goes out.
+    2026-10-22 sent three postings under "(No postings worth applying to.)"; 10-23
+    sent three accounting and CRM postings beside its one pick. Only picks go out
+    now, and record_found keeps every posting for "what else did you find". Empty
+    notes mean the ranking did not run or failed, which is not a verdict, so the
+    plain listing goes out; so does notes whose numbers match no posting.
     """
     if notes and not _PICK.search(notes):
         return ""
-    lines = ["**New remote postings**"]
-    for job in found[:_MAX_REPORTED]:
-        company = f" - {job['company']}" if job.get("company") else ""
-        lines.append(f"{job['title']}{company}\n{job['url']}")
-    if len(found) > _MAX_REPORTED:
-        lines.append(f"...and {len(found) - _MAX_REPORTED} more.")
-    if notes:
-        lines.append(f"**Worth a look**\n{notes}")
-    lines.append("Say the word on any of these and I will draft the application for you to send.")
-    return "\n\n".join(lines)
+    picks = _picks(found, notes) if notes else []
+    if not picks:
+        lines = ["**New remote postings**"]
+        for job in found[:_MAX_REPORTED]:
+            lines.append(f"{_name(job)}\n{job['url']}")
+        if len(found) > _MAX_REPORTED:
+            lines.append(f"...and {len(found) - _MAX_REPORTED} more.")
+        return "\n\n".join(lines + [_OFFER])
+    lines = ["**New remote postings worth a look**"]
+    for job, note in picks[:_MAX_REPORTED]:
+        lines.append(f"{_name(job)}\n{job['url']}\n{note}".rstrip())
+    others = len(found) - len(picks)
+    if others:
+        lines.append(f"{others} other new posting{'s' if others != 1 else ''} did not fit. "
+                     "Ask what else I found to see them.")
+    return "\n\n".join(lines + [_OFFER])
