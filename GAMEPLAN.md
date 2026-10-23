@@ -13,14 +13,18 @@ session, including smaller models. Follow it literally. Do not improvise beyond 
   user. Do not try alternative approaches that are not written here.
 - Read CLAUDE.md before starting any session. It contains the platform gotchas
   that caused a week of debugging.
+- A step marked PARKED waits on the user; skip it and take the next. STATE.md's
+  Next action can override this order: from 2026-10-22, no new features before an
+  interview, only fixes to what breaks in use.
 
 ## Hard rules for the executing model
 
 1. Never commit without running `python -m py_compile <changed files>` first.
-2. Deploy sequence, always, in this order (Claude Code runs these directly via Bash):
-   - `git push` from local
-   - `ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "sudo -u igor git -C /opt/igor pull && sudo systemctl restart igor && sleep 6 && sudo systemctl is-active igor"`
-   - Expected output ends with `active`. If not, check `sudo journalctl -u igor -n 30 --no-pager`.
+2. Deploy through the gate only, as CLAUDE.md's Deployment Workflow describes:
+   `git push`, then run `/usr/local/lib/igor-deploy/deploy.sh` over SSH (exact
+   command in CLAUDE.local.md). Expected last line: `=== deploy OK: <sha> healthy ===`.
+   Never pull and restart by hand: that path has no tests, no health check and no
+   rollback.
 3. Never edit files on the server except with `sudo -u igor`, and only memory/*.md
    files. Code changes go through git only.
 4. Never set a max_tokens value where prompt + max_tokens can exceed 8000 for any
@@ -732,7 +736,8 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase V - The spec's unbuilt vision
 
-- [ ] **V.1 Improvement loop with sign-off buckets.** NOTE 2026-08-08: A.2 gives
+- [ ] **V.1 Improvement loop with sign-off buckets.** PARKED by the user 2026-10-19
+  (the skills half; the preference half is built). NOTE 2026-08-08: A.2 gives
   this the signal it never had. Without captured corrections, improvement has no
   definition and the critic was left guessing, which is how it produced junk.
   Build A.2 first. Was R4.4. Now the highest
@@ -754,8 +759,10 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   18 days (journal, 2026-10-01 to 10-19); revisit when clones or pitch drafting add
   multi-step work.
 
-- [ ] **V.2 Memory restructure.** Was R4.3. Raw sources plus a curated index rather
-  than flat files that drift. M.3 decides the rule this implements. NOTE for a
+- [ ] **V.2 Memory restructure.** Was R4.3. PARTLY OVERTAKEN 2026-10-22: notes are
+  edited one dated entry at a time, as Hermes does (966eda4), and older conversation
+  is kept as a running summary. The curated index is not built. Raw sources plus a
+  curated index rather than flat files that drift. M.3 decides the rule this implements. NOTE for a
   possible future app: keep a user dimension possible in the schema even though
   IGOR is single-user today. Costs nothing now, and memory plus context is the one
   layer that would be expensive to retrofit for multi-tenancy.
@@ -773,15 +780,20 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 - [ ] **V.3 Dev and Comms as real specialists.** IGOR_SPEC.md describes five
   specialists; there are four routed destinations. Both are currently absorbed into
   React. Only worth doing if their prompts would genuinely differ from React's.
+  Status 2026-10-23: no evidence yet that they would; ARCHITECTURE.md lists it under
+  Deliberately not built.
 
 ## Phase I - Interface
 
-- [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** Spec Phase 2. Decided
+- [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** PARKED until the user
+  starts IGOR's own app; interface features wait for it (2026-10-19). Spec Phase 2. Decided
   with the user 2026-10-16: a desktop dashboard application, coming soon, that takes
   over from Discord as the main interface - more control and quality-of-life
   improvements. Its first data source is A.4's work folder and status. Separate
   design when it starts. projects.md tracks it as "I.G.O.R. App (Front-End)".
-- [ ] **I.2 Voice** via Groq: Whisper for speech to text, Orpheus for text to
+- [ ] **I.2 Voice** HALF DONE: voice notes the user sends are transcribed by Whisper
+  (`agents/inbound.py`). Spoken replies are PARKED until IGOR's own app; the user
+  ruled out TTS in Discord (2026-10-19). Via Groq: Whisper for speech to text, Orpheus for text to
   speech, both already on the key. Not qwen3-tts, which Groq does not serve, and not
   local, which the host cannot fit. Measure both rate limits first. After I.1.
 
@@ -888,7 +900,7 @@ equally useful whenever added.
 
   Original step text follows.
 
-- [ ] **A.2 (original spec) Correction logging.** START HERE. Every correction the user types is a
+- **A.2 original spec, kept for reference** (built: see the A.2 entry above). Every correction the user types is a
   labelled example of what IGOR got wrong, and all of it is currently discarded
   when the context window rolls.
 
@@ -931,7 +943,12 @@ equally useful whenever added.
   confirm it is flagged as a candidate. Confirm zero model calls are made during
   capture. Commit: `Log corrections as evidence, no model calls, no injection (A.2)`
 
-- [ ] **A.1 Goal persistence layer.** Build with A.3, not before it. Goals stored
+- [x] **A.1 Goal persistence layer.** DONE 2026-10-16 as part of A.4 (d6c97d2):
+  `memory/goals.md` with id, kind, status, created, last_reviewed and next_action,
+  retired goals in `goals_archive.md`, React's `goal` tool. Deviation: the overnight
+  loop is the consumer this step lacked, so goals are not injected into React's
+  prompt and there is no token tax, and no cap of five. Original step text follows.
+  Build with A.3, not before it. Goals stored
   and injected but never acted upon are a token tax buying very little.
 
   Goals live outside the context window and are actively retrieved. `memory/goals.md`
@@ -953,7 +970,8 @@ equally useful whenever added.
   under 8000 tokens with goals injected. Commit:
   `Goals live outside the context window and are actively retrieved (A.1)`
 
-- [ ] **A.3 Subgoal decomposition with local replanning.** Decompose into subgoals
+- [ ] **A.3 Subgoal decomposition with local replanning.** Not started. Its two
+  prerequisites now exist (S.1's gate, A.1's goals). Decompose into subgoals
   and confine replanning to the active node, so a local failure does not cascade
   into global replanning. Close the loop per subgoal: plan, execute, verify,
   correct.
@@ -1158,7 +1176,8 @@ merits regardless of either.
   Consequence: the machinery built for this is now dead weight and should be
   removed. See S.3.
 
-- [ ] **S.3 Remove the self-modification machinery.** PARTLY DONE 2026-10-21, and
+- [x] **S.3 Remove the self-modification machinery.** CLOSED 2026-10-21 (362529f):
+  the dead parts are gone and the rest was overtaken, as follows. PARTLY DONE 2026-10-21, and
   partly overtaken: self-coding was later ratified in the spec, and `write_file` and
   `patch_file` now carry checkpoints, so they stay. Done: `watchdog.py`,
   `igor-watchdog.service` and `start.sh` deleted (the watchdog could never restart
@@ -1338,3 +1357,8 @@ personal details in config or memory, never in code.
   decline is 3/3 on both old and new ARCHITECTURE.md, so it predates this change
   and traces to 32e7dcc's decline path. Open: misfire_grace_time on the existing
   jobs (awaiting user), tests/test_self_grounding.py broken since 13d10ab.
+- 2026-10-23: Trued up after the Hermes parity run. A.1 ticked (built inside A.4,
+  d6c97d2), S.3 closed (362529f), A.2's original-spec box made a reference note.
+  V.1, I.1 and the speech half of I.2 marked PARKED by the user; V.2 marked partly
+  overtaken by entry-by-entry memory (966eda4). Hard rule 2 pointed at the deploy
+  gate: it still described the manual pull-and-restart CLAUDE.md forbids.
