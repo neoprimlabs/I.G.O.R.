@@ -291,6 +291,19 @@ _SCHEDULING = re.compile(
     r"|^(pause|resume|cancel) (that|it)( one)?\b")
 _NOT_SCHEDULING = re.compile(r"\b(digest|watchlist|watch list|schedule_config|price watch|stock watch|job watch)\b")
 
+# Saving gets the scheduling route's treatment. "Remember that I want to record a demo
+# video for IGOR this week" went to tool-less Direct on 2026-10-22, which said "Got it"
+# and saved nothing; on 10-23 it reached React, which answered from the day before's
+# exchange in one call and saved nothing again. tool_choice holds the memory tool. An
+# instruction to keep something, never a question about the past or "remember to",
+# which reads as a reminder and is left to the router.
+_REMEMBERING = re.compile(
+    r"^\s*(please\s+)?(remember|note|don'?t forget|keep in mind|make a note)\b"
+    r"(?!\s+(to|when|what|how|if|who|where|why|whether)\b)", re.IGNORECASE)
+# A short correction straight after a save: "actually make that Monday".
+_CORRECTING = re.compile(r"^\s*(actually,?|no,?|wait,?)?\s*(make|change|move|update) (that|it)\b",
+                         re.IGNORECASE)
+
 
 # A typed proposal decision is carried out in code. Live 2026-10-17 "Reject proposal
 # P1 Reject proposal P2" went to React, which used the wrong-case id, then a `list`
@@ -390,6 +403,7 @@ class Orchestrator:
         self._notify = notify
         self._notify_file = notify_file or notify
         self._monitor_declined = False
+        self._last_route = ""
         from context_store import load_timed
         self._context: list[dict] = load_timed(_CONTEXT_KEEP)
 
@@ -419,6 +433,7 @@ class Orchestrator:
         # A "file:" request is always document work regardless of what it asks
         # for, so it skips the router and goes straight to the tool agent.
         destination = "React" if file_mode or prefer_tools else await self._classify(task)
+        self._last_route = destination
 
         # Before _update_context runs, so the last assistant entry is still the reply
         # being corrected rather than the one about to be written.
@@ -497,6 +512,10 @@ class Orchestrator:
             return "Heartbeat"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
             return "Schedule"
+        if _REMEMBERING.search(content) and not lower.endswith("?"):
+            return "Remember"
+        if self._last_route == "Remember" and _CORRECTING.search(lower) and len(lower) < 120:
+            return "Remember"
 
         # No fast path for self-referential questions. A regex over nouns cannot tell
         # "tell me about your shell tool" from "use your shell tool" - same tokens,
@@ -628,6 +647,13 @@ class Orchestrator:
             react.set_notify(self._notify)
             return await react.handle(content, self._window(), max_tokens=2048,
                                       force_tool="scheduled_message")
+
+        if destination == "Remember":
+            # The memory tool is required on the first call, as above: see _REMEMBERING.
+            logger.info("Remember: memory_write required on the first call")
+            react.set_notify(self._notify)
+            return await react.handle(content, self._window(), max_tokens=2048,
+                                      force_tool="memory_write")
 
         if destination == "Direct":
             from agents import direct

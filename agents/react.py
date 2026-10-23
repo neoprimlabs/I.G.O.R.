@@ -372,7 +372,7 @@ When to use tools:
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - watch_history: what the watchers saw over time - when something was last in stock, how a price moved, which jobs matched. price_watch_status.md is only the latest check
 - search_history: anything said in an earlier conversation - "what did we decide about X", "when did I mention Y". Your context holds only the last few turns, so search before saying you do not know
-- memory_write: when the user asks you to remember, add, store, or update something
+- memory_write: when the user asks you to remember, add, store, or update something. Say in your reply exactly what you saved and to which file. When the user corrects something just saved, patch that entry, copying its text from your last reply - never add a second one
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
 - goal: when the user states a standing aim for IGOR to work on over time, or asks to see, pause, resume or retire one. add records it; list shows the ids
 - proposal: when the user asks about, approves or rejects a fix IGOR proposed for its own mistakes. list first, show the user the problem, evidence and change, and approve or reject only on their explicit word for that id
@@ -1516,7 +1516,7 @@ async def handle(
     use_model = model or config.MODELS["react"]
 
     import clock
-    current_dt = clock.time_line()
+    current_dt = f"{clock.time_line()}\n{clock.week_line()}"
 
     if system_override is not None:
         system_text = f"Current date and time: {current_dt}\n\n{system_override}"

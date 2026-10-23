@@ -121,7 +121,7 @@ async def handle(
     """
     import clock
 
-    current_dt = clock.time_line()
+    current_dt = f"{clock.time_line()}\n{clock.week_line()}"
     system_text = f"Current date and time: {current_dt}\n\n{_get_system_prompt()}"
 
     profile = _user_profile()
