@@ -77,6 +77,73 @@ async def test_routing() -> None:
         await o._classify(message)
         _check(f"left to the router: {message!r}", bool(routed))
 
+    # 2026-10-22 and 10-23: "Remember that..." drew "Got it" twice and saved nothing.
+    for message in TO_MEMORY:
+        routed.clear()
+        got = await o._classify(message)
+        _check(f"to the memory route in code: {message!r}", got == "Remember" and not routed,
+               f"{got}, router={bool(routed)}")
+    for message in NOT_TO_MEMORY:
+        routed.clear()
+        got = await o._classify(message)
+        _check(f"not the memory route: {message!r}", got != "Remember", got)
+    o._last_route = "Remember"
+    _check("a short correction right after a save stays on the memory route",
+           await o._classify("Actually make that Monday.") == "Remember")
+    o._last_route = "Direct"
+    routed.clear()
+    await o._classify("Actually make that Monday.")
+    _check("but after anything else it is left to the router", bool(routed))
+
+
+TO_MEMORY = [
+    "Remember that I want to try IGOR's MCP server from Claude Code this weekend",
+    "please remember my day off is Thursday",
+    "Note that the AG01 dock arrived",
+    "don't forget that I prefer short replies",
+    "Keep in mind that Helfen may call next week",
+]
+NOT_TO_MEMORY = [
+    "Do you remember what I said about the demo video?",
+    "remember when we fixed the router",
+    "Remember to call mom",
+    "remember what I told you?",
+    "Remember that thing from yesterday?",
+]
+
+
+async def test_remember_requires_the_memory_tool() -> None:
+    import context_store
+    import orchestrator
+    from agents import react
+    tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+    real = (config.MEMORY_DIR, context_store._DB_PATH, react.handle, config.AUTHORIZED_USER_ID)
+    seen = {}
+
+    async def fake_handle(message, context, **kw):
+        seen.update(kw, message=message)
+        return "Saved to tasks.md: try IGOR's MCP server from Claude Code this weekend."
+
+    async def notify(_):
+        pass
+
+    try:
+        config.MEMORY_DIR = Path(tmp.name)
+        context_store._DB_PATH = config.MEMORY_DIR / "context.db"
+        config.AUTHORIZED_USER_ID = 42
+        react.handle = fake_handle
+        o = orchestrator.Orchestrator(notify)
+        reply, _ = await o.process(42, "Remember that I want to try IGOR's MCP server this weekend")
+        _check("a save request reaches React with the memory tool required",
+               seen.get("force_tool") == "memory_write" and reply.startswith("Saved"), str(seen))
+        seen.clear()
+        await o.process(42, "Actually make that Monday.")
+        _check("and so does the correction that follows it",
+               seen.get("force_tool") == "memory_write", str(seen))
+    finally:
+        config.MEMORY_DIR, context_store._DB_PATH, react.handle, config.AUTHORIZED_USER_ID = real
+        tmp.cleanup()
+
 
 async def test_continuity() -> None:
     from agents import scheduled
@@ -226,6 +293,7 @@ if __name__ == "__main__":
     asyncio.run(test_write_passes_the_series_on())
     asyncio.run(test_schedule_cannot_be_claimed_without_the_tool())
     asyncio.run(test_monitor_gets_no_history())
+    asyncio.run(test_remember_requires_the_memory_tool())
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
         sys.exit(1)

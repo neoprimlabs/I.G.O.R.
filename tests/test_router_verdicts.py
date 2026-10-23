@@ -59,7 +59,7 @@ CASES = [
     ("Maybe we could use your overnight loop to research grants for me", "SelfDescribe"),
     # 2026-10-22: "Remember that..." went to Direct, which has no tools, said "Got it"
     # and saved nothing. Its follow-up went to ConfigEdit. Saving belongs to React.
-    ("Remember that I want to record a demo video for IGOR this week", "React"),
+    ("Remember that I want to record a demo video for IGOR this week", "Remember"),
     ("Actually change that to next week.", "React"),
     ("Forget what I told you about preferring tables", "React"),
     ("Do you remember what I said about the demo video?", "Direct"),

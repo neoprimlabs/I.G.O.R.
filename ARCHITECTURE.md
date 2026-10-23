@@ -30,7 +30,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Routing.** Six fast paths in code, then one router call
+**Routing.** Nine fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
@@ -72,11 +72,6 @@ search, usage, this summary) to the user's other agents, over SSH on stdio. No p
 no writes, no private files.
 
 <!-- END SELF SUMMARY -->
-
-## History moved out of the summary
-
-- The startup model check exists because Groq removed Llama on 2026-08-17.
-- Indeed is not a job source: its APIs are closed or NDA-gated.
 
 ---
 
@@ -135,13 +130,15 @@ A Discord DM travels this path every time:
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
    regex       _proposal_decisions      -> ProposalDecision (code, no model)
+   parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
+   regex       _REMEMBERING             -> Remember (React, memory_write required)
    ```
 
    `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
-   it 11:30"), never digest or watch changes. Its React call requires the
-   `scheduled_message` tool (`tool_choice`) until it has run once: live, React
-   once confirmed a schedule it never made.
+   it 11:30"), never digest or watch changes; `_REMEMBERING` matches "remember
+   that" and a correction right after one. Each requires its tool (`tool_choice`)
+   on the first call: React once claimed a schedule and a save it never made.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
@@ -369,7 +366,8 @@ conversation; the daily check-in waits until 2h after the user last spoke.
 plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
-The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
+The job watch reads RemoteOK, WWR, Greenhouse and Remotive (Indeed's APIs are
+closed); code filters, 20b
 ranks, and only its picks are sent. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
@@ -657,9 +655,8 @@ them never takes IGOR down:
 | tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-The last gate is the point: a process that starts and never reaches Discord is not
-a working assistant. The probe is anchored to a timestamp taken before the restart,
-or the previous run's `online` line would satisfy it.
+A process that starts and never reaches Discord is not working. The probe is
+anchored to a timestamp taken before the restart, or the last run's line would pass.
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
 heartbeat check above. Self-written code sits unloaded until a deploy (see the
