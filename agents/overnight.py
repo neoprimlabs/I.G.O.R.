@@ -38,13 +38,16 @@ _TRIGGER_SESSIONS = 3
 # Live 2026-10-18 a 797-word first paper was rejected at 6111 characters because its
 # 14 links took about 900 of them. 7500 fits 800 words with links; a revision reads
 # less of the new findings to pay for the longer paper.
+# Asked for under 800 words, the 120b writer delivered 904 to 993 on five drafts in a
+# row (2026-10-22 to 10-25) and the paper went two nights without a revision. It is
+# asked for 650 so its usual overshoot lands under the cap, which does not move.
 _PAPER = "paper.md"
 _PAPER_MAX_CHARS = 7500
 _WRITE_INPUT_CHARS = 6000
 _REVISE_INPUT_CHARS = 4500
 _WRITE_RESERVE = _WRITE_BUDGET + (_REVISE_INPUT_CHARS + _PAPER_MAX_CHARS + 2500) // 3 + 500
 
-_PAPER_FORMAT = """Format, in markdown, under 800 words:
+_PAPER_FORMAT = """Format, in markdown, under 650 words:
 - A title as a level-one heading
 - A short summary paragraph
 - Sections as level-two headings, each making its points from the sources
@@ -72,7 +75,7 @@ You receive a goal, the current version of the paper, and new findings gathered 
 How to revise:
 - Keep what the current paper says that still holds, with its source links exactly as written
 - Add what the new findings support, and reorganise so the strongest material comes first
-- Shorten or drop what is weaker or repeated, so the paper stays under 800 words
+- Shorten or drop what is weaker or repeated, so the paper stays under 650 words
 - If the goal asks for a shortlist, keep it as one ranked list
 
 Use only what the current paper and the new findings state.
@@ -320,7 +323,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:
                 ok, why = False, (f"longer than {_PAPER_MAX_CHARS} characters "
-                                  f"(about {len(paper.split())} words)")
+                                  f"(about {len(paper.split())} words); drop the weakest "
+                                  f"section whole rather than trimming sentences")
             if ok or token_room - (work.overnight_tokens() - start_tokens) < _WRITE_RESERVE:
                 break
         if paper:
