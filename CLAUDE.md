@@ -106,7 +106,10 @@ ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "
    - `--dry-run` runs both gates and stops before restarting. `--test-alert` checks
      the webhook path without touching IGOR.
 6. Ask the user for a Discord test after changes to routing, react.py, or the bot.
-   The gate proves IGOR connected, not that it answers well.
+   The gate proves IGOR connected, not that it answers well. To check a model's
+   behaviour yourself, run `scripts/e2e_isolated.py` on the server as igor: it uses a
+   throwaway copy of the code and memory. Never point a live run at the real tree.
+   Each run spends the user's daily 120b budget - one or two, not four.
 7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
    `/opt/igor` so `write_file` cannot reach it. Beside it, `prestart.sh` runs before
    every start of the service and restores the tree the last deploy approved, so a

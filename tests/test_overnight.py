@@ -212,6 +212,56 @@ def test_overlong_revision_stays_draft() -> None:
     tmp.cleanup()
 
 
+def test_trim_to_fit() -> None:
+    """Asked for 800 words, then 650, the writer delivered 904 to 1220 on seven drafts
+    running (2026-10-22 to 10-26). Code cuts whole sections instead."""
+    from agents import overnight
+    paper = ("# Paper\n\nSummary.\n\n"
+             "## Strong\nClaim ([a](https://e.example/1/0)) ([b](https://e.example/1/1))\n\n"
+             "## Thin early\n" + "word " * 300 + "([c](https://e.example/1/2))\n\n"
+             "## Unsourced late\n" + "word " * 300 + "\n\n"
+             "## Unsourced later\n" + "word " * 300 + "\n\n"
+             "## Ranked shortlist\n1. A\n\n## What I am unsure about\nMuch.\n")
+    cut, dropped = overnight.trim_to_fit(paper, len(paper) - 1000)
+    _check("the section citing nothing, latest first, goes first",
+           cut is not None and dropped == ["Unsourced later"] and "## Unsourced late\n" in cut, str(dropped))
+    _check("the shortlist and the unsure section always stay",
+           "## Ranked shortlist" in cut and "## What I am unsure about" in cut)
+    cut, dropped = overnight.trim_to_fit(paper, len(paper) - 2000)
+    _check("more go when needed, fewest sources first",
+           dropped == ["Unsourced late", "Unsourced later"], str(dropped))
+    cut, dropped = overnight.trim_to_fit(paper, 300)
+    _check("never more than half of what can go: past that it gives up",
+           cut is None and dropped == [], str(dropped))
+    _check("a paper that fits is left whole", overnight.trim_to_fit(paper, 10000) == (paper, []))
+
+
+def test_overlong_revision_is_cut_to_fit() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    s = _Stubs(findings_per_step=5)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    real = s.complete
+
+    async def long_write(system, user, max_tokens, cap=None):
+        if system.startswith(("You plan one step", "You turn raw search results")):
+            return await real(system, user, max_tokens, cap)
+        return ("# Paper\n\nSummary.\n\n## Strong\nClaim ([a](https://e.example/1/0)) "
+                "([b](https://e.example/1/1)) ([c](https://e.example/1/2))\n\n"
+                "## Padding one\n" + "word " * 900 + "\n\n## Padding two\n" + "word " * 900 + "\n\n"
+                "## What I am unsure about\nMuch.\n")
+
+    _run(overnight.tick(datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ),
+                        search=s.search, complete=long_write))
+    paper = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("an over-long revision with weak sections is cut and accepted",
+           "## Padding one" in paper and "## Padding two" not in paper and "## Strong" in paper, paper[:120])
+    _check("and the log says what was cut", "cut to fit: Padding two" in work._load()[-1]["summary"],
+           work._load()[-1]["summary"])
+    tmp.cleanup()
+
+
 def test_revision_must_build_on_the_paper() -> None:
     """Live 2026-10-19 a revision kept none of the current paper's 9 sources and put
     three new ideas in place of its five."""

@@ -321,7 +321,7 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     _check("its echoed title is not repeated", text.count("QA/DevOps Engineer - Discord") == 1, text)
     # 2026-10-24: the note echoed the bare title, without the company.
     text = jobs.format_for_discord(three, "2. QA/DevOps Engineer - fits your deploy work.")
-    _check("nor is a bare echoed title", text.count("QA/DevOps Engineer") == 1 and "fits your deploy" in text,
+    _check("nor is a bare echoed title", text.count("QA/DevOps Engineer") == 1 and "Fits your deploy" in text,
            text)
     _check("the ranking writes to the user as you",
            '"you" and "your", never "he"' in jobs._RANK_SYSTEM)

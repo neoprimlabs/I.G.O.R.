@@ -110,6 +110,39 @@ def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, 
     return True, ""
 
 
+_UNSURE_HEADING = "what i am unsure about"
+
+
+def trim_to_fit(paper: str, cap: int) -> tuple[Optional[str], list[str]]:
+    """The paper cut to `cap` by dropping whole sections, and the headings dropped.
+
+    Asked for 800 words and then for 650, the writer still delivered 904 to 1220 on
+    seven drafts running, and the paper went three nights without a revision. Code
+    cuts instead: the sections citing the fewest sources go first, the latest of
+    equals first, never the unsure section or a ranked shortlist, never more than
+    half of what can go. (None, []) when that is not enough.
+    """
+    head, *parts = re.split(r"(?m)^(?=## )", paper)
+    sections = [(p.splitlines()[0][3:].strip(), p) for p in parts]
+
+    def keep(heading: str) -> bool:
+        h = heading.lower()
+        return h.startswith(_UNSURE_HEADING) or "shortlist" in h or "ranked" in h
+
+    droppable = [i for i, (h, _) in enumerate(sections) if not keep(h)]
+    order = sorted(droppable, key=lambda i: (len(_LINK_RE.findall(sections[i][1])), -i))
+    dropped: set = set()
+    text = paper
+    for i in order:
+        if len(text) <= cap or len(dropped) >= len(droppable) // 2:
+            break
+        dropped.add(i)
+        text = head + "".join(p for j, (_, p) in enumerate(sections) if j not in dropped)
+    if len(text) > cap:
+        return None, []
+    return text, [sections[i][0] for i in sorted(dropped)]
+
+
 def revision_keeps(current: str, paper: str) -> tuple[bool, str]:
     """A revision must build on the current paper. Live 2026-10-19 a "revision" kept
     none of the current paper's 9 sources and swapped its five ideas for three new
@@ -310,7 +343,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             write_user = f"Goal: {goal['statement']}\n\nFindings:\n{body}"
         # A paper that fails these checks gets one retry told why, as react.py does for a
         # rejected tool call. Live 2026-10-18 a first paper ran to 1563 words.
-        paper, ok, why = "", False, ""
+        paper, ok, why, cut = "", False, "", []
         for attempt in range(2):
             retry = f"\n\nA first attempt was rejected: {why}. Write it again with that fixed." if attempt else ""
             candidate = await complete(system, write_user + retry, _WRITE_BUDGET, cap=_WRITE_BUDGET)
@@ -322,6 +355,11 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             if ok and current:
                 ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:
+                trimmed, cut = trim_to_fit(paper, _PAPER_MAX_CHARS)
+                if trimmed and (not current or revision_keeps(current, trimmed)[0]):
+                    paper = trimmed
+            if ok and len(paper) > _PAPER_MAX_CHARS:
+                cut = []
                 ok, why = False, (f"longer than {_PAPER_MAX_CHARS} characters "
                                   f"(about {len(paper.split())} words); drop the weakest "
                                   f"section whole rather than trimming sentences")
@@ -344,6 +382,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                     paper_path.replace(old)
                     state["files"].append(str(old.relative_to(config.MEMORY_DIR)))
                     note = f"paper revised: {_heading_change(current, paper)}"
+                if cut:
+                    note += f" (cut to fit: {', '.join(cut)})"
                 paper_path.write_text(clean(paper) + "\n", encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)

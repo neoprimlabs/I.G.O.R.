@@ -563,6 +563,7 @@ def _picks(found: list[dict], notes: str) -> list[tuple[dict, str]]:
             if note.startswith(echo):
                 note = note[len(echo):].lstrip(" -:,")
                 break
+        note = note[:1].upper() + note[1:]
         out.append((found[i], note))
     return out
 

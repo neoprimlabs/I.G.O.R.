@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import re
 import shlex
@@ -1558,7 +1559,71 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
     return f"Unknown tool: {name}"
 
 
+# What the turn really changed, in code, under the reply: Hermes' file-mutation verifier
+# warns when an edit failed "despite any wording above", and its CLI turn summary lists
+# what landed. Discord is IGOR's only screen, so it gets both. Live 2026-10-22 and
+# 10-23, "Got it" stood in for saves that never happened.
+_SAVING_TOOLS = frozenset({"memory_write", "task_update", "write_file", "patch_file",
+                           "scheduled_message", "goal"})
+_RECEIPTS: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_receipts", default=None)
+_MAX_RECEIPT_LINES = 4
+
+
+def _record_receipt(name: str, args: dict, result: str) -> None:
+    receipts = _RECEIPTS.get()
+    if receipts is None or name not in _SAVING_TOOLS or (args or {}).get("action") == "list":
+        return
+    text = (result or "").strip()
+    if not text or text.startswith("[you already made"):
+        return
+    target = (args or {}).get("file") or (args or {}).get("path") or name
+    failed = text.startswith(("[", "Not "))
+    receipts.append((target, not failed, text.splitlines()[0].split(". Restart")[0][:160]))
+
+
+def _receipt_footer(receipts: list) -> str:
+    """One subtext line per change, then any save that failed and was not redone."""
+    last = {}
+    for target, ok, line in receipts:
+        last[target] = (ok, line)
+    saved = [line for _, ok, line in receipts if ok]
+    failed = [(t, line) for t, (ok, line) in last.items() if not ok]
+    lines = [f"-# {line}" for line in saved[:_MAX_RECEIPT_LINES]]
+    if len(saved) > _MAX_RECEIPT_LINES:
+        lines.append(f"-# ...and {len(saved) - _MAX_RECEIPT_LINES} more changes")
+    if failed:
+        lines.append(f"-# Not saved, whatever the reply above says: {len(failed)} change(s) failed")
+        lines.extend(f"-# {t}: {line}" for t, line in failed[:_MAX_RECEIPT_LINES])
+    return "\n".join(lines)
+
+
 async def handle(
+    message: str,
+    context: list[dict],
+    max_tokens: int = 1024,
+    max_iterations: int = _MAX_ITERATIONS,
+    model: str | None = None,
+    allowed_tools: list[str] | None = None,
+    system_override: str | None = None,
+    _depth: int = 0,
+    label: str = "React",
+    force_tool: str | None = None,
+) -> str:
+    kwargs = dict(max_tokens=max_tokens, max_iterations=max_iterations, model=model,
+                  allowed_tools=allowed_tools, system_override=system_override,
+                  _depth=_depth, label=label, force_tool=force_tool)
+    if _depth or _RECEIPTS.get() is not None:
+        return await _handle(message, context, **kwargs)
+    token = _RECEIPTS.set([])
+    try:
+        reply = await _handle(message, context, **kwargs)
+        footer = _receipt_footer(_RECEIPTS.get())
+        return f"{reply}\n\n{footer}" if footer and reply else (reply or footer)
+    finally:
+        _RECEIPTS.reset(token)
+
+
+async def _handle(
     message: str,
     context: list[dict],
     max_tokens: int = 1024,
@@ -1681,6 +1746,7 @@ async def handle(
                     logger.warning("ReAct quarantine: refused %s (web_read=%s, private_read=%s)",
                                    tc.function.name, web_read or batch_reads_web,
                                    private_read or batch_reads_private)
+                    _record_receipt(tc.function.name, args, blocked)
                     return blocked
                 if tc.function.name == "delegate_task":
                     # Handled here rather than in _execute_tool because it needs two
@@ -1700,6 +1766,7 @@ async def handle(
                     result = await _execute_tool(
                         tc.function.name, args,
                         allow_private=not (web_read or batch_reads_web))
+                    _record_receipt(tc.function.name, args, result)
                 if len(result) > _TOOL_RESULT_CAP:
                     result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
                 return result

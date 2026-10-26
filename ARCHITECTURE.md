@@ -240,14 +240,11 @@ may not say IGOR lacks a capability or promise a future action.
 
 ### React
 
-System prompt rebuilt each call: `clock.time_line()` plus `prompt_react.md` if
-present, else the built-in default; messages are `[system] + context + user`. All
-20 tools attach unless `allowed_tools` narrows them.
-
-**The 20 tools:** `search`, `memory_read`, `search_memory`, `search_history`,
-`watch_history`, `search_files`, `delegate_task`, `task_update`,
-`python_run`, `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`,
-`fetch_url`, `send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`.
+System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
+`prompt_react.md` if present, else the built-in default; messages are `[system] +
+context + user`. All 20 tools (listed in the summary) attach unless `allowed_tools`
+narrows them. Each reply ends with subtext lines of what its saving tools really did,
+and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
 messages, both sides plus proactive sends): dated excerpts, newest first. A LIKE scan;
@@ -440,7 +437,8 @@ outbound call is the web search. Calls use `config.OVERNIGHT_MODEL`, the paper w
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
-sessions the goal's one living `paper.md` is written, then revised (under 7500 chars).
+sessions the goal's one living `paper.md` is written, then revised (under 7500 chars;
+code cuts a long draft's least-sourced sections, never the shortlist or unsure).
 Code checks for a "What I am unsure about" heading, 3 distinct links from the
 findings or paper, and that a revision keeps a third of the paper's links, retrying
 once told why; then the Evaluator (FAIL keeps a draft).
