@@ -451,6 +451,24 @@ def test_search_on_demand() -> None:
     _check("off-topic and excluded titles stay out", "Plaid" not in text and "Senior" not in text, text)
     _check("it says what was searched and what answered",
            "Searched 3 remote-only job boards live (2 of 3 feeds answered) for customer support" in text, text)
+    # Live 2026-10-26: "ai" matched Plaid, a $35/hr title read as no pay, and old
+    # postings came first.
+    more = [{"title": "Accounting Operations", "company": "Plaid", "location": "Remote",
+             "url": "https://x/plaid", "pay": "$110,000-$170,000/yr", "pay_floor": 52.88,
+             "posted": "2026-10-22", "source": "remoteok"},
+            {"title": "AI Trainer old", "company": "A", "location": "Remote", "url": "https://x/old",
+             "pay": "", "pay_floor": None, "posted": "2025-12-05", "source": "remoteok"},
+            {"title": "Generalist AI Trainer $35 hour", "company": "B", "location": "Remote",
+             "url": "https://x/35", "pay": "", "pay_floor": None, "posted": "2026-07-26", "source": "remoteok"},
+            {"title": "AI Trainer new", "company": "C", "location": "Remote", "url": "https://x/new",
+             "pay": "", "pay_floor": None, "posted": "2026-10-20", "source": "remoteok"}]
+    text = jobs.search("ai trainer", 18, fetchers=[("remoteok:ai", lambda: more)])
+    _check("a short query word matches whole words only", "Plaid" not in text, text)
+    _check("pay stated in a title counts as stated",
+           "https://x/35" in text.split("state no pay")[0] and "$35 hour" in text, text)
+    _check("among equal matches the newest comes first",
+           text.index("https://x/new") < text.index("https://x/old"), text)
+
     nothing = jobs.search("marine biologist", None, fetchers=sources)
     _check("finding nothing says so, and says other boards were not searched",
            "No current posting matched" in nothing and "other boards were not searched" in nothing, nothing)

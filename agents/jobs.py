@@ -380,11 +380,18 @@ def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str
             if not url or url in by_url or not _matches(job, wanted, excluded):
                 continue
             text = f"{job.get('title', '')} {job.get('company', '')}".lower()
-            hits = sum(1 for w in words if w in text)
+            # Whole words: live, "ai" matched Plaid's accounting role.
+            hits = sum(1 for w in words if re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text))
             if words and not hits:
                 continue
+            if not job.get("pay_floor") and "$" in job.get("title", ""):
+                # "Generalist AI Trainer $35 hour": the posting states it, in its title.
+                job = dict(job, pay=job["title"][job["title"].index("$"):].strip(),
+                           pay_floor=_pay_floor(job["title"][job["title"].index("$"):]))
             by_url.add(url)
             scored.append((hits, job))
+    # Best match first, newest first among equals: the tag feeds carry postings months old.
+    scored.sort(key=lambda pair: pair[1].get("posted", ""), reverse=True)
     scored.sort(key=lambda pair: -pair[0])
     matches = [job for _, job in scored]
 
