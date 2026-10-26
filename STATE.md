@@ -72,7 +72,18 @@ not a deploy (crash, heartbeat restart, reboot) ran whatever IGOR had written to
 with no gate. `prestart.sh` now runs before every start (systemd drop-in, root) and
 lets through only the tree deploy.sh approved; IGOR's file tools refuse `venv/` and
 `.git/`. Canary runs passed, including a `sitecustomize.py` set aside before it could
-run and a locked git that made it refuse to start. Next: the walkthrough with the user, a demo
+run and a locked git that made it refuse to start. 2026-10-25/26, after IGOR failed a
+live request for fully remote roles at $18/hr or more (search pages passed off as
+postings, an invented pay range, "nothing else exists"): React's `search` takes
+`source: jobs`, the job watch's remote-only boards live, compact enough for React's
+budget; a turn that asks to find jobs has private reads refused in code so search
+stays open; forced final answers describe only what the turn did. The daily watch had
+been dropping remote-only postings open to the US ("USA, Canada"); fixed. Verified
+offline and by live runs up to the compact results; the code-enforced resume refusal
+is tested offline only, because those live runs spent roughly 100k of 120b's daily
+200k. Open: the overnight paper still runs long (936 and 1220 words after asking for
+650), so code should drop whole sections; the user's yes on excluding sydney,
+australia, melbourne, new zealand, uk and london. Next: the walkthrough with the user, a demo
 script run until it holds, and no new features before an interview. Later: a recorded
 demo, an MCP server, and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
