@@ -496,7 +496,64 @@ def test_search_on_demand() -> None:
            out.startswith(react._UNTRUSTED_OPEN) and "search" in react._WEB_TOOLS, out[:80])
 
 
+def test_a_job_search_keeps_search() -> None:
+    """Live 2026-10-26, told never to open the resume for a job search, React opened it,
+    which closed search for the turn, and answered with generic advice."""
+    import asyncio
+    from types import SimpleNamespace
+    from agents import jobs, react
+    _fresh()
+
+    for message, expected in (
+            ("Find me fully remote jobs that pay at least $18 an hour and fit my background.", True),
+            ("Any AI trainer openings?", True),
+            ("Grab that list of over 18/hr near Pittsburgh.", True),
+            ("What jobs did you find recently?", False),
+            ("find the history of the transistor", False)):
+        _check(f"job request {expected}: {message!r}", react._is_job_request(message) is expected)
+
+    calls, searched = [], {}
+
+    def tool_call(name, args):
+        call = SimpleNamespace(id=f"c{len(calls)}", type="function",
+                               function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+        return SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="tool_calls", message=SimpleNamespace(content=None, tool_calls=[call]))], usage=None)
+
+    async def create(model, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return tool_call("read_file", {"path": "memory/resume.md"})
+        if len(calls) == 2:
+            return tool_call("search", {"query": "ai trainer", "source": "jobs", "min_hourly_pay": 18})
+        return SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(
+            content="AI Trainer - iMerit, $50,000-$70,000/yr.", tool_calls=None))], usage=None)
+
+    def fake_search(query, pay):
+        searched.update(query=query, pay=pay)
+        return "- AI Trainer - iMerit | $50,000-$70,000/yr\n  https://x/imerit"
+
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    real_client, real_search, real_dirs = react._get_client, jobs.search, (config.BASE_DIR, config.MEMORY_DIR)
+    root = Path(tempfile.mkdtemp())
+    (root / "memory").mkdir()
+    (root / "memory" / "resume.md").write_text("Private work history\n", encoding="utf-8")
+    try:
+        config.BASE_DIR, config.MEMORY_DIR = root, root / "memory"
+        react._get_client, jobs.search = (lambda: fake), fake_search
+        asyncio.run(react.handle("Find me fully remote jobs that pay at least $18 an hour.", []))
+    finally:
+        react._get_client, jobs.search = real_client, real_search
+        config.BASE_DIR, config.MEMORY_DIR = real_dirs
+    tool_results = [m for m in calls[1]["messages"] if m.get("role") == "tool"]
+    _check("the resume is refused in a job search", bool(tool_results)
+           and "closed in a job search" in tool_results[-1]["content"], str(tool_results)[:200])
+    _check("and search still runs after it", searched == {"query": "ai trainer", "pay": 18.0}, str(searched))
+
+
 if __name__ == "__main__":
+    print("a job search keeps search")
+    test_a_job_search_keeps_search()
     print("searching on demand")
     test_search_on_demand()
     print("criteria")

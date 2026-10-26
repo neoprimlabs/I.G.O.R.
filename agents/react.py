@@ -678,8 +678,34 @@ def _reads_work_folder(name: str, args: dict) -> bool:
     return False
 
 
-def _quarantine_check(name: str, args: dict, web_read: bool, private_read: bool) -> Optional[str]:
+# A request to find jobs needs search, and a private read first closes search for the
+# turn. Live 2026-10-26, told in the prompt never to open the resume for a job search,
+# React opened it anyway, lost search, and answered with generic advice that named a
+# job board shut down years ago. Code keeps the private files shut in such a turn.
+_JOB_REQUEST = re.compile(
+    r"\b(find|search|look(?:ing)? for|get me|grab|pull|show me|any)\b.{0,60}?"
+    r"\b(jobs?|roles?|positions?|openings?|postings?|listings?)\b", re.IGNORECASE | re.DOTALL)
+_JOB_RECALL = re.compile(r"\b(found|did you find|you sent|you found)\b", re.IGNORECASE)
+
+_PRIVATE_IN_JOB_SEARCH = (
+    "[closed in a job search: a private file would shut search off for the rest of this "
+    "turn. Judge fit from user.md and the conversation, then search with source \"jobs\".]"
+)
+
+
+_HOURLY_PAY = re.compile(r"\d+\s*(/\s*hr|/\s*hour|an hour|per hour|hourly)", re.IGNORECASE)
+
+
+def _is_job_request(message: str) -> bool:
+    text = message or ""
+    return bool(_JOB_REQUEST.search(text) or _HOURLY_PAY.search(text)) and not _JOB_RECALL.search(text)
+
+
+def _quarantine_check(name: str, args: dict, web_read: bool, private_read: bool,
+                      job_turn: bool = False) -> Optional[str]:
     """Why this call is closed off, or None. One rule, both directions."""
+    if job_turn and _targets_private(name, args):
+        return _PRIVATE_IN_JOB_SEARCH
     if web_read and name in _QUARANTINED_AFTER_WEB and not _is_proposal_list(name, args):
         return _QUARANTINE_REFUSAL
     if web_read and _targets_private(name, args):
@@ -1570,6 +1596,7 @@ async def handle(
     forced_done = force_tool is None
     length_retried = False
     seen_calls: set = set()
+    job_turn = _depth == 0 and _is_job_request(message)
     web_read = False
     private_read = False
     for i in range(max_iterations):
@@ -1632,7 +1659,8 @@ async def handle(
                                   for tc in tool_calls) or any(
                 tc.function.name == "delegate_task" and _delegation_wants_web(_args_of(tc))
                 for tc in tool_calls)
-            batch_reads_private = any(
+            # In a job search a private read is refused, so it must not close search.
+            batch_reads_private = not job_turn and any(
                 _targets_private(tc.function.name, _args_of(tc)) for tc in tool_calls)
 
             async def _run_tool(tc):
@@ -1648,7 +1676,7 @@ async def handle(
                 # holding both a web call and a private read closes both.
                 blocked = _quarantine_check(
                     tc.function.name, args,
-                    web_read or batch_reads_web, private_read or batch_reads_private)
+                    web_read or batch_reads_web, private_read or batch_reads_private, job_turn)
                 if blocked:
                     logger.warning("ReAct quarantine: refused %s (web_read=%s, private_read=%s)",
                                    tc.function.name, web_read or batch_reads_web,

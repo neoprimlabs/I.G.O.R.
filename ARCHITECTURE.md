@@ -62,7 +62,8 @@ without the user's yes.
 **Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
 `memory_write` take names from a fixed list; `memory_write` edits one dated entry at a
 time (add, patch, remove), as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
-with no web content, and reading one closes the web for the rest of that turn.
+with no web content, and reading one closes the web for the rest of that turn. A job
+search keeps them shut.
 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
