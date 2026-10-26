@@ -444,7 +444,11 @@ def test_search_on_demand() -> None:
     text = jobs.search("remote customer support jobs", 18, fetchers=sources)
     _check("a posting whose stated pay meets the floor is listed, with its link and date",
            "Customer Support Specialist - Acme" in text and "https://x/support" in text
-           and "posted 2026-10-14" in text, text)
+           and "| 2026-10-14" in text, text)
+    _check("and a search's text stays small enough for React to read it",
+           len(jobs.search("customer support", None, fetchers=[("remoteok:support", lambda: [
+               dict(ok[0], url=f"https://remoteok.com/remote-jobs/remote-customer-support-specialist-{i}",
+                    title=f"Customer Support Specialist, Tier {i}") for i in range(30)])])) < 2200)
     _check("one whose stated pay is under it is not", "Cheap Co" not in text, text)
     _check("one that states no pay is listed apart, never priced",
            "state no pay" in text and "https://x/nopay" in text and "pay not listed" in text, text)

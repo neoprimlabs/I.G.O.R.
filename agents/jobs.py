@@ -341,7 +341,11 @@ def _live_fetchers():
     return sources
 
 
-_SEARCH_SHOWN = 12
+# React has about 1,200 tokens left once its prompt is in. Live 2026-10-26, two
+# searches at twelve postings each were trimmed away before it read them, and it
+# could name none of the jobs it had found.
+_SEARCH_SHOWN = 6
+_SEARCH_SHOWN_UNPRICED = 3
 _QUERY_NOISE = frozenset({"remote", "fully", "job", "jobs", "role", "roles", "work", "position",
                           "positions", "hour", "hourly", "per", "pay", "paying", "the", "and",
                           "for", "with", "that", "find", "any", "opening", "openings"})
@@ -404,10 +408,11 @@ def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str
     def line(job):
         pay = job.get("pay") or "pay not listed"
         if job.get("pay_floor") and "/yr" not in pay and "hour" not in pay.lower():
-            pay += f" (about ${job['pay_floor']:.0f}/hr at the bottom)"
-        where = job.get("location") or "remote"
-        posted = f" | posted {job['posted']}" if job.get("posted") else ""
-        return f"- {_name(job)} | {where} | {pay}{posted}\n  {job['url']}"
+            pay += f" (from ${job['pay_floor']:.0f}/hr)"
+        where = (job.get("location") or "").strip(" ,")
+        where = "" if where.lower() in ("", "remote", "worldwide", "anywhere") else f" | {where[:30]}"
+        posted = f" | {job['posted']}" if job.get("posted") else ""
+        return f"- {_name(job)[:70]} | {pay}{where}{posted}\n  {job['url']}"
 
     boards = len({name.split(":")[0] for name, _ in sources})
     head = (f"Searched {boards} remote-only job boards live ({answered} of {len(sources)} feeds "
@@ -425,9 +430,8 @@ def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str
             parts.append(f"...and {len(paid) - _SEARCH_SHOWN} more.")
     if unknown:
         parts.append(f"{len(unknown)} more match but state no pay, so they may or may not meet it:")
-        parts.extend(line(j) for j in unknown[:5])
-    parts.append("Each line is a posting with its own link. Pay is exactly what the posting "
-                 "states; none is inferred.")
+        parts.extend(line(j) for j in unknown[:_SEARCH_SHOWN_UNPRICED])
+    parts.append("Each line is a posting with its link and date. Pay is as the posting states it.")
     return "\n".join(parts)
 
 
