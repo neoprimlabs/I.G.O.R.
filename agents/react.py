@@ -93,11 +93,13 @@ def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
 _TOOLS = [
     {
         "name": "search",
-        "description": "Search the web for current information, documentation, news, or facts. Use specific, targeted queries. Call multiple times with different queries to cover different angles. Search runs on Exa: do NOT put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. For news, naming the source type ('AI research paper', 'AI product launch') gives more precise hits than the topic alone.",
+        "description": "Search the web for current information, documentation, news, or facts. Use specific, targeted queries. Call multiple times with different queries to cover different angles. Search runs on Exa: do NOT put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. For news, naming the source type ('AI research paper', 'AI product launch') gives more precise hits than the topic alone. To find jobs, set source to \"jobs\": it searches the remote-only job boards IGOR watches, live, and returns the postings themselves with their links and only the pay each one states. Web search is not for job listings.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The search query"},
+                "query": {"type": "string", "description": "The search query. For jobs: a few words of the kind of role, such as 'customer support' or 'ai trainer'"},
+                "source": {"type": "string", "enum": ["web", "jobs"], "description": "web (the default) or jobs"},
+                "min_hourly_pay": {"type": "number", "description": "jobs only: keep postings whose stated pay is at least this per hour. Yearly pay counts as 2080 hours"},
                 "recency_days": {
                     "type": "integer",
                     "description": "Only return results published within this many days. Set it whenever the question is time-sensitive: 30 for news, 365 for a field's state of the art. If the query contains a word like latest, recent, current or news and you leave this unset, a 180 day window is applied automatically - so set it explicitly when you need something wider or narrower. Never put a year or month in the query itself to express recency; that reaches for dates from your training data and gets stripped.",
@@ -362,6 +364,7 @@ Use tools when they improve your response. Do not use them for things you alread
 
 When to use tools:
 - search: current information, facts you are uncertain about, documentation, news, anything time-sensitive. For anything time-sensitive, set recency_days - without it you will get years-old articles that read as current
+- Finding jobs: search with source "jobs", one call per kind of role. Name a job only with its own posting link: a search results page or a board's listing page is not a job. State pay only as a posting states it, never a typical range. If you found fewer than asked, say what you searched and offer to search differently; never say nothing else exists, and never blame capacity or limits you have not hit
 - Every search result carries a Published date. Check it against the current date at the top of this prompt before calling anything recent, latest, or new. If the best sources you found are old, say how old rather than presenting them as current
 - memory_read: before responding to anything about the user's tasks, projects, or preferences - check what you know first
 - memory_read jobs_found.md: what the daily job watch found recently and what it said about fit. Read it for any question about jobs it has found, before asking the user anything
@@ -1450,6 +1453,17 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         logger.info("ReAct fetch_url: %s", url)
         body = await _fetch_url(url)
         return f"{_UNTRUSTED_OPEN}\nSource: {url}\n\n{body}\n{_UNTRUSTED_CLOSE}"
+
+    if name == "search" and inputs.get("source") == "jobs":
+        from agents import jobs
+        pay = inputs.get("min_hourly_pay")
+        pay = float(pay) if isinstance(pay, (int, float)) and pay > 0 else None
+        query = inputs.get("query", "")
+        logger.info("ReAct search: job boards for %r, min pay %s", query, pay)
+        # Blocking urllib on a single core: off the event loop, as the job watch does.
+        loop = asyncio.get_running_loop()
+        body = await loop.run_in_executor(None, jobs.search, query, pay)
+        return f"{_UNTRUSTED_OPEN}\n{body}\n{_UNTRUSTED_CLOSE}"
 
     if name == "search":
         from agents import research

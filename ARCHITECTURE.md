@@ -22,7 +22,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes and images the user sends are read.
 
-**React's 20 tools, the complete list:** `search`, `memory_read`, `search_memory`,
+**React's 20 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
 `send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`. No others.
@@ -368,7 +368,9 @@ only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a da
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive (Indeed's APIs are
 closed); code filters, 20b
-ranks, and only its picks are sent. The gig watch (`agents/gigs.py`)
+ranks, and only its picks are sent. On those remote-only boards a location naming
+the US counts as open to the user. React's `search` (`source: jobs`) reads them
+live, pay only as each posting states it. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
 failed screen holds the gigs.
@@ -587,19 +589,8 @@ this file and is read with `read_file`.
 
 ### Agent prompt override pattern
 
-Every agent uses `_DEFAULT_SYSTEM_PROMPT` with a file-based override:
-
-```python
-def _get_system_prompt() -> str:
-    path = config.MEMORY_DIR / "prompt_<agent>.md"
-    if path.exists():
-        content = path.read_text(encoding="utf-8").strip()
-        if content:
-            return content
-    return _DEFAULT_SYSTEM_PROMPT
-```
-
-Overrides take effect immediately, no restart. Reset by deleting or emptying the
+Every agent's `_get_system_prompt()` returns `memory/prompt_<agent>.md` when it
+exists and is not empty, else `_DEFAULT_SYSTEM_PROMPT`. Overrides take effect immediately, no restart. Reset by deleting or emptying the
 file. Prompt files are edited through Claude Code sessions only, never through
 Discord: ProdMem's legacy `%%WRITE%%` regex truncates at the first `%%END%%`.
 

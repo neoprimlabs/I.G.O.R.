@@ -76,6 +76,7 @@ _WWR_FEEDS = (
 _REMOTE_ONLY_SOURCES = ("remotive", "remoteok", "wwr")
 
 _REMOTE_WORDS = ("remote", "anywhere", "worldwide", "distributed", "work from home")
+_US_ELIGIBLE = re.compile(r"\b(usa?|u\.s\.?a?|united states|north america|americas)\b")
 
 
 def _get(url: str, accept: str = "application/json") -> str:
@@ -134,10 +135,13 @@ def _from_remotive(payload: str) -> list[dict]:
         return []
     out = []
     for job in data.get("jobs", []) if isinstance(data, dict) else []:
+        pay = (job.get("salary") or "").strip()
         out.append({"title": _repair((job.get("title") or "").strip()),
                     "company": _repair((job.get("company_name") or "").strip()),
                     "location": (job.get("candidate_required_location") or "").strip(),
                     "url": (job.get("url") or "").strip(),
+                    "pay": pay, "pay_floor": _pay_floor(pay),
+                    "posted": (job.get("publication_date") or "")[:10],
                     "source": "remotive"})
     return out
 
@@ -152,10 +156,14 @@ def _from_remoteok(payload: str) -> list[dict]:
         # The first element is a legal notice, not a posting.
         if not isinstance(job, dict) or not job.get("position"):
             continue
+        low, high = job.get("salary_min") or 0, job.get("salary_max") or 0
         out.append({"title": _repair((job.get("position") or "").strip()),
                     "company": _repair((job.get("company") or "").strip()),
                     "location": (job.get("location") or "").strip(),
                     "url": (job.get("url") or "").strip(),
+                    "pay": f"${low:,}-${max(low, high):,}/yr" if low else "",
+                    "pay_floor": round(low / 2080, 2) if low else None,
+                    "posted": (job.get("date") or "")[:10],
                     "source": "remoteok"})
     return out
 
@@ -172,8 +180,17 @@ def _from_greenhouse(payload: str, company: str) -> list[dict]:
                     "company": company,
                     "location": (location.get("name") or "").strip() if isinstance(location, dict) else "",
                     "url": (job.get("absolute_url") or "").strip(),
+                    "posted": (job.get("updated_at") or "")[:10],
                     "source": f"greenhouse:{company}"})
     return out
+
+
+def _rss_date(text: Optional[str]) -> str:
+    from email.utils import parsedate_to_datetime
+    try:
+        return parsedate_to_datetime(text).date().isoformat() if text else ""
+    except (TypeError, ValueError):
+        return ""
 
 
 def _from_wwr(payload: str) -> list[dict]:
@@ -189,8 +206,26 @@ def _from_wwr(payload: str) -> list[dict]:
                     "company": _repair(company.strip()) if title else "",
                     "location": "",
                     "url": (item.findtext("link") or "").strip(),
+                    "posted": _rss_date(item.findtext("pubDate")),
                     "source": "wwr"})
     return out
+
+
+def _pay_floor(text: str) -> Optional[float]:
+    """The lowest pay a posting states, per hour, or None. A year is 2080 hours.
+
+    Feeds write pay however their posters typed it: "$50-$75 /hour", "70K-80K",
+    "$35,3k- $52k". Nothing is inferred from a title or a company."""
+    t = re.sub(r"(\d+),(\d{1,2})k", r"\1.\2k", (text or "").lower())
+    t = re.sub(r"(?<=\d),(?=\d{3})", "", t)
+    values = [float(n) * (1000 if k else 1) for n, k in re.findall(r"(\d+(?:\.\d+)?)\s*(k)?", t)]
+    values = [v for v in values if v >= 5]
+    if not values:
+        return None
+    low = min(values)
+    if low < 300 or any(w in t for w in ("hour", "/hr", "/h ", "hourly")):
+        return round(low, 2)
+    return round(low / 2080, 2) if low >= 1000 else None
 
 
 def _excluded(title: str, term: str) -> bool:
@@ -220,10 +255,17 @@ def _matches(job: dict, wanted: list[str], excluded: list[str]) -> bool:
         return False
 
     location = (job.get("location") or "").lower()
+    remote_only = job.get("source", "").split(":")[0] in _REMOTE_ONLY_SOURCES
     if not location:
         # Only trusted from feeds that carry nothing but remote work.
-        return job.get("source", "").split(":")[0] in _REMOTE_ONLY_SOURCES
-    return any(word in location for word in _REMOTE_WORDS)
+        return remote_only
+    if any(word in location for word in _REMOTE_WORDS):
+        return True
+    # On a remote-only board the location says who may apply, not where to sit. Found
+    # 2026-10-25: "USA, Canada" and "US, UK, Canada, Australia" were dropped for lacking
+    # the word remote - three of Remotive's ten postings that day, the ones open to the
+    # user. On a company board a bare place still means on-site.
+    return remote_only and _US_ELIGIBLE.search(location) is not None
 
 
 _SEEN = "jobs_seen.json"
@@ -297,6 +339,89 @@ def _live_fetchers():
         sources.append((f"greenhouse:{board}", lambda b=board: _from_greenhouse(
             _get(f"https://boards-api.greenhouse.io/v1/boards/{b}/jobs"), b)))
     return sources
+
+
+_SEARCH_SHOWN = 12
+_QUERY_NOISE = frozenset({"remote", "fully", "job", "jobs", "role", "roles", "work", "position",
+                          "positions", "hour", "hourly", "per", "pay", "paying", "the", "and",
+                          "for", "with", "that", "find", "any", "opening", "openings"})
+
+
+def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str:
+    """React's job search: the job watch's own boards, live, for any query.
+
+    2026-10-25: asked for remote roles at $18/hr or more, React had only web search.
+    It returned search-results pages as postings, a pay range nobody had published,
+    and "nothing else exists" after one query. These boards list remote work only,
+    every result is a posting with its own link, and pay is what the posting says.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    wanted, excluded = _criteria()
+    sources = fetchers if fetchers is not None else _live_fetchers()
+
+    def fetch(item):
+        name, fn = item
+        try:
+            return name, fn()
+        except Exception as e:
+            logger.warning("Job search: %s unavailable - %s: %s", name, type(e).__name__, e)
+            return name, None
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(fetch, sources))
+    answered = sum(1 for _, postings in results if postings is not None)
+
+    words = [w for w in re.findall(r"[a-z0-9+#]+", (query or "").lower())
+             if len(w) > 1 and w not in _QUERY_NOISE and not w.isdigit()]
+    scored, by_url = [], set()
+    for _, postings in results:
+        for job in postings or []:
+            url = job.get("url", "")
+            if not url or url in by_url or not _matches(job, wanted, excluded):
+                continue
+            text = f"{job.get('title', '')} {job.get('company', '')}".lower()
+            hits = sum(1 for w in words if w in text)
+            if words and not hits:
+                continue
+            by_url.add(url)
+            scored.append((hits, job))
+    scored.sort(key=lambda pair: -pair[0])
+    matches = [job for _, job in scored]
+
+    if min_hourly:
+        paid = [j for j in matches if j.get("pay_floor") and j["pay_floor"] >= min_hourly]
+        unknown = [j for j in matches if not j.get("pay_floor")]
+    else:
+        paid, unknown = matches, []
+
+    def line(job):
+        pay = job.get("pay") or "pay not listed"
+        if job.get("pay_floor") and "/yr" not in pay and "hour" not in pay.lower():
+            pay += f" (about ${job['pay_floor']:.0f}/hr at the bottom)"
+        where = job.get("location") or "remote"
+        posted = f" | posted {job['posted']}" if job.get("posted") else ""
+        return f"- {_name(job)} | {where} | {pay}{posted}\n  {job['url']}"
+
+    boards = len({name.split(":")[0] for name, _ in sources})
+    head = (f"Searched {boards} remote-only job boards live ({answered} of {len(sources)} feeds "
+            f"answered) for "
+            f"{' '.join(words) or 'anything'}"
+            + (f", pay stated at ${min_hourly:g}/hr or more" if min_hourly else "") + ".")
+    if not paid and not unknown:
+        return (head + " No current posting matched. Nothing was found on these boards; other "
+                "boards were not searched.")
+    parts = [head]
+    if paid:
+        parts.append(f"{len(paid)} postings" + (" with that pay stated:" if min_hourly else ":"))
+        parts.extend(line(j) for j in paid[:_SEARCH_SHOWN])
+        if len(paid) > _SEARCH_SHOWN:
+            parts.append(f"...and {len(paid) - _SEARCH_SHOWN} more.")
+    if unknown:
+        parts.append(f"{len(unknown)} more match but state no pay, so they may or may not meet it:")
+        parts.extend(line(j) for j in unknown[:5])
+    parts.append("Each line is a posting with its own link. Pay is exactly what the posting "
+                 "states; none is inferred.")
+    return "\n".join(parts)
 
 
 def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:

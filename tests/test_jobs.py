@@ -198,6 +198,19 @@ def test_matching() -> None:
     _check("a source that only lists remote work needs no location",
            jobs._matches(no_location, wanted, excluded), str(no_location))
 
+    # 2026-10-25: on remote-only boards the location is who may apply. "USA, Canada"
+    # postings - the ones open to the user - were dropped for lacking the word remote.
+    for where in ("USA, Canada, USA timezones", "US, UK, Canada, Australia", "Europe, USA, Canada, APAC"):
+        open_to_us = dict(keep, title="Customer Support Specialist", location=where, source="remotive")
+        _check(f"a remote-only board's {where!r} is open to the US",
+               jobs._matches(open_to_us, wanted, excluded), str(open_to_us))
+    not_us = dict(keep, title="Customer Support Specialist", location="Europe, UK", source="remotive")
+    _check("one open only outside the US is not", not jobs._matches(not_us, wanted, excluded))
+    company_board = dict(keep, title="Customer Support Specialist", location="United States",
+                         source="greenhouse:scaleai")
+    _check("on a company board a bare place still means on-site",
+           not jobs._matches(company_board, wanted, excluded))
+
 
 def test_exclusions_are_whole_words() -> None:
     """Live 2026-10-18 region-locked roles (APAC, EMEA, "Saudi National") and seven
@@ -393,7 +406,77 @@ def test_one_bad_source_does_not_stop_the_rest() -> None:
            [j["title"] for j in found] == ["AI Trainer (Remote)"], str(found))
 
 
+def test_search_on_demand() -> None:
+    """2026-10-25: asked for remote roles at $18/hr or more, React had only web search.
+    It listed search-results pages as postings, a pay range nobody had published, and
+    "nothing else exists" after one query."""
+    import asyncio
+    from agents import jobs, react
+    _fresh()
+
+    _check("pay written as a range per hour", jobs._pay_floor("$50-$75 /hour") == 50)
+    _check("pay written in thousands a year", jobs._pay_floor("70K-80K") == 33.65)
+    _check("a decimal comma is not a thousands separator", jobs._pay_floor("$35,3k- $52k") == 16.97)
+    _check("no figure, no pay", jobs._pay_floor("Competitive") is None and jobs._pay_floor("") is None)
+
+    ok = jobs._from_remoteok(json.dumps([
+        {"legal": "notice"},
+        {"position": "Customer Support Specialist", "company": "Acme", "location": "Remote",
+         "url": "https://x/support", "salary_min": 50000, "salary_max": 90000, "date": "2026-10-14T00:00:00"},
+        {"position": "Customer Support Agent", "company": "Cheap Co", "location": "Remote",
+         "url": "https://x/cheap", "salary_min": 30000, "salary_max": 31000, "date": "2026-10-20T00:00:00"},
+        {"position": "Accounting Operations", "company": "Plaid", "location": "Remote",
+         "url": "https://x/accounting", "salary_min": 110000, "salary_max": 170000},
+        {"position": "Senior Support Engineer", "company": "Acme", "location": "Remote",
+         "url": "https://x/senior", "salary_min": 150000},
+    ]))
+    rv = jobs._from_remotive(json.dumps({"jobs": [
+        {"title": "Customer Support Rep", "company_name": "Quiet Co", "candidate_required_location": "USA",
+         "url": "https://x/nopay", "salary": "", "publication_date": "2026-10-22T10:00:00"}]}))
+    _check("a feed's stated pay is kept with each posting",
+           ok[0]["pay"] == "$50,000-$90,000/yr" and ok[0]["pay_floor"] == 24.04 and rv[0]["pay_floor"] is None,
+           str(ok[0]))
+
+    def down():
+        raise OSError("timed out")
+
+    sources = [("remoteok:support", lambda: ok), ("remotive", lambda: rv), ("wwr:support", down)]
+    text = jobs.search("remote customer support jobs", 18, fetchers=sources)
+    _check("a posting whose stated pay meets the floor is listed, with its link and date",
+           "Customer Support Specialist - Acme" in text and "https://x/support" in text
+           and "posted 2026-10-14" in text, text)
+    _check("one whose stated pay is under it is not", "Cheap Co" not in text, text)
+    _check("one that states no pay is listed apart, never priced",
+           "state no pay" in text and "https://x/nopay" in text and "pay not listed" in text, text)
+    _check("off-topic and excluded titles stay out", "Plaid" not in text and "Senior" not in text, text)
+    _check("it says what was searched and what answered",
+           "Searched 3 remote-only job boards live (2 of 3 feeds answered) for customer support" in text, text)
+    nothing = jobs.search("marine biologist", None, fetchers=sources)
+    _check("finding nothing says so, and says other boards were not searched",
+           "No current posting matched" in nothing and "other boards were not searched" in nothing, nothing)
+
+    seen = {}
+
+    def fake_search(query, pay):
+        seen.update(query=query, pay=pay)
+        return "Searched 4 remote-only job boards live."
+
+    real = jobs.search
+    try:
+        jobs.search = fake_search
+        out = asyncio.run(react._execute_tool("search", {"query": "ai trainer", "source": "jobs",
+                                                         "min_hourly_pay": 18}))
+    finally:
+        jobs.search = real
+    _check("React's search reaches the job boards with source jobs, pay floor passed",
+           seen == {"query": "ai trainer", "pay": 18.0}, str(seen))
+    _check("and its result is marked as untrusted web content",
+           out.startswith(react._UNTRUSTED_OPEN) and "search" in react._WEB_TOOLS, out[:80])
+
+
 if __name__ == "__main__":
+    print("searching on demand")
+    test_search_on_demand()
     print("criteria")
     test_criteria()
     print("\nnormalisers")
