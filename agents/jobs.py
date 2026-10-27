@@ -561,8 +561,16 @@ def _picks(found: list[dict], notes: str) -> list[tuple[dict, str]]:
         note = note.strip()
         for echo in (_name(found[i]), found[i]["title"]):
             if note.startswith(echo):
-                note = note[len(echo):].lstrip(" -:,")
+                note = note[len(echo):]
                 break
+        else:
+            # Live 2026-10-26: "Generalist AI Trainer – your hands-on..." for a posting
+            # titled "Generalist AI Trainer $35 hour": part of the title, then a dash.
+            lead = re.match(r"^(.{3,90}?)\s+[-–—:]\s+(.+)$", note)
+            if lead and lead.group(1).lower() in _name(found[i]).lower():
+                note = lead.group(2)
+        # An en dash left at the start became a Discord bullet point.
+        note = note.lstrip(" -:,–—")
         note = note[:1].upper() + note[1:]
         out.append((found[i], note))
     return out

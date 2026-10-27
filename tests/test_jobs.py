@@ -323,6 +323,17 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     text = jobs.format_for_discord(three, "2. QA/DevOps Engineer - fits your deploy work.")
     _check("nor is a bare echoed title", text.count("QA/DevOps Engineer") == 1 and "Fits your deploy" in text,
            text)
+    # Live 2026-10-26: en dashes after the title, and part of a longer title echoed.
+    priced = [{"title": "AI Trainer", "company": "iMerit", "url": "https://x/a"},
+              {"title": "Generalist AI Trainer $35 hour", "company": "LinkedIn", "url": "https://x/b"}]
+    dashed = jobs.format_for_discord(priced, "1. AI Trainer – your daily evaluation work fits.\n"
+                                             "2. Generalist AI Trainer – your model testing matches.")
+    _check("an en dash after an echoed title is stripped, so no stray bullet",
+           "\nYour daily evaluation work fits." in dashed and "–" not in dashed, dashed)
+    _check("and part of a longer title echoed is stripped too",
+           "\nYour model testing matches." in dashed and dashed.count("Generalist AI Trainer") == 1, dashed)
+    _check("a note that only starts like a sentence keeps its words",
+           "Strong fit - you have it" in jobs.format_for_discord(priced[:1], "1. Strong fit - you have it."), "")
     _check("the ranking writes to the user as you",
            '"you" and "your", never "he"' in jobs._RANK_SYSTEM)
     _check("and the rest are counted, not listed", "2 other new postings did not fit" in text, text)
