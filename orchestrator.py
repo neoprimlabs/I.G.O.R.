@@ -639,8 +639,10 @@ class Orchestrator:
 
         if destination == "ProposalDecision":
             import proposals
-            return "\n".join(proposals.decide(pid, approve)
+            done = "\n".join(proposals.decide(pid, approve)
                              for pid, approve in _proposal_decisions(content))
+            # "show me proposals again and reject p3" (2026-10-27) got the rejection only.
+            return f"{done}\n\n{proposals.brief_listing()}" if _asks_for_proposals(content) else done
 
         if destination == "ProposalList":
             import proposals

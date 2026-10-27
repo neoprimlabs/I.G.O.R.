@@ -115,9 +115,10 @@ def test_listing_in_code() -> None:
     _check("short: problem, change and how to answer",
            f"{pid} (prompt): Remote jobs were missed" in reply and "List remote ones." in reply
            and f'"approve {pid}" or "reject {pid}"' in reply and "evidence" not in reply, reply)
-    proposals.decide(pid, approve=False)
-    if not proposals.pending():
-        _check("none waiting says so", proposals.brief_listing() == "No proposals are waiting for you.")
+    message = f"show me proposals again and reject {pid}"
+    reply = asyncio.run(o._route(asyncio.run(o._classify(message)), message))
+    _check("asking for both decides, then shows what is left",
+           reply.startswith(f"Rejected {pid}.") and "No proposals are waiting for you." in reply, reply)
 
 
 if __name__ == "__main__":
