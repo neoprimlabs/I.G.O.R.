@@ -85,10 +85,46 @@ def test_routed_in_code_without_the_model() -> None:
     _check("an unknown id is reported, not claimed", "no pending proposal p99" in reply, reply)
 
 
+def test_listing_in_code() -> None:
+    """2026-10-27 "show me the proposals please" went MONITOR, then Direct, which has
+    no tools and listed two proactive drafts as the proposals."""
+    import orchestrator
+    import proposals
+    asks = orchestrator._asks_for_proposals
+    for text in ("show me the proposals please", "any proposals?", "proposals",
+                 "What proposals are waiting?", "list proposals"):
+        _check(f"asks for the list: {text!r}", asks(text))
+    for text in ("write a proposal for the n8n gig", "reject p3", "I like that proposal idea"):
+        _check(f"not a request for the list: {text!r}", not asks(text))
+
+    async def notify(_):
+        pass
+
+    o = orchestrator.Orchestrator(notify)
+    asked = []
+
+    async def no_model(*a, **k):
+        asked.append(1)
+        raise RuntimeError("a model was called")
+
+    o._client.chat.completions.create = no_model
+    pid = proposals.add("prompt", "Remote jobs were missed", "evidence", "List remote ones.", "t")
+    destination = asyncio.run(o._classify("show me the proposals please"))
+    reply = asyncio.run(o._route(destination, "show me the proposals please"))
+    _check("listed in code, no model", destination == "ProposalList" and not asked, destination)
+    _check("short: problem, change and how to answer",
+           f"{pid} (prompt): Remote jobs were missed" in reply and "List remote ones." in reply
+           and f'"approve {pid}" or "reject {pid}"' in reply and "evidence" not in reply, reply)
+    proposals.decide(pid, approve=False)
+    if not proposals.pending():
+        _check("none waiting says so", proposals.brief_listing() == "No proposals are waiting for you.")
+
+
 if __name__ == "__main__":
     test_parsing()
     test_ids_ignore_case()
     test_routed_in_code_without_the_model()
+    test_listing_in_code()
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
         sys.exit(1)

@@ -177,6 +177,19 @@ def _listing(items: list[dict]) -> str:
         for p in items)
 
 
+def brief_listing() -> str:
+    """For the user, answered in code: what each pending proposal would change."""
+    items = pending()
+    if not items:
+        return "No proposals are waiting for you."
+    lines = ["**Proposals waiting for you**"]
+    for p in items:
+        lines.append(f"{p['id']} ({p['kind']}): {p['problem']}\nChange: {p['change']}")
+    first = items[0]["id"]
+    lines.append(f'Reply "approve {first}" or "reject {first}".')
+    return "\n\n".join(lines)
+
+
 def run_tool(inputs: dict) -> str:
     """React's entry point. Models send "" for fields they do not use."""
     action = inputs.get("action")

@@ -30,7 +30,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Routing.** Nine fast paths in code, then one router call
+**Routing.** Ten fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
@@ -130,7 +130,7 @@ A Discord DM travels this path every time:
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
-   regex       _proposal_decisions      -> ProposalDecision (code, no model)
+   regex       proposal decision / list -> ProposalDecision / ProposalList (code)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
    regex       _REMEMBERING             -> Remember (React, memory_write required)

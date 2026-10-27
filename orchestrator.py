@@ -313,6 +313,18 @@ _CORRECTING = re.compile(r"^\s*(actually,?|no,?|wait,?)?\s*(make|change|move|upd
 _DECISION_TOKEN = re.compile(r"\b(approve|accept|reject|decline)\b|\bp\s*(\d+)\b")
 
 
+# "show me the proposals please" went MONITOR, then to Direct, which has no tools and
+# listed two proactive drafts as proposals (2026-10-27). Listing is answered in code.
+_PROPOSAL_WORD = re.compile(r"\bproposals?\b", re.IGNORECASE)
+_LIST_WORD = re.compile(r"\b(show|list|see|view|read|what|which|any|pending|waiting)\b", re.IGNORECASE)
+
+
+def _asks_for_proposals(text: str) -> bool:
+    bare = (text or "").strip(" ?.!").lower()
+    return len(bare) < 120 and bool(_PROPOSAL_WORD.search(bare)) and (
+        bool(_LIST_WORD.search(bare)) or bare in ("proposal", "proposals"))
+
+
 def _proposal_decisions(text: str) -> list[tuple[str, bool]]:
     """[(id, approve)] in order, each id once; [] when the message is not a decision."""
     lower = (text or "").lower()
@@ -504,6 +516,8 @@ class Orchestrator:
             return "Monitor"
         if _proposal_decisions(content):
             return "ProposalDecision"
+        if _asks_for_proposals(content):
+            return "ProposalList"
         import checkpoints
         if checkpoints.parse(content):
             return "Rollback"
@@ -627,6 +641,10 @@ class Orchestrator:
             import proposals
             return "\n".join(proposals.decide(pid, approve)
                              for pid, approve in _proposal_decisions(content))
+
+        if destination == "ProposalList":
+            import proposals
+            return proposals.brief_listing()
 
         if destination == "Rollback":
             # Hermes' /rollback: the user's command, handled in code. No model decides
