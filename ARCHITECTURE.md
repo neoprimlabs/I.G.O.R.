@@ -442,11 +442,12 @@ outbound call is the web search. Calls use `config.OVERNIGHT_MODEL`, the paper w
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
 sessions the goal's one living `paper.md` is written, then revised (under 7500 chars;
 code cuts a long draft's least-sourced sections, never the shortlist or unsure).
-Code checks for a "What I am unsure about" heading, 3 distinct links from the
-findings or paper, and that a revision keeps a third of the paper's links, retrying
-once told why; then the Evaluator (FAIL keeps a draft).
+Code checks a "What I am unsure about" heading, 3 distinct links from the
+findings or paper, a revision keeping a third of its links, and each shortlist item's
+`(evidence: independent|self-reported)`, independent first; one retry told why; then
+the Evaluator (FAIL keeps a draft).
 A pass moves the old paper to `versions/`; the change note comes from headings, which
-PLAN also sees. A failed write waits a night; no budget doubling.
+PLAN also sees. A failed write waits a night.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;

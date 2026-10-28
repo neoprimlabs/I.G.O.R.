@@ -52,6 +52,8 @@ _PAPER_FORMAT = """Format, in markdown, under 650 words:
 - A short summary paragraph
 - Sections as level-two headings, each making its points from the sources
 - Cite the source inline as a markdown link every time a claim is made, using only the URLs given
+- Say who reports each figure. A company's numbers about its own product, a platform's own marketing and a personal "how I made $X" post are claims, not facts: write "X says" or "one developer reports". One source is reporting; two independent sources are corroboration
+- If the goal asks for a shortlist, give it a section whose heading contains "Ranked shortlist", one numbered item per idea, each ending with its evidence: "(evidence: independent)" when a source with nothing to sell backs the income it claims, else "(evidence: self-reported)". Every independent item ranks above every self-reported one
 - A final section headed exactly "## What I am unsure about" listing gaps, weak sources, vendor claims and anything the sources do not settle
 
 Do not add numbers, names or claims from general knowledge. A claim that has no URL in what you were given does not go in the paper. Never say that something does not exist or that nobody is doing it; say that the sources do not cover it.
@@ -156,6 +158,40 @@ def revision_keeps(current: str, paper: str) -> tuple[bool, str]:
         return False, (f"it keeps {kept} of the current paper's {len(before)} source links, so it "
                        f"replaced the paper instead of revising it - keep the current paper's "
                        f"ideas that still hold and add the new findings to them")
+    return True, ""
+
+
+_ITEM_RE = re.compile(r"^(?:\d+[.)]|[-*])\s+")
+_EVIDENCE_RE = re.compile(r"\(evidence:\s*(independent|self-reported)\)", re.IGNORECASE)
+
+
+def shortlist_is_honest(paper: str) -> tuple[bool, str]:
+    """Each ranked idea says what backs it, and none resting on its seller's word
+    outranks one with independent backing. Live 2026-10-28 the paper ranked first
+    "proven recurring revenue" from two "how I made $X" posts, and listed NFT mints
+    and a virtual influencer on platform marketing. Hermes' grounded-citations: one
+    source is reporting, two independent sources are corroboration."""
+    _, *parts = re.split(r"(?m)^(?=## )", paper)
+    section = next((p for p in parts if re.search(r"shortlist|ranked", p.splitlines()[0], re.I)), None)
+    if section is None:
+        return True, ""
+    items: list[str] = []
+    for line in section.splitlines()[1:]:
+        if _ITEM_RE.match(line):
+            items.append(line)
+        elif line.strip() and items:
+            items[-1] += " " + line.strip()
+    if not items:
+        return False, "the ranked shortlist has no numbered items"
+    labels = [(m.group(1).lower() if (m := _EVIDENCE_RE.search(item)) else None) for item in items]
+    unlabelled = [str(n) for n, label in enumerate(labels, 1) if label is None]
+    if unlabelled:
+        return False, (f"shortlist item(s) {', '.join(unlabelled)} do not end with (evidence: "
+                       f"independent) or (evidence: self-reported)")
+    first_self = labels.index("self-reported") if "self-reported" in labels else len(labels)
+    if "independent" in labels[first_self:]:
+        return False, ("an idea with (evidence: independent) is ranked below one with (evidence: "
+                       "self-reported); rank every independent idea first")
     return True, ""
 
 
@@ -355,6 +391,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             paper = candidate
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
+            if ok:
+                ok, why = shortlist_is_honest(paper)
             if ok and current:
                 ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:

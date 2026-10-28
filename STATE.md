@@ -99,7 +99,13 @@ with its stated pay. Hermes parity: `memory_write` takes several edits in one ca
 saved together, cap judged on the result; `search_history` numbers its excerpts,
 reads two messages either side of one (`around`), and falls back to the messages
 with the most words. Kept LIKE over FTS5 (338 messages stored); `search_history` had
-no live calls in the journal. Next: the walkthrough with the user, a demo script run
+no live calls in the journal. From the 10-28 output: the IGOR idea series proposed
+approvals, checkpoints and rollback because the self-summary named none of them (now
+it does, tested against the subject list); paper sources are written as autolinks,
+not 【url】; each ranked-shortlist item must carry (evidence: independent) or
+(evidence: self-reported), independent first, checked in code. "Test write
+confirmation" removed from `tasks.md` on the user's word (backup
+`tasks.md.bak-20261028`). Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

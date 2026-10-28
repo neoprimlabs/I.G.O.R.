@@ -96,6 +96,9 @@ class _Stubs:
              else f"Claim {i} 【https://e.example/1/{i}】.\n" if getattr(self, "cite", False)
              else f"Claim {i} ([src](https://e.example/1/{i})).\n")
             for i in range(self.links))
+        if getattr(self, "shortlist", False):
+            label = " (evidence: independent)" if self.writes > 1 else ""
+            body += f"\n## Ranked shortlist\n1. Claim 0 again{label}\n"
         if self.unsure:
             body += "\n## What I am unsure about\nMuch.\n"
         return body
@@ -510,6 +513,40 @@ def test_paper_written_after_trigger() -> None:
            calls["eval"] == 1 and calls["label"] == "Overnight")
     _check("paper is listed as finished in the log",
            "paper.md" in " ".join(work._load()[-1]["finished"]))
+    tmp.cleanup()
+
+
+def test_shortlist_says_what_backs_each_idea() -> None:
+    """Live 2026-10-28 the paper ranked first "proven recurring revenue" resting on two
+    "how I made $X" posts. Hermes: one source is reporting, two are corroboration."""
+    from agents import overnight
+    honest = overnight.shortlist_is_honest
+    good = ("# P\n\n## Ranked shortlist\n1. **Alerts** - firms pay $199/mo (evidence: independent)\n"
+            "2. **Wrappers** - one developer reports $4k/mo\n   - two blog posts (evidence: Self-Reported)\n"
+            "\n## What I am unsure about\nMuch.\n")
+    _check("labelled, independent first, passes", honest(good) == (True, ""), str(honest(good)))
+    _check("a paper with no shortlist is not held to it", honest("# P\n\n## Findings\nx\n")[0])
+    ok, why = honest(good.replace(" (evidence: independent)", ""))
+    _check("an unlabelled item is refused, by number", not ok and "item(s) 1 " in why, why)
+    swapped = ("# P\n\n## Ranked Shortlist of Most Promising Models\n"
+               "1. Wrappers (evidence: self-reported)\n2. Alerts (evidence: independent)\n")
+    ok, why = honest(swapped)
+    _check("a self-reported idea may not outrank an independent one",
+           not ok and "rank every independent idea first" in why, why)
+    ok, why = honest("# P\n\n## Ranked shortlist\nWrappers, then alerts.\n")
+    _check("a shortlist with no numbered items is refused", not ok and "no numbered items" in why, why)
+
+    overnight_mod, goals, work, tmp, calls = _fresh()
+    goals.add("Ways an agent could earn money, ranked shortlist", "research")
+    gid = _first_id(goals)
+    s = _Stubs(findings_per_step=5)
+    s.shortlist = True
+    _run(overnight_mod.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    paper = work.folder(gid) / "paper.md"
+    _check("an unlabelled shortlist gets one retry told why",
+           s.writes == 2 and "(evidence: independent)" in s.write_users[-1], str(s.write_users[-1:])[-300:])
+    _check("and the labelled retry is the paper",
+           paper.exists() and "(evidence: independent)" in paper.read_text(encoding="utf-8"))
     tmp.cleanup()
 
 
