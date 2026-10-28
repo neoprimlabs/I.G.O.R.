@@ -108,7 +108,7 @@ _AGENT_MAX_TOKENS = 2048
 # A repeating series about IGOR gets its subject from code, by date, so it rotates.
 _IGOR_AREAS = (
     "the watchers: prices, restocks, job and gig postings, page heartbeats",
-    "the overnight research loop and the paper it revises",
+    "the overnight research loop and its papers",
     "the morning digest",
     "scheduled messages and check-ins",
     "routing: which agent answers which message",
@@ -170,8 +170,11 @@ async def write(brief: str, now: Optional[datetime] = None,
                      "must be described as new.")
         if recent:
             area = _IGOR_AREAS[(now or datetime.now()).toordinal() % len(_IGOR_AREAS)]
+            # 2026-10-28: "safety: approvals, ... checkpoints and rollback" came back as a
+            # proposal to build approvals, checkpoints and rollback.
             task += (f"\n\nUnless the brief names a subject, make this one about {area}, "
-                     "whatever the earlier ones covered.")
+                     "whatever the earlier ones covered. Everything it names already exists, "
+                     "as the summary describes: the idea must add something none of it does.")
     try:
         text = await asyncio.wait_for(
             react.handle(

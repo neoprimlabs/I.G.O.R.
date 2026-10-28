@@ -93,6 +93,7 @@ class _Stubs:
             return ""
         body = "# Paper\n\n## Findings\n" + "".join(
             (f"Claim {i} ([src](https://invented.example/p{i})).\n" if self.invent
+             else f"Claim {i} 【https://e.example/1/{i}】.\n" if getattr(self, "cite", False)
              else f"Claim {i} ([src](https://e.example/1/{i})).\n")
             for i in range(self.links))
         if self.unsure:
@@ -509,6 +510,22 @@ def test_paper_written_after_trigger() -> None:
            calls["eval"] == 1 and calls["label"] == "Overnight")
     _check("paper is listed as finished in the log",
            "paper.md" in " ".join(work._load()[-1]["finished"]))
+    tmp.cleanup()
+
+
+def test_paper_citations_are_plain_links() -> None:
+    """2026-10-28: the paper the user opened showed every source as 【https://...】."""
+    overnight, goals, work, tmp, calls = _fresh()
+    goals.add("Study autonomous systems", "research")
+    gid = _first_id(goals)
+    s = _Stubs(findings_per_step=5)
+    s.cite = True
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    paper = work.folder(gid) / "paper.md"
+    text = paper.read_text(encoding="utf-8") if paper.exists() else ""
+    _check("gpt-oss citations still count as sources", paper.exists())
+    _check("and are written as Markdown autolinks", "Claim 0 <https://e.example/1/0>." in text
+           and "【" not in text and "】" not in text, text[:300])
     tmp.cleanup()
 
 

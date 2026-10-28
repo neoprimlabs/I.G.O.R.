@@ -18,7 +18,8 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No self-restart.** `restart_self` only tells the user a change needs deploying.
 - **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
   network, secrets or sealed memory, read-only but `/tmp` and `.git`; refused if
-  it cannot start. The shell also refuses a blocklist and asks before risky ones.
+  it cannot start. The shell also refuses a blocklist and DMs the user for a yes
+  before risky ones (`approvals.py`).
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes and images the user sends are read.
 
@@ -59,11 +60,18 @@ writes) with no acting tools works the standing goals in `memory/goals.md` into 
 papers and proposals in `memory/work/`, reported in the digest. Nothing is applied
 without the user's yes.
 
-**Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
+**Memory** is markdown in `memory/` plus `context.db`, the conversation store (90
+days, `search_history`). `memory_read` and
 `memory_write` take names from a fixed list; `memory_write` edits dated entries (add,
 patch, remove), several in one call saved together or not at all, as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for that turn. A job search
 keeps them shut.
+
+**Checkpoints**: `write_file`, `patch_file` and `memory_write` keep a file's old copy
+first (`checkpoints.py`, newest 20); the user's `rollback` restores them.
+
+**Cost**: Groq's free tier caps tokens per model per day; 120b's daily token budget
+(200000) is shared by Direct and React. `usage.py` counts what IGOR spends.
 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
@@ -85,9 +93,6 @@ and the whole file inside ten 3700-character `read_file` windows.
 
 ## Stack and host
 
-Self-hosted personal AI assistant. A Discord bot, DMs only, single authorized
-user.
-
 - **Language:** Python 3.10
 - **Interface:** discord.py
 - **Models:** Groq free tier through the `openai` SDK, per-agent models
@@ -101,7 +106,7 @@ The host was an ARM A1 until July 2026; anything saying ARM
 is out of date. `anthropic` stays installed, unused, for GAMEPLAN R4.1.
 
 **The runtime is the server.** There is no local run; discord.py is not installed
-locally. Test pure logic with standalone Python snippets instead.
+locally.
 
 ---
 
@@ -278,9 +283,8 @@ observation (stock and price per variant, the price watch's cheapest match, each
 job or gig posting); a failed fetch writes nothing. About 130 rows a day, no model calls. React's `watch_history`
 returns changes only, newest first, so a week of hourly "available" is one row.
 
-**Checkpoints** (`checkpoints.py`, Hermes' rollback): the old bytes of each file
-`write_file`, `patch_file` or `memory_write` changes, once per React turn, newest 20,
-in `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
+**Checkpoints** (Hermes' rollback) are taken once per React turn, in
+`memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores, keeping files edited since unless `all`.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
@@ -539,7 +543,7 @@ A 400 on the primary is raised. A turn that used a backup gets a one-line notice
 
 **Daily caps and the token ledger.** Groq also caps tokens per day, per model, and
 says so only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the measured ones:
-`gpt-oss-120b` is 200000 (2026-10-16), shared by Direct and React. `usage.record`
+`gpt-oss-120b` is 200000 (2026-10-16). `usage.record`
 adds every response's token count to `memory/token_ledger.json` hourly, per model
 and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
 against the cap. It is IGOR's own count: spend that bypasses `record` is invisible.
@@ -621,7 +625,6 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
 - `main._smoke_test()` - config sanity plus importing every agent module; exits 1
   rather than raising, so a broken commit refuses to start
 - systemd `Restart=always` - a bad deploy is a visible crash loop
-- `scripts/backup_memory.ps1` - off-host backup, and an alert on a crash loop
 - `heartbeat.sh`, 2-minute timer: Discord silent past 300s restarts IGOR and alerts, once per half hour, never during a deploy
 - `prestart.sh`, systemd `ExecStartPre`, root: a start runs only the tree the last
   deploy approved (commit, tracked diff, untracked `.py`). Anything else is set
@@ -644,8 +647,7 @@ them never takes IGOR down:
 | tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-A process that starts and never reaches Discord is not working. The probe is
-anchored to a timestamp taken before the restart, or the last run's line would pass.
+The probe is anchored to a timestamp taken before the restart, or the last run's line would pass.
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
 heartbeat check above. Self-written code runs only once a deploy passes it; any

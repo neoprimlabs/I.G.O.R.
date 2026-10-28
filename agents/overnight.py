@@ -89,6 +89,9 @@ _LIMIT_RE = re.compile(r"Limit\s+(\d+)")
 # gpt-oss glued its full-width citation bracket to every URL ("...price-optimization】"),
 # so all 10 real sources of the first paper read as invented and it stayed a draft.
 _LINK_RE = re.compile(r"https?://[^\s)>\]\"'`*【】{}<|]+")
+# 2026-10-28: the paper the user opens showed every source as 【https://...】. Written
+# to file as a Markdown autolink instead.
+_CITATION_RE = re.compile(r"【\s*(https?://[^\s【】]+?)\s*】")
 
 
 def _links(text: str) -> set[str]:
@@ -384,7 +387,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                     note = f"paper revised: {_heading_change(current, paper)}"
                 if cut:
                     note += f" (cut to fit: {', '.join(cut)})"
-                paper_path.write_text(clean(paper) + "\n", encoding="utf-8")
+                paper_path.write_text(clean(_CITATION_RE.sub(r"<\1>", paper)) + "\n", encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)
                 rel = str(paper_path.relative_to(config.MEMORY_DIR))
@@ -393,7 +396,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 summary += f", {note} ({_PAPER})"
             else:
                 draft_path = _unique(folder, "draft", night)
-                draft_path.write_text(clean(paper) + "\n", encoding="utf-8")
+                draft_path.write_text(clean(_CITATION_RE.sub(r"<\1>", paper)) + "\n", encoding="utf-8")
                 with findings_path.open("a", encoding="utf-8") as f:
                     f.write(f"\n{_WRITTEN_MARK}\n")
                 state["files"].append(str(draft_path.relative_to(config.MEMORY_DIR)))

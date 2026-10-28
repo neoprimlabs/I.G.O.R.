@@ -16,6 +16,7 @@ Every expected value below is worked out by hand, not by the code under test.
 
 import asyncio
 import json
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -503,6 +504,17 @@ async def test_write_at_delivery() -> None:
                "make this one about" in thursday, thursday[-300:])
         _check("and the next day's subject is a different one",
                picked(thursday) != picked(friday), picked(friday)[:120])
+        # 2026-10-28: the subject named approvals, checkpoints and rollback, the summary
+        # named none of them, and the idea proposed building all three. Every part a
+        # subject names must be in the summary, and the writer is told it exists.
+        from agents import self_describe
+        summary = self_describe._load_document().lower()
+        missing = [part for area in compose._IGOR_AREAS
+                   for part in re.split(r",|:| and ", area) if part.strip()
+                   and part.split()[-1].lower().rstrip("s") not in summary]
+        _check("every part a subject names is in the self-summary", not missing, str(missing))
+        _check("and the writer is told those parts already exist",
+               "already exists" in picked(thursday), picked(thursday)[:300])
         await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 23, 14, 0))
         _check("a one-off brief about IGOR is not steered",
                "make this one about" not in seen.get("message", ""))
