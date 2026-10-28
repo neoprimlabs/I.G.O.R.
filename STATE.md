@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-22**
+Last updated: **2026-10-28**
 
 ---
 
@@ -87,9 +87,21 @@ ends with subtext lines of what its saving tools really did, and flags a failed 
 (Hermes' file-mutation verifier); job notes are capitalised; sydney, australia,
 melbourne, new zealand, uk and london are excluded in `memory/job_search.md` (backup
 `job_search.md.bak-20261026`); `scripts/e2e_isolated.py` runs live checks against a
-throwaway copy of code and memory. Next: the walkthrough with the user, a demo
-script run until it holds, and no new features before an interview. Later: a recorded
-demo, an MCP server, and the README cost table refreshed once times accumulate.
+throwaway copy of code and memory. 2026-10-27/28, from that day's output and with
+the user away: proposals listed in code ("show me the proposals"); job questions
+route to React; skipped jobs saved to `job_search.md` Exclude ("mac" added, backup
+`job_search.md.bak-20261028`); the check-in no longer opens the same way twice;
+Direct meets hard news with care. A job request now carries `user.md` in React's
+prompt, offers no `read_file`, and forces the search first; a forced tool refused
+twice is let go. Two isolated live runs found the failures (a read loop with no
+search, then a crash); the third passed: two job-board searches, one real posting
+with its stated pay. Hermes parity: `memory_write` takes several edits in one call,
+saved together, cap judged on the result; `search_history` numbers its excerpts,
+reads two messages either side of one (`around`), and falls back to the messages
+with the most words. Kept LIKE over FTS5 (338 messages stored); `search_history` had
+no live calls in the journal. Next: the walkthrough with the user, a demo script run
+until it holds, and no new features before an interview. Later: a recorded
+demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind
 the list: reviewers favour one deep project with evals, safety work, measured cost.
@@ -205,7 +217,7 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   injection-shaped text and invisible characters are refused; whole-file overwrite is
   gone (the old schema's append still adds). user.md's cap refusal lists the
   entries; Direct's header shows how full it is. Live user.md: 34 entries, 1488 of
-  1500 characters, so the next add will ask for a remove first. Writes are
+  1500 characters; since 10-28 one call can remove and add together. Writes are
   checkpointed. **Discord test for the user:** ask IGOR to remember something.
 - **Review of the user's 10-20 Discord day, fixed:** the 12:40 check-in asked how
   "today's" application prep was going, 30 minutes after the user said they would do
