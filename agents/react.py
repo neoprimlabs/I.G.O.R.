@@ -1666,6 +1666,13 @@ async def _handle(
         # Live 2026-10-28, with the resume refused in code, React asked for it again and
         # again, read files by the wrong names, and hit its step limit having never
         # searched. In a job turn the search comes first, forced, and read_file is gone.
+        # Forced with no profile in sight, the next run asked the user for their
+        # background instead, so the turn carries user.md the way Direct's does.
+        from agents import direct
+        profile = direct._user_profile()
+        if profile:
+            messages[0]["content"] += (f"\n\n=== Notes about the user, kept by IGOR "
+                                       f"(memory/user.md) ===\n{profile}")
         tools = [t for t in tools if t["function"]["name"] != "read_file"]
         if force_tool is None:
             force_tool, forced_done = "search", False
@@ -1694,6 +1701,10 @@ async def _handle(
             if "tool_use_failed" in str(e) and tool_failures < 3:
                 tool_failures += 1
                 logger.warning("ReAct tool_use_failed (retry %d/3): %s", tool_failures, str(e)[:200])
+                if not forced_done and tool_failures >= 2:
+                    # Live, a model that refused the forced tool twice refused it a third
+                    # time and the turn crashed. It chooses from here.
+                    forced_done = True
                 messages = messages + [{
                     "role": "user",
                     "content": f"[system note: your last tool call was rejected before execution: {str(e)[:400]}. Adjust the call or answer without that tool.]",

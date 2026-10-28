@@ -140,7 +140,7 @@ A Discord DM travels this path every time:
    `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
    it 11:30"), never digest or watch changes; `_REMEMBERING` matches "remember
    that" and a correction right after one. Each requires its tool (`tool_choice`)
-   on the first call.
+   on the first call, released if refused twice.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
@@ -216,10 +216,9 @@ Two call sites stay out, on purpose:
 
 - **React's main loop** - its `finish_reason` handling is entangled with tool
   dispatch and `tool_use_failed` retries, and is already correct.
-- **React's forced final answer** and **the router** - both already do the right
-  thing, and a doubled retry would be actively harmful. React trims that prompt to
-  fit `max_tokens`, so doubling could push it past the bucket and lose the turn; the
-  router reserves 10 tokens, reads one word, and fails fast to React by design.
+- **React's forced final answer** and **the router** - a doubled retry would
+  harm both. React trims that prompt to fit `max_tokens`, so doubling could push it
+  past the bucket; the router reads one word and fails fast to React by design.
 
 Exceptions propagate. Callers handle rate limits differently on purpose: the
 orchestrator notifies and sleeps on a per-minute limit but answers at once on the
@@ -365,11 +364,11 @@ conversation; the daily check-in waits until 2h after the user last spoke.
 plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
-The job watch reads RemoteOK, WWR, Greenhouse and Remotive (Indeed's APIs are
-closed); code filters, 20b
+The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
 ranks, and only its picks are sent. On those remote-only boards a location naming
 the US counts as open to the user. React's `search` (`source: jobs`) reads them
-live, pay only as each posting states it. The gig watch (`agents/gigs.py`)
+live, pay only as each posting states it; a job request forces that search first,
+with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
 failed screen holds the gigs.

@@ -564,6 +564,7 @@ def test_a_job_search_keeps_search() -> None:
     root = Path(tempfile.mkdtemp())
     (root / "memory").mkdir()
     (root / "memory" / "resume.md").write_text("Private work history\n", encoding="utf-8")
+    (root / "memory" / "user.md").write_text("# User\n- Builds AI agents in Python\n", encoding="utf-8")
     try:
         config.BASE_DIR, config.MEMORY_DIR = root, root / "memory"
         react._get_client, jobs.search = (lambda: fake), fake_search
@@ -571,6 +572,11 @@ def test_a_job_search_keeps_search() -> None:
     finally:
         react._get_client, jobs.search = real_client, real_search
         config.BASE_DIR, config.MEMORY_DIR = real_dirs
+    # The next live run, forced to search with no profile in sight, asked the user for
+    # their background. The profile now rides in the job turn's prompt.
+    _check("the job turn's prompt carries user.md",
+           "Builds AI agents in Python" in calls[0]["messages"][0]["content"])
+    _check("and not the resume", "Private work history" not in calls[0]["messages"][0]["content"])
     # Live 2026-10-28: refused the resume, React asked for it again and again and never
     # searched. The search now comes first, forced, and read_file is not offered.
     _check("the first call must be the search",
@@ -584,11 +590,48 @@ def test_a_job_search_keeps_search() -> None:
            and "closed in a job search" in tool_results[-1]["content"], str(tool_results)[-200:])
 
 
+def test_a_refused_force_is_let_go() -> None:
+    """Live 2026-10-28: forced to search, the model tried memory_read twice, then asked
+    the user a question instead of calling anything, and the turn crashed."""
+    import asyncio
+    import httpx
+    import openai
+    from types import SimpleNamespace
+    from agents import react
+    _fresh()
+
+    calls = []
+
+    async def create(model, **kwargs):
+        calls.append(kwargs)
+        if "tool_choice" in kwargs:
+            raise openai.BadRequestError(
+                "Error code: 400 - tool_use_failed: attempted to call tool 'memory_read' "
+                "which does not match request.tool_choice: 'search'",
+                response=httpx.Response(400, request=httpx.Request("POST", "http://groq")), body=None)
+        return SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(
+            content="Searched the boards.", tool_calls=None))], usage=None)
+
+    fake = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    real_client = react._get_client
+    try:
+        react._get_client = lambda: fake
+        reply = asyncio.run(react.handle("Find me remote jobs over $18 an hour.", []))
+    finally:
+        react._get_client = real_client
+    _check("the force is held for one retry", len(calls) == 3
+           and "tool_choice" in calls[0] and "tool_choice" in calls[1], str([("tool_choice" in c) for c in calls]))
+    _check("then let go, so the turn ends with an answer and no crash",
+           "tool_choice" not in calls[2] and reply.startswith("Searched the boards."), reply)
+
+
 if __name__ == "__main__":
     print("a saved exclusion counts")
     test_a_saved_exclusion_counts()
     print("a job search keeps search")
     test_a_job_search_keeps_search()
+    print("a refused force is let go")
+    test_a_refused_force_is_let_go()
     print("searching on demand")
     test_search_on_demand()
     print("criteria")
