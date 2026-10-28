@@ -300,6 +300,15 @@ _NOT_SCHEDULING = re.compile(r"\b(digest|watchlist|watch list|schedule_config|pr
 _REMEMBERING = re.compile(
     r"^\s*(please\s+)?(remember|note|don'?t forget|keep in mind|make a note)\b"
     r"(?!\s+(to|when|what|how|if|who|where|why|whether)\b)", re.IGNORECASE)
+# 2026-10-27 every job question went CHAT to Direct, which has no tools: it invented a
+# posting's contents for "tell me more about 4", answered "best fit" from the
+# conversation alone, and said it would skip Mac roles without saving anything. "Out
+# of all the jobs you've found" went MONITOR. These need the task agent's files.
+_JOB_WORD = re.compile(r"\b(jobs?|roles?|gigs?|postings?|openings?|positions?)\b", re.IGNORECASE)
+_ABOUT_FOUND = re.compile(r"\b(found|sent|best fit|fits? me|match(es|ed)?|out of all)\b", re.IGNORECASE)
+_MORE_ABOUT = re.compile(r"\b(tell me more|more about|more on)\b", re.IGNORECASE)
+_JOB_EXCLUDE = re.compile(r"\b(skip|exclude|no more|stop (showing|sending)|don'?t (show|send))\b",
+                          re.IGNORECASE)
 # A short correction straight after a save: "actually make that Monday".
 _CORRECTING = re.compile(r"^\s*(actually,?|no,?|wait,?)?\s*(make|change|move|update) (that|it)\b",
                          re.IGNORECASE)
@@ -528,6 +537,10 @@ class Orchestrator:
             return "Schedule"
         if _REMEMBERING.search(content) and not lower.endswith("?"):
             return "Remember"
+        if _JOB_WORD.search(content) and _JOB_EXCLUDE.search(content):
+            return "Remember"
+        if _MORE_ABOUT.search(content) or (_JOB_WORD.search(content) and _ABOUT_FOUND.search(content)):
+            return "React"
         if self._last_route == "Remember" and _CORRECTING.search(lower) and len(lower) < 120:
             return "Remember"
 
@@ -675,7 +688,11 @@ class Orchestrator:
             # four times that way. Code supplies what it wanted to read.
             import memory_entries
             last = memory_entries.last_written
-            if not _REMEMBERING.search(content) and last:
+            if _JOB_WORD.search(content) and _JOB_EXCLUDE.search(content):
+                note = ("[The user is ruling out a kind of job. Add it to job_search.md under the "
+                        "section \"Exclude\" with memory_write: one short word or phrase that "
+                        "appears in such job titles, such as \"mac\". Do not read the file first.]")
+            elif not _REMEMBERING.search(content) and last:
                 note = (f"[The note saved just before this, in {last[0]}, reads exactly: {last[1]}\n"
                         "If this message corrects it, patch it with memory_write, copying old_text "
                         "from that line. Do not read the file first.]")

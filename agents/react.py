@@ -346,7 +346,7 @@ _TOOLS = [
             "properties": {
                 "file": {
                     "type": "string",
-                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md", "presence_config.md"],
+                    "enum": ["tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md", "watchlist.md", "research.md", "presence_config.md", "job_search.md"],
                     "description": "The file to edit",
                 },
                 "action": {"type": "string", "enum": ["add", "patch", "remove"]},

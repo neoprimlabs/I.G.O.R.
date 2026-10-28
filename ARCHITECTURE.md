@@ -30,7 +30,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Routing.** Ten fast paths in code, then one router call
+**Routing.** Eleven fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
@@ -133,13 +133,14 @@ A Discord DM travels this path every time:
    regex       proposal decision / list -> ProposalDecision / ProposalList (code)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
-   regex       _REMEMBERING             -> Remember (React, memory_write required)
+   regex       _REMEMBERING, skip a job -> Remember (React, memory_write required)
+   regex       found jobs, "more about" -> React
    ```
 
    `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
    it 11:30"), never digest or watch changes; `_REMEMBERING` matches "remember
    that" and a correction right after one. Each requires its tool (`tool_choice`)
-   on the first call: React once claimed a schedule and a save it never made.
+   on the first call.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`

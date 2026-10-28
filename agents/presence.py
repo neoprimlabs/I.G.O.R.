@@ -457,6 +457,10 @@ async def _ask_model(bundle: str, reason: str = "lull") -> str:
     )
 
 
+def _opening(text: str) -> str:
+    return " ".join(re.findall(r"[a-z']+", (text or "").lower())[:3])
+
+
 async def consider(reason: str, now: Optional[datetime] = None,
                    ask: Optional[Callable] = None,
                    last_user_at: Optional[datetime] = None) -> Optional[str]:
@@ -481,13 +485,28 @@ async def consider(reason: str, now: Optional[datetime] = None,
     async def _default_ask(bundle: str) -> str:
         return await _ask_model(bundle, reason)
 
+    facts = _facts(reason, now, last_user_at)
     try:
-        reply = await (ask or _default_ask)(_facts(reason, now, last_user_at))
+        reply = await (ask or _default_ask)(facts)
     except Exception as e:
         logger.error("Presence (%s) model call failed - %s: %s", reason, type(e).__name__, e)
         return None
 
     message = _tidy(reply)
+    # Four check-ins running opened "I trust your ... is proceeding smoothly" (to
+    # 2026-10-27) although the prompt says to vary it. Code compares openings.
+    recent = state.get("openings", [])
+    if message and _opening(message) in recent:
+        try:
+            again = _tidy(await (ask or _default_ask)(
+                facts + f"\n\nYour last messages opened with: {'; '.join(recent)}. Open differently."))
+            state["calls"] = state.get("calls", 0) + 1
+            if again and _opening(again) not in recent:
+                message = again
+        except Exception as e:
+            logger.warning("Presence (%s) retry for a fresh opening failed - %s", reason, type(e).__name__)
+    if message:
+        state["openings"] = (recent + [_opening(message)])[-5:]
     if message is None:
         # In write mode nothing was being judged, so an empty answer is the model
         # failing the task, not choosing silence. Worth seeing in the log as such.

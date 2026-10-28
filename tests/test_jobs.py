@@ -417,6 +417,20 @@ def test_one_bad_source_does_not_stop_the_rest() -> None:
            [j["title"] for j in found] == ["AI Trainer (Remote)"], str(found))
 
 
+def test_a_saved_exclusion_counts() -> None:
+    """memory_write dates what it adds; "- mac (2026-10-27)" must exclude "mac"."""
+    from agents import jobs
+    _fresh()
+    path = config.MEMORY_DIR / "job_search.md"
+    path.write_text("# Job Search\n\n## Exclude\n- senior\n- mac (2026-10-27)\n", encoding="utf-8")
+    _, excluded = jobs._criteria()
+    _check("the date is not part of the term", "mac" in excluded, str(excluded))
+    job = {"title": "MSP Mac Help Desk Guru", "company": "Ignition", "location": "", "url": "u", "source": "wwr"}
+    _check("so the Mac role is dropped", not jobs._matches(job, [], excluded))
+    ml = dict(job, title="Machine Learning Support")
+    _check("and machine learning is not", jobs._matches(ml, [], excluded))
+
+
 def test_search_on_demand() -> None:
     """2026-10-25: asked for remote roles at $18/hr or more, React had only web search.
     It listed search-results pages as postings, a pay range nobody had published, and
@@ -563,6 +577,8 @@ def test_a_job_search_keeps_search() -> None:
 
 
 if __name__ == "__main__":
+    print("a saved exclusion counts")
+    test_a_saved_exclusion_counts()
     print("a job search keeps search")
     test_a_job_search_keeps_search()
     print("searching on demand")

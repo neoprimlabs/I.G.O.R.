@@ -118,7 +118,8 @@ def _criteria() -> tuple[list[str], list[str]]:
             continue
         if not stripped.startswith("- "):
             continue
-        value = stripped[2:].strip().lower()
+        # memory_write dates what it adds: "- mac (2026-10-27)".
+        value = re.sub(r"\s*\(\d{4}-\d{2}-\d{2}\)$", "", stripped[2:].strip().lower())
         if not value:
             continue
         if section == "titles":

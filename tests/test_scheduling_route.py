@@ -87,6 +87,18 @@ async def test_routing() -> None:
         routed.clear()
         got = await o._classify(message)
         _check(f"not the memory route: {message!r}", got != "Remember", got)
+    # 2026-10-27: every job question went to Direct or Monitor, neither of which can
+    # read what the job watch found.
+    for message in ("Tell me more about 4",
+                    "What do you think is the job that you found that matched me and my experience the most",
+                    "Out of all the jobs you've found?",
+                    "No I'm asking out of all the roles you've found for me which is the absolute best fit?"):
+        routed.clear()
+        got = await o._classify(message)
+        _check(f"to React in code: {message[:50]!r}", got == "React" and not routed, f"{got}, router={bool(routed)}")
+    routed.clear()
+    got = await o._classify("You can skip Mac focused roles. I'm not proficient")
+    _check("ruling out a kind of job is a save", got == "Remember" and not routed, got)
     o._last_route = "Remember"
     _check("a short correction right after a save stays on the memory route",
            await o._classify("Actually make that Monday.") == "Remember")
@@ -148,6 +160,11 @@ async def test_remember_requires_the_memory_tool() -> None:
                "reads exactly: - Try IGOR's MCP server this weekend (2026-10-23)" in seen.get("message", ""),
                seen.get("message", ""))
         memory_entries.last_written = None
+        seen.clear()
+        await o.process(42, "You can skip Mac focused roles. I'm not proficient")
+        _check("skipping a kind of job is saved to the job watch's exclusions",
+               seen.get("force_tool") == "memory_write" and "job_search.md" in seen.get("message", "")
+               and '"Exclude"' in seen.get("message", ""), seen.get("message", ""))
     finally:
         config.MEMORY_DIR, context_store._DB_PATH, react.handle, config.AUTHORIZED_USER_ID = real
         tmp.cleanup()

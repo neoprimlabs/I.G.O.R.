@@ -58,7 +58,7 @@ _ALLOWED_FILES = frozenset({
     "tasks.md", "projects.md", "user.md", "agents.md",
     "digest_config.md", "schedule_config.md", "watchlist.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
-    "research.md",
+    "research.md", "job_search.md",
 })
 
 _OVERWRITABLE_FILES = frozenset({

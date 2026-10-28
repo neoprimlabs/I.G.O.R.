@@ -477,6 +477,38 @@ async def test_an_answered_question_does_not_look_unanswered() -> None:
            proactive > label, f"proactive at {proactive}, label at {label}")
 
 
+async def test_a_fresh_opening() -> None:
+    """Four check-ins running opened "I trust your ... is proceeding smoothly"."""
+    from agents import presence
+
+    state = _state()
+    state["openings"] = ["i trust your", "i hope your"]
+    _fresh(state)
+    asked = []
+
+    async def model(bundle):
+        asked.append(bundle)
+        return ("I trust your evening is proceeding smoothly." if len(asked) == 1
+                else "Good evening. The night is yours.")
+
+    out = await presence.consider("lull", now=AWAKE, ask=model)
+    saved = json.loads((config.MEMORY_DIR / "presence_state.json").read_text(encoding="utf-8"))
+    _check("a repeated opening is asked for again", len(asked) == 2 and "Open differently" in asked[1],
+           str(len(asked)))
+    _check("and the fresh one is sent", out == "Good evening. The night is yours.", repr(out))
+    _check("its opening is remembered", saved["openings"][-1] == "good evening the", str(saved.get("openings")))
+
+    _fresh(_state())
+    asked.clear()
+
+    async def same(bundle):
+        asked.append(bundle)
+        return "Good afternoon, I hope the day is kind to you."
+
+    out = await presence.consider("lull", now=AWAKE, ask=same)
+    _check("a new opening goes out on the first try", len(asked) == 1 and out, repr(out))
+
+
 async def test_silence_and_cleanup() -> None:
     from agents import presence
 
@@ -589,6 +621,7 @@ if __name__ == "__main__":
     asyncio.run(test_an_answered_question_does_not_look_unanswered())
     print("\nsilence and cleanup")
     asyncio.run(test_silence_and_cleanup())
+    asyncio.run(test_a_fresh_opening())
     print("\ntriggers")
     test_triggers()
 
