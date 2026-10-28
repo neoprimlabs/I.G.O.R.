@@ -548,9 +548,10 @@ def test_a_job_search_keeps_search() -> None:
     async def create(model, **kwargs):
         calls.append(kwargs)
         if len(calls) == 1:
-            return tool_call("read_file", {"path": "memory/resume.md"})
+            # Forced to search, the model still leaves out the source.
+            return tool_call("search", {"query": "ai trainer", "min_hourly_pay": 18})
         if len(calls) == 2:
-            return tool_call("search", {"query": "ai trainer", "source": "jobs", "min_hourly_pay": 18})
+            return tool_call("read_file", {"path": "memory/resume.md"})
         return SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(
             content="AI Trainer - iMerit, $50,000-$70,000/yr.", tool_calls=None))], usage=None)
 
@@ -570,10 +571,17 @@ def test_a_job_search_keeps_search() -> None:
     finally:
         react._get_client, jobs.search = real_client, real_search
         config.BASE_DIR, config.MEMORY_DIR = real_dirs
-    tool_results = [m for m in calls[1]["messages"] if m.get("role") == "tool"]
-    _check("the resume is refused in a job search", bool(tool_results)
-           and "closed in a job search" in tool_results[-1]["content"], str(tool_results)[:200])
-    _check("and search still runs after it", searched == {"query": "ai trainer", "pay": 18.0}, str(searched))
+    # Live 2026-10-28: refused the resume, React asked for it again and again and never
+    # searched. The search now comes first, forced, and read_file is not offered.
+    _check("the first call must be the search",
+           calls[0].get("tool_choice", {}).get("function", {}).get("name") == "search", str(calls[0].keys()))
+    _check("read_file is not offered in a job search",
+           all(t["function"]["name"] != "read_file" for t in calls[0]["tools"]))
+    _check("a search with no source goes to the job boards",
+           searched == {"query": "ai trainer", "pay": 18.0}, str(searched))
+    tool_results = [m for m in calls[2]["messages"] if m.get("role") == "tool"]
+    _check("and the resume is still refused if asked for anyway", bool(tool_results)
+           and "closed in a job search" in tool_results[-1]["content"], str(tool_results)[-200:])
 
 
 if __name__ == "__main__":

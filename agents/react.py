@@ -1662,6 +1662,13 @@ async def _handle(
     length_retried = False
     seen_calls: set = set()
     job_turn = _depth == 0 and _is_job_request(message)
+    if job_turn:
+        # Live 2026-10-28, with the resume refused in code, React asked for it again and
+        # again, read files by the wrong names, and hit its step limit having never
+        # searched. In a job turn the search comes first, forced, and read_file is gone.
+        tools = [t for t in tools if t["function"]["name"] != "read_file"]
+        if force_tool is None:
+            force_tool, forced_done = "search", False
     web_read = False
     private_read = False
     for i in range(max_iterations):
@@ -1737,6 +1744,8 @@ async def _handle(
                     args = json.loads(tc.function.arguments)
                 except json.JSONDecodeError as e:
                     return f"[tool argument parse error: {e} - retry the call with valid JSON]"
+                if job_turn and tc.function.name == "search" and not args.get("source"):
+                    args["source"] = "jobs"
                 # Judged as a batch: gather gives no ordering guarantee, so a batch
                 # holding both a web call and a private read closes both.
                 blocked = _quarantine_check(
