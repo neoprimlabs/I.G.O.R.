@@ -60,8 +60,8 @@ papers and proposals in `memory/work/`, reported in the digest. Nothing is appli
 without the user's yes.
 
 **Memory** is markdown in `memory/` plus `context.db`. `memory_read` and
-`memory_write` take names from a fixed list; `memory_write` edits one dated entry at a
-time (add, patch, remove), as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
+`memory_write` take names from a fixed list; `memory_write` edits dated entries (add,
+patch, remove), several in one call saved together or not at all, as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for that turn. A job search
 keeps them shut.
 
@@ -232,11 +232,11 @@ Tested by `tests/test_llm.py`.
 One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
 `call_claude` passed to it (rate-limit backoff and user notification). Its prompt
 ends with `memory/user.md` (Hermes' USER.md) and how full it is; `memory_write` refuses
-a write past 1500 characters and lists the entries.
+a write past 1500 characters, judged on a batch's result, and lists the entries.
 
-Its prompt forbids claiming anything about IGOR's state, features or performance,
-which it cannot check: it states the limitation and the check that would answer. It
-may not say IGOR lacks a capability or promise a future action.
+Its prompt forbids claims about IGOR's state, features or performance it cannot
+check (it names the check that would answer), saying IGOR lacks a capability, and
+promising a future action.
 
 ### React
 

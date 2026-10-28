@@ -74,6 +74,11 @@ def test_memory_write_keeps_the_cap() -> None:
            reply.startswith("Not written") and "Free at least" in reply, reply)
     _check("and lists the current entries, as Hermes does", "Current entries:" in reply, reply)
     _check("and the file is untouched", path.read_text(encoding="utf-8") == fixture)
+    reply = write(operations=[{"action": "remove", "old_text": "Old note"},
+                              {"action": "add", "content": "New fact: " + "b" * 200}])
+    _check("the tool takes the room-making and the save in one call",
+           "Removed from user.md" in reply and "Added to user.md: New fact" in reply, reply)
+    path.write_text(fixture, encoding="utf-8")
     reply = write(action="remove", old_text="Old note")
     _check("removing an entry frees the room", reply.startswith("Removed from user.md"), reply)
     reply = write(action="add", content="Another fact")

@@ -176,6 +176,53 @@ def test_what_a_correction_needs() -> None:
                str(memory_entries.last_written))
 
 
+def test_batch() -> None:
+    """Hermes' memory tool takes several edits in one call, saved together, the cap
+    checked on the result. user.md sat at 99%: one edit at a time, a new fact was
+    refused until a removal landed, and a turn that stopped between kept only that."""
+    import checkpoints
+    with _Home():
+        path = config.MEMORY_DIR / "user.md"
+        full = "# User\n- Old note " + "a" * 1400 + "\n- Keep me\n"
+        path.write_text(full, encoding="utf-8")
+        checkpoints._turn.set(None)
+        reply = memory_entries.apply_batch("user.md", [
+            {"action": "remove", "old_text": "Old note"},
+            {"action": "add", "content": "New fact " + "b" * 200}], today="2026-10-28")
+        text = path.read_text(encoding="utf-8")
+        _check("a full file makes room and takes the new fact in one call",
+               "Old note" not in text and "New fact" in text and "Keep me" in text, reply)
+        _check("saying one line per edit", reply.splitlines()[0].startswith("Removed from user.md")
+               and reply.splitlines()[1].startswith("Added to user.md: New fact"), reply)
+        _check("in one checkpointed write", len(checkpoints._folders()) == 1, str(checkpoints._folders()))
+        _check("and the added entry is the one a correction gets",
+               memory_entries.last_written == ("user.md", "- New fact " + "b" * 200 + " (2026-10-28)"),
+               str(memory_entries.last_written))
+
+        before = path.read_text(encoding="utf-8")
+        reply = memory_entries.apply_batch("user.md", [
+            {"action": "add", "content": "Another fact"},
+            {"action": "remove", "old_text": "not in the file"}])
+        _check("one refused edit saves none of them", path.read_text(encoding="utf-8") == before
+               and reply.startswith("Not written: edit 2 of 2 (remove) was refused")
+               and "appears 0 times" in reply, reply)
+        reply = memory_entries.apply_batch("user.md", [
+            {"action": "add", "content": "c" * 1400},
+            {"action": "patch", "old_text": "Keep me", "content": "Keep me too"}])
+        _check("the cap is checked on the result", path.read_text(encoding="utf-8") == before
+               and "over its" in reply and "Current entries:" in reply, reply)
+        _check("a batch with no edits is refused",
+               memory_entries.apply_batch("user.md", []).startswith("Not written"))
+        _check("so is one that is not a list",
+               memory_entries.apply_batch("user.md", "remove Old note").startswith("Not written"))
+
+        over = "# User\n- " + "x" * 1600 + "\n- Drop me\n"
+        path.write_text(over, encoding="utf-8")
+        reply = memory_entries.apply("user.md", "remove", old_text="Drop me")
+        _check("a file already over its cap may still shrink",
+               reply.startswith("Removed from user.md") and "Drop me" not in path.read_text(encoding="utf-8"), reply)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

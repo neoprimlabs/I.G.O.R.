@@ -58,6 +58,13 @@ def test_recording() -> None:
         _check("a write is recorded without its advice",
                got[0] == ("agents/x.py", True, "Written: agents/x.py (12 bytes)"), str(got))
         _check("a refusal is recorded as a failure", got[1][1] is False, str(got))
+        batch = {"file": "user.md", "operations": [{"action": "remove"}, {"action": "add"}]}
+        react._record_receipt("memory_write", batch,
+                              "Removed from user.md: - Old note\nAdded to user.md: New fact (2026-10-28)")
+        got = react._RECEIPTS.get()[2:]
+        _check("a batch of memory edits gets a line per edit",
+               [line for _, ok, line in got if ok] == ["Removed from user.md: - Old note",
+                                                       "Added to user.md: New fact (2026-10-28)"], str(got))
     finally:
         react._RECEIPTS.reset(token)
 

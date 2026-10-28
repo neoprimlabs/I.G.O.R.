@@ -340,7 +340,7 @@ _TOOLS = [
     },
     {
         "name": "memory_write",
-        "description": "Save to a memory file one entry at a time. add: a new entry, dated for you, optionally under a section heading. patch: replace old_text, which must appear exactly once, with content. remove: delete the entry containing old_text. Exact duplicates are refused. Never save how IGOR works (ARCHITECTURE.md holds that, and a copy goes stale) or facts a search would find again.",
+        "description": "Save to a memory file one entry at a time. add: a new entry, dated for you, optionally under a section heading. patch: replace old_text, which must appear exactly once, with content. remove: delete the entry containing old_text. operations: several of these to one file, saved together or not at all, with the cap checked on the result - a full file can drop or shorten entries and take a new one in one call. Exact duplicates are refused. Never save how IGOR works (ARCHITECTURE.md holds that, and a copy goes stale) or facts a search would find again.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -353,8 +353,22 @@ _TOOLS = [
                 "content": {"type": "string", "description": "add: the entry. patch: the replacement text"},
                 "old_text": {"type": "string", "description": "patch and remove: text copied exactly from the file, appearing once"},
                 "section": {"type": "string", "description": "add: the heading to file it under, without #"},
+                "operations": {
+                    "type": "array",
+                    "description": "Instead of action: several edits to this file, applied in order",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "action": {"type": "string", "enum": ["add", "patch", "remove"]},
+                            "content": {"type": "string"},
+                            "old_text": {"type": "string"},
+                            "section": {"type": "string"},
+                        },
+                        "required": ["action"],
+                    },
+                },
             },
-            "required": ["file", "action"],
+            "required": ["file"],
         },
     },
 ]
@@ -376,7 +390,7 @@ When to use tools:
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - watch_history: what the watchers saw over time - when something was last in stock, how a price moved, which jobs matched. price_watch_status.md is only the latest check
 - search_history: anything said in an earlier conversation - "what did we decide about X", "when did I mention Y". Your context holds only the last few turns, so search before saying you do not know
-- memory_write: when the user asks you to remember, add, store, or update something. Say in your reply exactly what you saved and to which file. When the user corrects something just saved, patch that entry, copying its text from your last reply - never add a second one
+- memory_write: when the user asks you to remember, add, store, or update something. Say in your reply exactly what you saved and to which file. When the user corrects something just saved, patch that entry, copying its text from your last reply - never add a second one. When a file is full, make room and save in one call with operations
 - scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
 - goal: when the user states a standing aim for IGOR to work on over time, or asks to see, pause, resume or retire one. add records it; list shows the ids
 - proposal: when the user asks about, approves or rejects a fix IGOR proposed for its own mistakes. list first, show the user the problem, evidence and change, and approve or reject only on their explicit word for that id
@@ -1552,6 +1566,8 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         # Hermes' memory tool: one entry at a time (memory_entries.py). A model still
         # using the old schema sends mode; append maps to add, overwrite is refused.
         import memory_entries
+        if inputs.get("operations"):
+            return memory_entries.apply_batch(inputs.get("file", ""), inputs["operations"])
         action = inputs.get("action") or {"append": "add"}.get(inputs.get("mode", ""), inputs.get("mode") or "add")
         return memory_entries.apply(inputs.get("file", ""), action, inputs.get("content", ""),
                                     inputs.get("old_text", ""), inputs.get("section", ""))
@@ -1578,7 +1594,10 @@ def _record_receipt(name: str, args: dict, result: str) -> None:
         return
     target = (args or {}).get("file") or (args or {}).get("path") or name
     failed = text.startswith(("[", "Not "))
-    receipts.append((target, not failed, text.splitlines()[0].split(". Restart")[0][:160]))
+    # A batch of memory edits says one line per edit, and each one landed.
+    lines = text.splitlines() if not failed and len((args or {}).get("operations") or []) > 1 else text.splitlines()[:1]
+    for line in lines:
+        receipts.append((target, not failed, line.split(". Restart")[0][:160]))
 
 
 def _receipt_footer(receipts: list) -> str:

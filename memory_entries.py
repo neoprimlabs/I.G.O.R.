@@ -149,87 +149,117 @@ def _insert(text: str, line: str, section: str) -> str:
     return text.rstrip("\n") + f"\n\n## {section.strip()}\n" + line + "\n"
 
 
-def apply(filename: str, action: str, content: str = "", old_text: str = "",
-          section: str = "", today: Optional[str] = None) -> str:
-    """Carry out one memory edit and say what happened, for the model to read."""
-    from agents import prod_memory
-    if filename not in prod_memory._ALLOWED_FILES:
-        return f"Not written: {filename!r} is not a memory file this tool may edit."
-    path = config.MEMORY_DIR / filename
-    try:
-        text = path.read_text(encoding="utf-8") if path.exists() else ""
-    except OSError as e:
-        return f"Not written: {filename} could not be read ({type(e).__name__})."
+def _edit(text: str, filename: str, action: str, content: str, old_text: str,
+          section: str, today: Optional[str]) -> tuple[Optional[str], str, Optional[str]]:
+    """One edit on the text in hand: (new text, or None if refused; what happened;
+    the entry written, for a correction to patch)."""
     import sanitize
     content = sanitize.clean((content or "").strip())
     old_text = _exact(text, old_text) if old_text else old_text
-    global last_written
-    written = None
 
     if action == "add":
         if not content:
-            return "Not written: add needs content."
+            return None, "Not written: add needs content.", None
         why = _scan(content)
         if why:
             logger.warning("memory_write refused for %s: %s", filename, why)
-            return f"Not written: {why}. Save the fact itself, in plain words."
+            return None, f"Not written: {why}. Save the fact itself, in plain words.", None
         if any(_norm(text[a:b]) == _norm(content) for a, b in entries(text)):
-            return f"Already saved in {filename}; nothing written."
+            return text, f"Already saved in {filename}; nothing written.", None
         if not today:
             import clock
             today = datetime.now(clock.USER_TZ).strftime("%Y-%m-%d")
         line = f"- {' '.join(_BULLET.sub('', content).split())} ({today})"
         new = _insert(text or f"# {filename[:-3].capitalize()}\n", line, section)
-        done = f"Added to {filename}: {line[2:]}"
-        written = line
-    elif action == "patch":
+        return new, f"Added to {filename}: {line[2:]}", line
+    if action == "patch":
         if not old_text:
-            return "Not written: patch needs old_text, copied exactly from the file."
+            return None, "Not written: patch needs old_text, copied exactly from the file.", None
         count = text.count(old_text)
         if count != 1:
-            return (f"Not written: old_text appears {count} times in {filename}; it must appear "
-                    f"exactly once. Copy a longer, exact span.")
+            return None, (f"Not written: old_text appears {count} times in {filename}; it must "
+                          f"appear exactly once. Copy a longer, exact span."), None
         why = _scan(content)
         if why:
             logger.warning("memory_write refused for %s: %s", filename, why)
-            return f"Not written: {why}. Save the fact itself, in plain words."
+            return None, f"Not written: {why}. Save the fact itself, in plain words.", None
         new = text.replace(old_text, content, 1)
         written = _entry_around(new, content) if content else None
-        done = f"Patched {filename}: {written}" if written else f"Patched {filename}."
-    elif action == "remove":
+        return new, (f"Patched {filename}: {written}" if written else f"Patched {filename}."), written
+    if action == "remove":
         if not old_text:
-            return "Not written: remove needs old_text that identifies one entry."
+            return None, "Not written: remove needs old_text that identifies one entry.", None
         count = text.count(old_text)
         if count != 1:
-            return (f"Not written: old_text appears {count} times in {filename}; it must appear "
-                    f"exactly once.")
+            return None, (f"Not written: old_text appears {count} times in {filename}; it must "
+                          f"appear exactly once."), None
         at = text.index(old_text)
         hit = [(a, b) for a, b in entries(text) if a <= at < b and at + len(old_text) <= b]
         if not hit:
-            return "Not written: old_text is not inside one entry. Quote part of the entry to remove."
+            return None, "Not written: old_text is not inside one entry. Quote part of the entry to remove.", None
         a, b = hit[0]
         removed = " ".join(text[a:b].split())
-        new = text[:a] + text[b:]
-        done = f"Removed from {filename}: {removed[:120]}"
-    elif action == "overwrite":
-        return ("Not written: whole-file overwrite is gone. Use patch to change an entry and "
-                "remove to delete one, so nothing else in the file is touched.")
-    else:
-        return f"Not written: unknown action {action!r}. Use add, patch or remove."
+        return text[:a] + text[b:], f"Removed from {filename}: {removed[:120]}", None
+    if action == "overwrite":
+        return None, ("Not written: whole-file overwrite is gone. Use patch to change an entry and "
+                      "remove to delete one, so nothing else in the file is touched."), None
+    return None, f"Not written: unknown action {action!r}. Use add, patch or remove.", None
+
+
+def apply(filename: str, action: str, content: str = "", old_text: str = "",
+          section: str = "", today: Optional[str] = None) -> str:
+    """Carry out one memory edit and say what happened, for the model to read."""
+    return apply_batch(filename, [{"action": action, "content": content,
+                                   "old_text": old_text, "section": section}], today)
+
+
+def apply_batch(filename: str, operations: list, today: Optional[str] = None) -> str:
+    """Several edits to one file, saved together or not at all, as Hermes' memory tool
+    takes them. The cap is checked on the final result, so a full file can lose or
+    shorten entries and take a new one in one call. One at a time, the add is refused
+    until the removal lands, and a turn that stops in between keeps only the removal."""
+    from agents import prod_memory
+    if filename not in prod_memory._ALLOWED_FILES:
+        return f"Not written: {filename!r} is not a memory file this tool may edit."
+    if not isinstance(operations, list) or not operations:
+        return "Not written: operations must be a list of edits, each with an action."
+    path = config.MEMORY_DIR / filename
+    try:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+    except OSError as e:
+        return f"Not written: {filename} could not be read ({type(e).__name__})."
+    global last_written
+
+    new, done, written = text, [], None
+    for n, op in enumerate(operations, 1):
+        op = op if isinstance(op, dict) else {}
+        step, said, entry = _edit(new, filename, op.get("action") or "", op.get("content") or "",
+                                  op.get("old_text") or "", op.get("section") or "", today)
+        if step is None:
+            if len(operations) == 1:
+                return said
+            return (f"Not written: edit {n} of {len(operations)} ({op.get('action')}) was refused, "
+                    f"so nothing in this call was saved. {said.removeprefix('Not written: ')}")
+        new = step
+        done.append(said if len(operations) == 1 else " ".join(said.split()))
+        written = entry or written
+    if new == text:
+        return "\n".join(done)
 
     cap = CAPS.get(filename)
-    if cap and len(new.strip()) > cap:
-        over = len(new.strip()) - cap
-        return (f"Not written: {filename} would be {len(new.strip())} characters, over its {cap} "
-                f"cap. Free at least {over} with remove or a shorter patch, then try again. "
-                f"Current entries:\n{_listing(text)}")
+    size = len(new.strip())
+    # A file already over its cap, written some other way, may still shrink.
+    if cap and size > cap and size > len(text.strip()):
+        return (f"Not written: {filename} would be {size} characters, over its {cap} cap. "
+                f"Free at least {size - cap}: one memory_write whose operations remove or "
+                f"shorten entries and then add, saved together. Current entries:\n{_listing(text)}")
 
     import checkpoints
     checkpoints.before_write(path)
     path.write_text(new, encoding="utf-8")
     checkpoints.after_write(path)
     last_written = (filename, written) if written else None
-    return done
+    return "\n".join(done)
 
 
 def fullness(filename: str) -> str:
