@@ -215,10 +215,9 @@ gate cannot catch because it only imports modules.
 Two call sites stay out, on purpose:
 
 - **React's main loop** - its `finish_reason` handling is entangled with tool
-  dispatch and `tool_use_failed` retries, and is already correct.
-- **React's forced final answer** and **the router** - a doubled retry would
-  harm both. React trims that prompt to fit `max_tokens`, so doubling could push it
-  past the bucket; the router reads one word and fails fast to React by design.
+  dispatch and `tool_use_failed` retries.
+- **React's forced final answer** and **the router** - doubling could push React's
+  trimmed prompt past the bucket; the router reads one word and fails fast.
 
 Exceptions propagate. Callers handle rate limits differently on purpose: the
 orchestrator notifies and sleeps on a per-minute limit but answers at once on the
@@ -247,8 +246,8 @@ narrows them. Each reply ends with subtext lines of what its saving tools really
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
-messages, both sides plus proactive sends): dated excerpts, newest first. A LIKE scan;
-read-only.
+messages, both sides plus proactive sends), else the messages with the most of them:
+numbered, dated excerpts, newest first; `around` reads two either side of a number.
 
 `shell` checks `_hardline_refusal` before anything runs: Hermes' floor (root or
 home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell)

@@ -76,15 +76,19 @@ async def search_notes(query: str) -> str:
     return _capped(await react._search_memory_files(query))
 
 
-def search_conversation(query: str) -> str:
+def search_conversation(query: str = "", around: int = 0) -> str:
     """Search the stored conversation between the user and I.G.O.R. (the last 90
-    days) for messages containing every word of the query. Returns dated excerpts,
-    newest first."""
+    days) for messages containing every word of the query, or failing that the most
+    of them. Returns numbered, dated excerpts, newest first. around: a #number from
+    a search, to read that message with two either side."""
     from agents import react
-    logger.info("search_conversation %r", query)
+    logger.info("search_conversation %r %s", query, around)
+    if around:
+        return _capped(react._search_history("", int(around)))
     if not query.strip():
         return "Give words to search for."
-    return _capped(react._search_history(query))
+    return _capped(react._search_history(query).replace("search_history with around",
+                                                         "search_conversation with around"))
 
 
 def watch_history(item: str, days: int = 30) -> str:

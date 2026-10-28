@@ -180,13 +180,14 @@ _TOOLS = [
     },
     {
         "name": "search_history",
-        "description": "Search the stored conversation with the user - their messages, your replies, and messages sent proactively - for every word of a query. Returns dated excerpts, newest first. Your context holds only the last few turns; use this for earlier ones.",
+        "description": "Search the stored conversation with the user - their messages, your replies, and messages sent proactively - for every word of a query. Returns numbered, dated excerpts, newest first; if no message holds every word, the ones holding the most. Then around: a #number returns that message with two either side, to read a question with its answer. Your context holds only the last few turns; use this for earlier ones.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Words that should all appear, e.g. 'eGPU dock price'"},
+                "around": {"type": "integer", "description": "A #number from an earlier search: read the messages around it instead of searching"},
             },
-            "required": ["query"],
+            "required": [],
         },
     },
     {
@@ -807,24 +808,44 @@ async def _read_server_file(path: str, offset: int = 0, allow_private: bool = Fa
     return window
 
 
-def _search_history(query: str) -> str:
-    """Dated excerpts from context.db around the first match, newest first."""
+def _search_history(query: str, around: Optional[int] = None) -> str:
+    """Dated excerpts from context.db, newest first, or the messages around one of them.
+
+    Hermes' session_search finds, then scrolls around a match: an excerpt of the
+    question rarely holds the answer, which is the next message.
+    """
     import clock
     import context_store
     from datetime import datetime, timezone
-    rows = context_store.search(query)
+
+    def stamp(msg_id, ts, role):
+        when = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
+        return f"#{msg_id} {when:%a %Y-%m-%d %H:%M} {'user' if role == 'user' else 'IGOR'}"
+
+    if around is not None:
+        rows = context_store.around(int(around))
+        if not rows:
+            return f"No stored message #{around}. Search first; each excerpt starts with its #number."
+        return "\n\n".join(f"{stamp(i, ts, role)}: {' '.join(content.split())[:700]}"
+                           for i, ts, role, content in rows)
+    words = (query or "").lower().split()
+    if not words:
+        return "Give words to search for, or around with a #number from an earlier search."
+    rows, note = context_store.search(query), ""
+    if not rows and len(words) > 1:
+        rows = context_store.search(query, every=False)
+        note = "No message holds every word; these hold the most of them.\n" if rows else ""
     if not rows:
         return f"Nothing in the stored conversation contains all of: {query!r}."
-    first = (query or "").lower().split()[0]
     out = []
-    for ts, role, content in rows:
-        when = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
-        at = max(content.lower().find(first), 0)
+    for msg_id, ts, role, content in rows:
+        low = content.lower()
+        at = min((low.find(w) for w in words if w in low), default=0)
         start = max(at - 150, 0)
         excerpt = " ".join(content[start:start + 400].split())
-        who = "user" if role == "user" else "IGOR"
-        out.append(f"{when:%a %Y-%m-%d %H:%M} {who}: {'...' if start else ''}{excerpt}...")
-    return "\n".join(out)
+        out.append(f"{stamp(msg_id, ts, role)}: {'...' if start else ''}{excerpt}...")
+    return (note + "\n".join(out)
+            + "\n[To read one with the messages around it, search_history with around: its #number.]")
 
 
 async def _search_memory_files(query: str) -> str:
@@ -1440,7 +1461,13 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         return await _search_memory_files(inputs.get("query", ""))
 
     if name == "search_history":
-        return _search_history(inputs.get("query", ""))
+        around = inputs.get("around")
+        if around is not None:
+            digits = str(around).lstrip("#")
+            if not digits.isdigit():
+                return "[around takes a message's #number, as a search shows it.]"
+            around = int(digits)
+        return _search_history(inputs.get("query", ""), around)
 
     if name == "watch_history":
         import history

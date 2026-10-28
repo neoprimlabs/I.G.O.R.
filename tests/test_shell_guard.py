@@ -76,20 +76,35 @@ def test_search_history() -> None:
     context_store.append("user", "Unrelated message about the weather")
 
     rows = context_store.search("ag01 dock")
-    _check("every word must match, case-insensitive", len(rows) == 1 and "eGPU" in rows[0][2], str(rows))
+    _check("every word must match, case-insensitive", len(rows) == 1 and "eGPU" in rows[0][3], str(rows))
     rows = context_store.search("ag01")
-    _check("newest first", len(rows) == 2 and "$179" in rows[0][2], str(rows))
+    _check("newest first", len(rows) == 2 and "$179" in rows[0][3], str(rows))
     _check("a % in the query is literal, not a wildcard",
            len(context_store.search("100%")) == 1, str(context_store.search("100%")))
     _check("an _ in the query is literal", len(context_store.search("discount_code")) == 1)
     _check("an empty query returns nothing", context_store.search("   ") == [])
 
     text = react._search_history("ag01")
-    _check("the tool gives dated excerpts with who said it",
-           "IGOR: " in text and "user: " in text and text[:3] in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
-           text)
+    _check("the tool gives numbered, dated excerpts with who said it",
+           "IGOR: " in text and "user: " in text and text.startswith("#")
+           and text.split()[1] in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"), text)
     _check("and says plainly when nothing matches",
            react._search_history("zebra").startswith("Nothing in the stored conversation"))
+
+    # Hermes' session_search scrolls around a match: the question's excerpt rarely
+    # holds the answer, which is the next message.
+    question = context_store.search("cost last time")[0][0]
+    text = asyncio.run(react._execute_tool("search_history", {"around": f"#{question}"}))
+    _check("around a match reads the question with its answer",
+           f"#{question} " in text and "$179 on Slickdeals" in text and "discount_code" in text, text)
+    _check("around a number that is not stored says so",
+           react._search_history("", around=999999).startswith("No stored message #999999"))
+    _check("around that is not a number is refused, not crashed",
+           asyncio.run(react._execute_tool("search_history", {"around": "the dock one"})).startswith("[around takes"))
+    text = react._search_history("ag01 dock price weather")
+    _check("no message with every word falls back to the most words",
+           text.startswith("No message holds every word") and "eGPU dock" in text.splitlines()[1], text)
+    _check("no words and no number asks for one", react._search_history("  ").startswith("Give words"))
 
     _check("history keeps far more than the old 200 rows", context_store._MAX_STORED >= 10000)
     for i in range(3000):

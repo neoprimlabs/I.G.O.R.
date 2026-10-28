@@ -121,22 +121,42 @@ def last_timestamp():
         return None
 
 
-def search(query: str, limit: int = 8) -> list[tuple[int, str, str]]:
-    """Messages containing every word of the query, newest first: (ts, role, content).
+def search(query: str, limit: int = 8, every: bool = True) -> list[tuple[int, int, str, str]]:
+    """Messages containing every word of the query, newest first: (id, ts, role, content).
+    every=False: those containing at least two of the words (one, for a two-word query),
+    most words first - for when no message holds them all.
 
-    A LIKE scan rather than FTS5: at 10000 rows it is milliseconds, needs no index to
-    keep in step, and matches word fragments ("deploy" finds "deployed").
+    A LIKE scan rather than Hermes' FTS5: at 10000 rows it is milliseconds, needs no
+    index to keep in step, and matches word fragments ("deploy" finds "deployed").
     """
     words = [w for w in (query or "").lower().split() if w][:6]
     if not words:
         return []
     escaped = [w.replace("!", "!!").replace("%", "!%").replace("_", "!_") for w in words]
-    where = " AND ".join("lower(content) LIKE ? ESCAPE '!'" for _ in escaped)
+    hits = ["(lower(content) LIKE ? ESCAPE '!')" for _ in escaped]
+    params = [f"%{w}%" for w in escaped]
+    if every:
+        sql = f"SELECT id, ts, role, content FROM messages WHERE {' AND '.join(hits)} ORDER BY id DESC LIMIT ?"
+        args = params + [limit]
+    else:
+        score = " + ".join(hits)
+        sql = (f"SELECT id, ts, role, content FROM messages WHERE ({score}) >= ? "
+               f"ORDER BY ({score}) DESC, id DESC LIMIT ?")
+        args = params + [1 if len(words) <= 2 else 2] + params + [limit]
+    try:
+        with _conn() as conn:
+            return conn.execute(sql, args).fetchall()
+    except Exception:
+        return []
+
+
+def around(msg_id: int, window: int = 2) -> list[tuple[int, int, str, str]]:
+    """(id, ts, role, content) from `window` messages before msg_id to `window` after."""
     try:
         with _conn() as conn:
             return conn.execute(
-                f"SELECT ts, role, content FROM messages WHERE {where} ORDER BY id DESC LIMIT ?",
-                [f"%{w}%" for w in escaped] + [limit],
+                "SELECT id, ts, role, content FROM messages WHERE id BETWEEN ? AND ? ORDER BY id",
+                (msg_id - window, msg_id + window),
             ).fetchall()
     except Exception:
         return []
