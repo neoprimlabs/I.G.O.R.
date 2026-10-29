@@ -149,11 +149,11 @@ This is a message to a person, not a status report, in I.G.O.R.'s own voice: for
 - One or two sentences. Often one is enough.
 - Each line of the conversation says when it was said. Read "today", "tomorrow" and weekday names from the day that line was said: "tomorrow" in yesterday's message means today.
 - Never assume something they mentioned has started, finished or gone well.
-- If the facts show something specific and current, you may mention it in passing, the way a person would. It is never the point of the message.
+- Ground it in something real from the facts: something they told you in the last few days - how they were, what they were dealing with, what was coming up - asked after the way a person would. Only when the facts hold nothing of the kind is a plain greeting right.
 - Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
-- Do not ask for a status update, do not list anything, do not offer a menu of things you could do.
+- Asking how they are, or how something they mentioned is going, is welcome. Asking for a status report on work is not. Do not list anything, do not offer a menu of things you could do.
 - Let the time of day shape it. Late at night is not the same as mid afternoon.
-- Vary it. Do not open the same way every day.
+- If your last check-ins are listed, do not reuse their opening, their wording or their subject.
 - Never invent activity, progress, or anything they said or did.
 - You have not been working on anything. You have no tools here and take no actions between messages. Never say you have built, finished, prepared, looked into or made progress on anything - none of it happened, and they will know.
 
@@ -330,7 +330,8 @@ def _open_tasks() -> list[str]:
     return monitor._parse_tasks(text)
 
 
-def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
+def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
+           earlier_checkins: Optional[list[str]] = None) -> str:
     """Only what can be read from a file or the database. Nothing inferred."""
     lines = [
         f"Woken by: {reason}",
@@ -357,10 +358,11 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
 
     try:
         import context_store
-        # Thirty rows, not eight: 2026-10-21 four morning posts filled half of eight, and
-        # the message saying the user worked that day fell out. Only conversation counts
-        # toward the six shown below; posts have their own list.
-        recent = context_store.load_timed(30)
+        # 2026-10-21 four morning posts filled half of an eight-row view, and the message
+        # saying the user worked that day fell out. Only conversation counts toward the
+        # six shown below; posts have their own list. Enough rows for a check-in to see
+        # three days of what the user said.
+        recent = context_store.load_timed(200)
     except Exception:
         recent = []
 
@@ -379,6 +381,7 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
     # ones carrying the marker.
     conversation: list[tuple[str, str]] = []
     unprompted: list[str] = []
+    said: list[tuple[int, str, str]] = []
     for turn in recent:
         content = " ".join((turn.get("content") or "").split())
         if not content:
@@ -387,6 +390,7 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
         when = _when(turn.get("ts"), now)
         if turn.get("role") == "user":
             conversation.append((f"user, {when}", content))
+            said.append((turn.get("ts") or 0, when, content))
         elif _PROACTIVE_MARK in content:
             unprompted.append(content.replace(_PROACTIVE_MARK, "").strip())
         else:
@@ -398,6 +402,31 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime]) -> str:
             lines.append(f"  {who}: {content[:300]}")
     else:
         lines.append("What the user said: nothing stored.")
+
+    if reason == "checkin":
+        # 2026-10-26 to 10-28 the check-in said "I trust your evening is proceeding
+        # smoothly" three nights running. Its six lines held only job questions it may
+        # not re-raise, while two days back the user had told it things a person would ask after.
+        # The one good check-in that fortnight
+        # asked after something the user had mentioned that was still in view.
+        shown = {content for _, content in conversation[-6:]}
+        cutoff = now.timestamp() - 3 * 86400
+        earlier = [(when, content) for ts, when, content in said
+                   if ts >= cutoff and content not in shown and len(content) >= 30]
+        if earlier:
+            lines.append("What they told you in the last three days, oldest first. Background, "
+                         "not questions waiting on you: you may ask how one is going, never "
+                         "answer or restate one:")
+            lines.extend(f"  {when}: {content[:200]}" for when, content in earlier[-8:])
+        # Hermes puts USER.md in every prompt; Direct already does.
+        from agents import direct
+        profile = direct._user_profile()
+        if profile:
+            lines.append("Notes about the user, kept by IGOR:")
+            lines.extend(f"  {line}" for line in profile.splitlines() if line.strip())
+        if earlier_checkins:
+            lines.append("Your last check-ins, oldest first. Say something different:")
+            lines.extend(f"  - {text}" for text in earlier_checkins)
 
     # Older conversation, as compression.py keeps it, so a plan made two days ago is
     # still in view. Its dates are written out, not "tomorrow".
@@ -485,7 +514,7 @@ async def consider(reason: str, now: Optional[datetime] = None,
     async def _default_ask(bundle: str) -> str:
         return await _ask_model(bundle, reason)
 
-    facts = _facts(reason, now, last_user_at)
+    facts = _facts(reason, now, last_user_at, state.get("checkins") if reason == "checkin" else None)
     try:
         reply = await (ask or _default_ask)(facts)
     except Exception as e:
@@ -519,6 +548,8 @@ async def consider(reason: str, now: Optional[datetime] = None,
     state["last_sent"] = now.isoformat()
     if reason == "checkin" and isinstance(state.get("checkin"), dict):
         state["checkin"]["sent"] = True
+    if reason == "checkin":
+        state["checkins"] = (state.get("checkins", []) + [message])[-5:]
     _save_state(state)
     logger.info("Presence (%s): speaking - %s", reason, message[:80])
     return message

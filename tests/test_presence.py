@@ -509,6 +509,59 @@ async def test_a_fresh_opening() -> None:
     _check("a new opening goes out on the first try", len(asked) == 1 and out, repr(out))
 
 
+async def test_a_checkin_sees_the_last_few_days() -> None:
+    """2026-10-26 to 10-28: "I trust your evening is proceeding smoothly", three nights
+    running. Its six lines held only job questions it may not re-raise, while two days
+    back the user had told it things a person would ask after. Content invented."""
+    from agents import presence
+    import context_store
+
+    path = _fresh(_state(), files={"user.md": "# User\n- Works late nights\n"})
+    original_db = context_store._DB_PATH
+    now = datetime.now(timezone.utc)
+    try:
+        context_store._DB_PATH = path / "context.db"
+        old = int((now - timedelta(days=5)).timestamp())
+        two_days = int((now - timedelta(days=2)).timestamp())
+        with context_store._conn() as conn:
+            conn.execute("INSERT INTO messages (role, content, ts) VALUES (?, ?, ?)",
+                         ("user", "Five days ago I mentioned the old apartment lease", old))
+            conn.execute("INSERT INTO messages (role, content, ts) VALUES (?, ?, ?)",
+                         ("user", "My car is in the shop until Friday, so I am stuck at home", two_days))
+            conn.execute("INSERT INTO messages (role, content, ts) VALUES (?, ?, ?)",
+                         ("user", "Only 4?", two_days))
+        for i in range(4):
+            context_store.append("user", f"Which job fits me best, question {i}?")
+            context_store.append("assistant", f"Answer {i}.")
+        checkin = presence._facts("checkin", now, None, ["I trust your evening is proceeding smoothly."])
+        lull = presence._facts("lull", now, None)
+    finally:
+        context_store._DB_PATH = original_db
+    _check("a check-in sees what the user said two days ago, past its six lines",
+           "car is in the shop" in checkin and "last three days" in checkin, checkin[-900:])
+    _check("but not five days ago, nor a two-word aside",
+           "apartment lease" not in checkin and "Only 4?" not in checkin, checkin[-900:])
+    _check("and the user's profile, as Hermes puts USER.md in every prompt",
+           "Works late nights" in checkin)
+    _check("and its last check-ins, word for word",
+           "I trust your evening is proceeding smoothly." in checkin and "Say something different" in checkin)
+    _check("a lull judgement gets none of it",
+           "last three days" not in lull and "Works late nights" not in lull)
+
+    _fresh(_state())
+    asked = []
+
+    async def model(bundle):
+        asked.append(bundle)
+        return f"Good evening. Is the car back yet, night {len(asked)}?"
+
+    await presence.consider("checkin", now=AWAKE, ask=model)
+    saved = json.loads((config.MEMORY_DIR / "presence_state.json").read_text(encoding="utf-8"))
+    _check("a sent check-in is kept for the next one to avoid",
+           saved.get("checkins") == ["Good evening. Is the car back yet, night 1?"],
+           str(saved.get("checkins")))
+
+
 async def test_silence_and_cleanup() -> None:
     from agents import presence
 
@@ -622,6 +675,7 @@ if __name__ == "__main__":
     print("\nsilence and cleanup")
     asyncio.run(test_silence_and_cleanup())
     asyncio.run(test_a_fresh_opening())
+    asyncio.run(test_a_checkin_sees_the_last_few_days())
     print("\ntriggers")
     test_triggers()
 

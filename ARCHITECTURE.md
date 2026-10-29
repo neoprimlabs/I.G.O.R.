@@ -102,8 +102,7 @@ and the whole file inside ten 3700-character `read_file` windows.
 - **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
   1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
 
-The host was an ARM A1 until July 2026; anything saying ARM
-is out of date. `anthropic` stays installed, unused, for GAMEPLAN R4.1.
+`anthropic` stays installed, unused, for GAMEPLAN R4.1.
 
 **The runtime is the server.** There is no local run; discord.py is not installed
 locally.
@@ -354,13 +353,14 @@ is `update`, which edits a pending message in place by id. `repeat` (daily, week
 the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 across
 daylight saving. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
-delivery spends daily tokens on 120b. Each run is shown the series' last three
-messages, marked as sent, never built, and told not to repeat them. An IGOR
+delivery spends daily tokens on 120b. Each run sees the series' last three
+messages, marked sent, never built. An IGOR
 series gets its subject from code, by date.
 
-Presence writes on 120b. Gates, all in code before any model call: silent 03:00-10:00 local, 4h
+Presence writes on 120b. Gates in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
-conversation; the daily check-in waits until 2h after the user last spoke.
+conversation; the daily check-in waits until 2h after the user last spoke. It sees
+the user's own messages from 3 days, `user.md` and its last 5 check-ins.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
 `heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,
