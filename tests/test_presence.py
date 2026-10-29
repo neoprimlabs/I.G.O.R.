@@ -561,6 +561,22 @@ async def test_a_checkin_sees_the_last_few_days() -> None:
            saved.get("checkins") == ["Good evening. Is the car back yet, night 1?"],
            str(saved.get("checkins")))
 
+    # Replayed live 2026-10-29, shown its last check-ins and told not to reuse them,
+    # it still opened "I hope your evening is proceeding smoothly". Code compares.
+    _fresh(_state(checkins=["I trust your evening is proceeding smoothly."]))
+    asked.clear()
+
+    async def repeats(bundle):
+        asked.append(bundle)
+        return ("I hope your evening is proceeding smoothly; is the car back?" if len(asked) == 1
+                else "Good evening. Any word from the garage?")
+
+    out = await presence.consider("checkin", now=AWAKE, ask=repeats)
+    _check("a phrase reused from a recent check-in is asked for again, naming it",
+           len(asked) == 2 and '"your evening is" is from one of your last check-ins' in asked[1],
+           asked[-1][-200:])
+    _check("and the fresh one is sent", out == "Good evening. Any word from the garage?", repr(out))
+
 
 async def test_silence_and_cleanup() -> None:
     from agents import presence

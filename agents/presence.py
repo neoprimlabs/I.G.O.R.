@@ -490,6 +490,23 @@ def _opening(text: str) -> str:
     return " ".join(re.findall(r"[a-z']+", (text or "").lower())[:3])
 
 
+def _stale(text: str, openings: list[str], earlier: list[str]) -> Optional[str]:
+    """Why a message reads like the ones before it, or None. Shown its last check-ins
+    and told not to reuse their wording, the model replayed 2026-10-29 still opened
+    "I hope your evening is proceeding smoothly" twice out of two."""
+    if _opening(text) in openings:
+        return f"Your last messages opened with: {'; '.join(openings)}. Open differently."
+    words = re.findall(r"[a-z']+", text.lower())
+    for old in earlier:
+        theirs = re.findall(r"[a-z']+", old.lower())
+        used = {tuple(theirs[i:i + 3]) for i in range(len(theirs) - 2)}
+        for i in range(len(words) - 2):
+            if tuple(words[i:i + 3]) in used:
+                return (f"\"{' '.join(words[i:i + 3])}\" is from one of your last check-ins. "
+                        f"Write it fresh, in words you have not used.")
+    return None
+
+
 async def consider(reason: str, now: Optional[datetime] = None,
                    ask: Optional[Callable] = None,
                    last_user_at: Optional[datetime] = None) -> Optional[str]:
@@ -525,12 +542,13 @@ async def consider(reason: str, now: Optional[datetime] = None,
     # Four check-ins running opened "I trust your ... is proceeding smoothly" (to
     # 2026-10-27) although the prompt says to vary it. Code compares openings.
     recent = state.get("openings", [])
-    if message and _opening(message) in recent:
+    earlier = state.get("checkins", []) if reason == "checkin" else []
+    why = _stale(message, recent, earlier) if message else None
+    if why:
         try:
-            again = _tidy(await (ask or _default_ask)(
-                facts + f"\n\nYour last messages opened with: {'; '.join(recent)}. Open differently."))
+            again = _tidy(await (ask or _default_ask)(facts + f"\n\n{why}"))
             state["calls"] = state.get("calls", 0) + 1
-            if again and _opening(again) not in recent:
+            if again and not _stale(again, recent, earlier):
                 message = again
         except Exception as e:
             logger.warning("Presence (%s) retry for a fresh opening failed - %s", reason, type(e).__name__)
