@@ -89,23 +89,36 @@ Already sent to the user unprompted. Do not repeat, re-raise, follow up on, or c
   - **Morning Digest** **Open Tasks:** none **Weather:** Today: Overcast, 75F / 65F **AI News:** - Step5 Preview
   - **Model Alert** The configured models qwen/qwen3.6-27b are no longer available on Groq. They may have been de"""
 
+# A check-in's bundle carries no tasks or drafts since 2026-10-29; these match it.
 CHECKIN_LATE = """Woken by: checkin
 Current time: Mon 2026-09-21 00:40 EDT (04:40 UTC)
 The user last said something: 10017 minutes ago
-Open tasks (2):
-  - Investigate and implement X/Twitter content fetching for the Research agent
-  - Test write confirmation
-Drafts sent for review and not replied to (3):
-  Universal Basic Income - 2026-09-14 15:00 UTC - sent 6 days ago
-  Universal Basic Income - 2026-08-24 15:00 UTC - sent 27 days ago
-  Universal Basic Income - 2026-08-13 20:02 UTC - sent 38 days ago
 What the user said: nothing stored."""
+
+# The shape of the 2026-10-28 bundle, with invented content: six lines it may not
+# re-raise, and two days back things a person would ask after. Three nights running
+# the real one wrote "I trust your evening is proceeding smoothly."
+CHECKIN_RECENT_DAYS = f"""Woken by: checkin
+Current time: Wed 2026-10-28 20:03 EDT (00:03 UTC)
+The user last said something: 1857 minutes ago
+{_CONVO}
+  user, yesterday, Tue Oct 27 13:04: Which of the jobs you found suits me best?
+  you, yesterday, Tue Oct 27 13:04: The support role looks like the closest match to your experience.
+What they told you in the last three days, oldest first. Background, not questions waiting on you: you may ask how one is going, never answer or restate one:
+  Sun Oct 25 14:48: My car is in the shop until Friday, so I am stuck at home
+  Sun Oct 25 14:49: I have an interview Thursday afternoon
+  Mon Oct 26 23:24: Rough day. My back has been bad since the move
+Notes about the user, kept by IGOR:
+  - Works late nights (may change soon)
+Your last check-ins, oldest first. Say something different:
+  - I trust your Sunday afternoon is proceeding smoothly.
+  - I trust your evening is proceeding smoothly.
+Already sent to the user unprompted. Do not repeat, re-raise, follow up on, or comment on any of it:
+  - I trust your evening is proceeding smoothly."""
 
 CHECKIN_AFTERNOON = f"""Woken by: checkin
 Current time: Tue 2026-09-22 15:10 EDT (19:10 UTC)
 The user last said something: 95 minutes ago
-Open tasks: none
-Drafts awaiting review: none
 {_CONVO}
   user: going to be heads down on the engine build most of today"""
 
@@ -134,8 +147,9 @@ CASES = [
     ("only its own digest and a resolved alert to talk about", ECHO_ALERT, "SILENT"),
     ("a question it already answered 27 minutes ago", ANSWERED_QUESTION, "SILENT"),
     # Check-in cases. The code decided it is time; the model writes the message.
-    ("the daily check-in, late at night with work pending", CHECKIN_LATE, "SPEAK"),
+    ("the daily check-in, late at night with nothing recent", CHECKIN_LATE, "SPEAK"),
     ("the daily check-in, afternoon after they said they were busy", CHECKIN_AFTERNOON, "SPEAK"),
+    ("the daily check-in, with what they said two days ago", CHECKIN_RECENT_DAYS, "SPEAK"),
 ]
 
 # Anything echoed back from the Already sent block is the 09-18 bug returning.

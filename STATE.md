@@ -105,7 +105,15 @@ it does, tested against the subject list); paper sources are written as autolink
 not 【url】; each ranked-shortlist item must carry (evidence: independent) or
 (evidence: self-reported), independent first, checked in code. "Test write
 confirmation" removed from `tasks.md` on the user's word (backup
-`tasks.md.bak-20261028`). Next: the walkthrough with the user, a demo script run
+`tasks.md.bak-20261028`). The check-in said "I trust your evening is proceeding
+smoothly" three nights running: it now sees the user's own messages from three days,
+`user.md` and its last five check-ins (seeded on the server, backup
+`presence_state.json.bak-20261029`), no tasks or drafts; it opens with the substance,
+and a three-word phrase reused from its last five gets one rewrite. Fixtures are
+invented: the repo is public, and personal details from the conversation never go in
+a tracked file or a commit message. The user lifted the feature freeze 2026-10-28.
+Next Hermes build under discussion: `/goal`, keep working until a judge model says
+done. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

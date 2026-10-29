@@ -516,7 +516,8 @@ async def test_a_checkin_sees_the_last_few_days() -> None:
     from agents import presence
     import context_store
 
-    path = _fresh(_state(), files={"user.md": "# User\n- Works late nights\n"})
+    path = _fresh(_state(), files={"user.md": "# User\n- Works late nights\n",
+                                   "tasks.md": "# Tasks\n\n- Investigate X/Twitter fetching\n"})
     original_db = context_store._DB_PATH
     now = datetime.now(timezone.utc)
     try:
@@ -547,6 +548,11 @@ async def test_a_checkin_sees_the_last_few_days() -> None:
            "I trust your evening is proceeding smoothly." in checkin and "Say something different" in checkin)
     _check("a lull judgement gets none of it",
            "last three days" not in lull and "Works late nights" not in lull)
+    # The 2026-10-29 eval, told to ground itself in something real, asked after "the
+    # recent drafts on universal basic income and the pending X/Twitter integration".
+    _check("a check-in gets no tasks or drafts, which are IGOR's bookkeeping",
+           "X/Twitter" not in checkin and "Drafts" not in checkin, checkin[:300])
+    _check("the lull judgement still sees them", "X/Twitter" in lull and "Drafts" in lull)
 
     _fresh(_state())
     asked = []

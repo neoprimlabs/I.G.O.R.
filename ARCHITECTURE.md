@@ -360,7 +360,7 @@ series gets its subject from code, by date.
 Presence writes on 120b. Gates in code before any model call: silent 03:00-10:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits until 2h after the user last spoke. It sees
-the user's own messages from 3 days, `user.md` and its last 5 check-ins.
+the user's own messages from 3 days, `user.md` and its last 5 check-ins, no tasks.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
 `heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,

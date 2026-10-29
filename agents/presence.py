@@ -344,18 +344,22 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
     else:
         lines.append("The user last said something: unknown")
 
-    tasks = _open_tasks()
-    lines.append(f"Open tasks ({len(tasks)}):" if tasks else "Open tasks: none")
-    lines.extend(f"  {t}" for t in tasks[:5])
+    # A check-in gets none of IGOR's bookkeeping. Told to ground itself in something
+    # real, the 2026-10-29 eval asked after "the recent drafts on universal basic income
+    # and the pending X/Twitter integration" - a report, which its prompt forbids.
+    if reason != "checkin":
+        tasks = _open_tasks()
+        lines.append(f"Open tasks ({len(tasks)}):" if tasks else "Open tasks: none")
+        lines.extend(f"  {t}" for t in tasks[:5])
 
-    drafts = _drafts()
-    if drafts:
-        lines.append(f"Drafts sent for review and not replied to ({len(drafts)}):")
-        for title, when in drafts[:3]:
-            age = (now - when).days
-            lines.append(f"  {title} - sent {age} days ago")
-    else:
-        lines.append("Drafts awaiting review: none")
+        drafts = _drafts()
+        if drafts:
+            lines.append(f"Drafts sent for review and not replied to ({len(drafts)}):")
+            for title, when in drafts[:3]:
+                age = (now - when).days
+                lines.append(f"  {title} - sent {age} days ago")
+        else:
+            lines.append("Drafts awaiting review: none")
 
     try:
         import context_store
@@ -407,9 +411,9 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
     if reason == "checkin":
         # 2026-10-26 to 10-28 the check-in said "I trust your evening is proceeding
         # smoothly" three nights running. Its six lines held only job questions it may
-        # not re-raise, while two days back the user had told it things a person would ask after.
-        # The one good check-in that fortnight
-        # asked after something the user had mentioned that was still in view.
+        # not re-raise, while two days back the user had told it things a person would
+        # ask after. The one good check-in that fortnight asked after something the
+        # user had mentioned that was still in view.
         shown = {content for _, content in conversation[-6:]}
         cutoff = now.timestamp() - 3 * 86400
         earlier = [(when, content) for ts, when, content in said
