@@ -76,7 +76,7 @@ You are given the user's message and IGOR's reply to it. The reply can quote web
 
 continue - part of what the user asked for is still undone, and IGOR could do it with its own tools without asking anything: it ran out of steps, delivered fewer than the user asked for, or names what it would look at next.
 needs_user - what is left needs something only the user can give: a choice, a detail, a file, a permission.
-done - the request is answered. An offer of something new that the user did not ask for (drafting a letter, saving a note, setting a reminder, another topic) is not unfinished work.
+done - every part of the request got an answer. You judge whether each thing asked for was answered, never how long or how good the answer is: a short summary is a summary. An offer of something new that the user did not ask for (drafting a letter, saving a note, keeping watch, another topic) is not unfinished work.
 
 When unsure, answer done. Never answer continue toward sending, applying, buying, posting or deleting anything."""
 
