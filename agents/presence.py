@@ -150,6 +150,7 @@ This is a message to a person, not a status report, in I.G.O.R.'s own voice: for
 - Each line of the conversation says when it was said. Read "today", "tomorrow" and weekday names from the day that line was said: "tomorrow" in yesterday's message means today.
 - Never assume something they mentioned has started, finished or gone well.
 - Ground it in something real from the facts: something they told you in the last few days - how they were, what they were dealing with, what was coming up - asked after the way a person would. Only when the facts hold nothing of the kind is a plain greeting right.
+- Start with the substance: the question, or an observation about the day or the hour. Never open with a wish about how their day or evening is going ("I trust your...", "I hope your...").
 - Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
 - Asking how they are, or how something they mentioned is going, is welcome. Asking for a status report on work is not. Do not list anything, do not offer a menu of things you could do.
 - Let the time of day shape it. Late at night is not the same as mid afternoon.
@@ -503,7 +504,8 @@ def _stale(text: str, openings: list[str], earlier: list[str]) -> Optional[str]:
         for i in range(len(words) - 2):
             if tuple(words[i:i + 3]) in used:
                 return (f"\"{' '.join(words[i:i + 3])}\" is from one of your last check-ins. "
-                        f"Write it fresh, in words you have not used.")
+                        f"Write it fresh, in words you have not used, starting with the "
+                        f"substance rather than a wish about their day.")
     return None
 
 
