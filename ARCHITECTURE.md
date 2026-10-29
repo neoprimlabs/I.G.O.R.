@@ -443,9 +443,9 @@ append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings 
 sessions the goal's one living `paper.md` is written, then revised (under 7500 chars;
 code cuts a long draft's least-sourced sections, never the shortlist or unsure).
 Code checks a "What I am unsure about" heading, 3 distinct links from the
-findings or paper, a revision keeping a third of its links, and each shortlist item's
-`(evidence: independent|self-reported)`, independent first; one retry told why; then
-the Evaluator (FAIL keeps a draft).
+findings or paper and a revision keeping a third of its links, one retry told why,
+then the Evaluator (FAIL keeps a draft). Code labels each shortlist item `(evidence:
+independent|self-reported)`, unstated as self-reported, independent first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees. A failed write waits a night.
 

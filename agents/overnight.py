@@ -162,37 +162,67 @@ def revision_keeps(current: str, paper: str) -> tuple[bool, str]:
 
 
 _ITEM_RE = re.compile(r"^(?:\d+[.)]|[-*])\s+")
-_EVIDENCE_RE = re.compile(r"\(evidence:\s*(independent|self-reported)\)", re.IGNORECASE)
+_NUMBER_RE = re.compile(r"^(\d+)([.)])\s+")
+_LABEL_RE = re.compile(r"\s*\(evidence:([^)]*)\)", re.IGNORECASE)
+_SELLER_WORDS = ("self-reported", "self reported", "vendor", "claim")
 
 
-def shortlist_is_honest(paper: str) -> tuple[bool, str]:
-    """Each ranked idea says what backs it, and none resting on its seller's word
-    outranks one with independent backing. Live 2026-10-28 the paper ranked first
-    "proven recurring revenue" from two "how I made $X" posts, and listed NFT mints
-    and a virtual influencer on platform marketing. Hermes' grounded-citations: one
-    source is reporting, two independent sources are corroboration."""
-    _, *parts = re.split(r"(?m)^(?=## )", paper)
-    section = next((p for p in parts if re.search(r"shortlist|ranked", p.splitlines()[0], re.I)), None)
-    if section is None:
-        return True, ""
-    items: list[str] = []
-    for line in section.splitlines()[1:]:
-        if _ITEM_RE.match(line):
-            items.append(line)
-        elif line.strip() and items:
-            items[-1] += " " + line.strip()
-    if not items:
-        return False, "the ranked shortlist has no numbered items"
-    labels = [(m.group(1).lower() if (m := _EVIDENCE_RE.search(item)) else None) for item in items]
-    unlabelled = [str(n) for n, label in enumerate(labels, 1) if label is None]
-    if unlabelled:
-        return False, (f"shortlist item(s) {', '.join(unlabelled)} do not end with (evidence: "
-                       f"independent) or (evidence: self-reported)")
-    first_self = labels.index("self-reported") if "self-reported" in labels else len(labels)
-    if "independent" in labels[first_self:]:
-        return False, ("an idea with (evidence: independent) is ranked below one with (evidence: "
-                       "self-reported); rank every independent idea first")
-    return True, ""
+def _evidence(item: str) -> str:
+    """independent or self-reported, from the item's label or else its own words. An
+    idea not shown to have independent backing rests on its seller's word."""
+    label = _LABEL_RE.search(item)
+    words = (label.group(1) if label else item).lower()
+    if any(w in words for w in _SELLER_WORDS):
+        return "self-reported"
+    return "independent" if "independent" in words else "self-reported"
+
+
+def normalize_shortlist(paper: str) -> str:
+    """Every ranked idea ends with what backs it, and the independent ones come first.
+
+    Live 2026-10-28 the paper ranked first "proven recurring revenue" from two "how I
+    made $X" posts. Hermes' grounded-citations: one source is reporting, two
+    independent sources are corroboration. Checked as a gate, the next night lost
+    its revision to format: one draft wrote "self-reported revenue figures" in prose
+    and none of its labels counted. Code reads the labels and fixes the order instead.
+    """
+    head, *parts = re.split(r"(?m)^(?=## )", paper)
+    for k, part in enumerate(parts):
+        lines = part.splitlines(keepends=True)
+        if not re.search(r"shortlist|ranked", lines[0], re.I):
+            continue
+        prefix, items, blank, suffix = [], [], [], []
+        for line in lines[1:]:
+            if suffix:
+                suffix.append(line)
+            elif _ITEM_RE.match(line):
+                items.append([line])
+                blank = []
+            elif not items:
+                prefix.append(line)
+            elif not line.strip():
+                blank.append(line)
+            elif not blank:
+                items[-1].append(line)
+            else:
+                suffix, blank = blank + [line], []
+        if not items:
+            continue
+        labelled = []
+        for block in items:
+            kind = _evidence("".join(block))
+            block = [_LABEL_RE.sub("", line.rstrip("\r\n")).rstrip() + ("\n" if line.endswith("\n") else "")
+                     for line in block]
+            end = "\n" if block[-1].endswith("\n") else ""
+            block[-1] = f"{block[-1].rstrip()} (evidence: {kind}){end}"
+            labelled.append((kind, block))
+        ordered = sorted(labelled, key=lambda pair: pair[0] != "independent")
+        rebuilt = []
+        for n, (_, block) in enumerate(ordered, 1):
+            rebuilt.append(_NUMBER_RE.sub(lambda m: f"{n}{m.group(2)} ", block[0], count=1))
+            rebuilt.extend(block[1:])
+        parts[k] = lines[0] + "".join(prefix + rebuilt + blank + suffix)
+    return head + "".join(parts)
 
 
 def _real_search():
@@ -388,11 +418,9 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             candidate = await complete(system, write_user + retry, _WRITE_BUDGET, cap=_WRITE_BUDGET)
             if not candidate:
                 break
-            paper = candidate
+            paper = normalize_shortlist(candidate)
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
-            if ok:
-                ok, why = shortlist_is_honest(paper)
             if ok and current:
                 ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:

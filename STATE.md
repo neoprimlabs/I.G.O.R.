@@ -102,8 +102,9 @@ with the most words. Kept LIKE over FTS5 (338 messages stored); `search_history`
 no live calls in the journal. From the 10-28 output: the IGOR idea series proposed
 approvals, checkpoints and rollback because the self-summary named none of them (now
 it does, tested against the subject list); paper sources are written as autolinks,
-not 【url】; each ranked-shortlist item must carry (evidence: independent) or
-(evidence: self-reported), independent first, checked in code. "Test write
+not 【url】; each ranked-shortlist item carries (evidence: independent) or
+(evidence: self-reported), independent first. As a gate it cost the 10-29 revision
+(labels written in prose); since then code reads and fixes the labels instead. "Test write
 confirmation" removed from `tasks.md` on the user's word (backup
 `tasks.md.bak-20261028`). The check-in said "I trust your evening is proceeding
 smoothly" three nights running: it now sees the user's own messages from three days,

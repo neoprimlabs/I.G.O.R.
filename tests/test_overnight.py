@@ -520,21 +520,39 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     """Live 2026-10-28 the paper ranked first "proven recurring revenue" resting on two
     "how I made $X" posts. Hermes: one source is reporting, two are corroboration."""
     from agents import overnight
-    honest = overnight.shortlist_is_honest
-    good = ("# P\n\n## Ranked shortlist\n1. **Alerts** - firms pay $199/mo (evidence: independent)\n"
-            "2. **Wrappers** - one developer reports $4k/mo\n   - two blog posts (evidence: Self-Reported)\n"
+    norm = overnight.normalize_shortlist
+    good = ("# P\n\n## Ranked shortlist\n\n1. **Alerts** - firms pay $199/mo (evidence: independent)\n"
+            "2. **Wrappers** - one developer reports $4k/mo\n   two blog posts (evidence: Self-Reported)\n"
             "\n## What I am unsure about\nMuch.\n")
-    _check("labelled, independent first, passes", honest(good) == (True, ""), str(honest(good)))
-    _check("a paper with no shortlist is not held to it", honest("# P\n\n## Findings\nx\n")[0])
-    ok, why = honest(good.replace(" (evidence: independent)", ""))
-    _check("an unlabelled item is refused, by number", not ok and "item(s) 1 " in why, why)
-    swapped = ("# P\n\n## Ranked Shortlist of Most Promising Models\n"
-               "1. Wrappers (evidence: self-reported)\n2. Alerts (evidence: independent)\n")
-    ok, why = honest(swapped)
-    _check("a self-reported idea may not outrank an independent one",
-           not ok and "rank every independent idea first" in why, why)
-    ok, why = honest("# P\n\n## Ranked shortlist\nWrappers, then alerts.\n")
-    _check("a shortlist with no numbered items is refused", not ok and "no numbered items" in why, why)
+    out = norm(good)
+    _check("a labelled shortlist in order keeps its items and order",
+           "1. **Alerts** - firms pay $199/mo (evidence: independent)\n" in out
+           and "2. **Wrappers**" in out and "two blog posts (evidence: self-reported)\n" in out, out)
+    _check("and the sections around it are untouched",
+           out.startswith("# P\n\n## Ranked shortlist\n\n1.") and out.endswith("\n## What I am unsure about\nMuch.\n"), out)
+    _check("a paper with no shortlist is unchanged", norm("# P\n\n## Findings\nx\n") == "# P\n\n## Findings\nx\n")
+
+    # The three drafts of 2026-10-29, cut down: a label written in prose, an odd label,
+    # and an idea that states nothing about what backs it.
+    drafts = ("# P\n\n## Ranked Shortlist of Most Promising Models  \n\n"
+              "1. **Wrappers** - recurring revenue; independent exit data (evidence: self-reported).  \n"
+              "2. **Alerts** - high willingness to pay; self-reported revenue figures.  \n"
+              "3. **Legal docs** - investor backing, independent revenue reports.  \n"
+              "4. **Biotech filings** - savings per filing (evidence: vendor claim, self-reported).  \n"
+              "5. **NFT mints** - emerging passive income.\n\n"
+              "## What I am unsure about\n\n- Churn.\n")
+    out = norm(drafts)
+    shortlist = out.split("## Ranked")[1].split("## What")[0]
+    items = [line for line in shortlist.splitlines() if line[:1].isdigit()]
+    _check("every item ends with a label, read from its own words when not written as one",
+           len(items) == 5 and all(i.endswith(("(evidence: independent)", "(evidence: self-reported)"))
+                                   for i in items), "\n".join(items))
+    _check("an independent idea moves above the seller's word, renumbered",
+           items[0].startswith("1. **Legal docs**") and items[0].endswith("(evidence: independent)")
+           and items[1].startswith("2. **Wrappers**"), "\n".join(items))
+    _check("an idea that says nothing about its backing counts as the seller's word",
+           items[4].startswith("5. **NFT mints**") and items[4].endswith("(evidence: self-reported)"), items[4])
+    _check("an odd label is made plain", "vendor claim" not in out and "4. **Biotech filings**" in out, out)
 
     overnight_mod, goals, work, tmp, calls = _fresh()
     goals.add("Ways an agent could earn money, ranked shortlist", "research")
@@ -543,10 +561,10 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     s.shortlist = True
     _run(overnight_mod.tick(NIGHT_TIME, search=s.search, complete=s.complete))
     paper = work.folder(gid) / "paper.md"
-    _check("an unlabelled shortlist gets one retry told why",
-           s.writes == 2 and "(evidence: independent)" in s.write_users[-1], str(s.write_users[-1:])[-300:])
-    _check("and the labelled retry is the paper",
-           paper.exists() and "(evidence: independent)" in paper.read_text(encoding="utf-8"))
+    _check("an unlabelled shortlist no longer costs the night's paper",
+           s.writes == 1 and paper.exists(), str(s.writes))
+    _check("it is written labelled",
+           paper.exists() and "1. Claim 0 again (evidence: self-reported)" in paper.read_text(encoding="utf-8"))
     tmp.cleanup()
 
 
