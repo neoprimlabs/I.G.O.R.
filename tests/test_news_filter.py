@@ -108,6 +108,18 @@ def test_filter() -> None:
     _check("with no exclusions configured, nothing is filtered on that basis",
            len(monitor._filter_news_results([SAFETY, HOAX], set(), [])) == 2)
 
+    # 2026-10-28 and 10-29 the digest summarised a listing page as one story.
+    listings = [dict(RELEASE, url=u) for u in (
+        "https://www.inferama.com/en/news/models", "https://siliconainews.com/topics/ai-models",
+        "https://example.com/category/llm/", "https://example.com/", "https://example.com/blog?page=2")]
+    _check("listing pages are not stories", monitor._filter_news_results(listings, set(), []) == [],
+           str([r["url"] for r in monitor._filter_news_results(listings, set(), [])]))
+    stories = [dict(RELEASE, url=u) for u in (
+        "https://openai.com/index/introducing-gpt-6-1-terra/", "https://particle.ai/blog/introducing-particle-1",
+        "https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/")]
+    _check("articles under an index or blog path still count",
+           len(monitor._filter_news_results(stories, set(), [])) == 3)
+
 
 def test_exclusions_are_read_from_the_file() -> None:
     """The fetch path reads the file itself.

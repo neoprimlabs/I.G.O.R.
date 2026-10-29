@@ -692,13 +692,26 @@ def _remember_news(urls, now=None) -> None:
     watchers.remember(_NEWS_SEEN, urls, now=now, days=_NEWS_SEEN_DAYS)
 
 
+# 2026-10-28 and 10-29 the digest cited a listing page as a story's source
+# (".../news/models", ".../topics/ai-models"): a page of many stories, summarised as one.
+_INDEX_SEGMENTS = {"topics", "topic", "category", "categories", "tag", "tags", "section",
+                   "sections", "archive", "archives"}
+_INDEX_LAST = {"news", "models", "blog", "latest", "articles", "posts", "updates", "releases",
+               "research", "ai", "ai-news", "ai-models", "home", "index"}
+
+
+def _is_listing(url: str) -> bool:
+    path = [s.lower() for s in url.split("?")[0].split("#")[0].split("/")[3:] if s]
+    return not path or bool(_INDEX_SEGMENTS & set(path)) or path[-1] in _INDEX_LAST
+
+
 def _filter_news_results(results, seen_urls, exclusions):
-    """Drop what was already sent, what the user excluded, and repeat domains."""
+    """Drop what was already sent, what the user excluded, listing pages and repeat domains."""
     kept = []
     domains: set[str] = set()
     for r in results:
         url = r.get("url", "")
-        if not url or url in seen_urls:
+        if not url or url in seen_urls or _is_listing(url):
             continue
         # Title and summary only. Matching the full article text would drop a model
         # release that mentions safety once in passing, which is a story the user
