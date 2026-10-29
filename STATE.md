@@ -112,7 +112,9 @@ smoothly" three nights running: it now sees the user's own messages from three d
 `presence_state.json.bak-20261029`), no tasks or drafts; it opens with the substance,
 and a three-word phrase reused from its last five gets one rewrite. Fixtures are
 invented: the repo is public, and personal details from the conversation never go in
-a tracked file or a commit message. The user lifted the feature freeze 2026-10-28.
+a tracked file or a commit message. History rewritten 2026-10-29 on the user's word
+to remove personal details that had been committed (filter-repo, force-pushed by
+the user; files unchanged; backup `C:\Dev\IGOR_backup\history-rewrite\nigor-before-20261029.bundle`). The user lifted the feature freeze 2026-10-28.
 Next Hermes build under discussion: `/goal`, keep working until a judge model says
 done. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
