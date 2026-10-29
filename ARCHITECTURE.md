@@ -70,6 +70,11 @@ keeps them shut.
 **Checkpoints**: `write_file`, `patch_file` and `memory_write` keep a file's old copy
 first (`checkpoints.py`, newest 20); the user's `rollback` restores them.
 
+**Follow-through** (`followthrough.py`, Hermes' /goal, but IGOR decides): a React
+reply that ran out of steps or offers to go on is judged by 20b. On `continue`, up to
+3 more rounds, each reply sent as it lands; none under 60000 tokens left today. A
+round keeps the turn's web and private lockouts; any user message stops it.
+
 **Cost**: Groq's free tier caps tokens per model per day; 120b's daily token budget
 (200000) is shared by Direct and React. `usage.py` counts what IGOR spends.
 
@@ -175,6 +180,8 @@ A Discord DM travels this path every time:
    messages, then the last 3 posts, within its budget, stamped with their time.
 8. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
    chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
+9. **`orchestrator.follow_through`** - once a React reply is sent, `followthrough.py`
+   may run more rounds on it (see the summary), typing in Discord while one runs.
 
 ---
 
@@ -209,12 +216,8 @@ that fail as a 200 OK when omitted, keyed by model so no call site has to rememb
 `reasoning_format` `hidden` for qwen, `reasoning_effort` `low` for both gpt-oss
 models. An explicit caller value still wins, so ResearchLoop keeps the `low` it
 measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
-accepts `none`. Groq's docs say gpt-oss defaults to high; measured, unset behaves
-nothing like high, so that default is unconfirmed. React relies on `model_params`.
-
-`reasoning_format` has no openai-client parameter, so `model_params` puts it in
-`extra_body`; as a keyword it raises TypeError before the request, which the deploy
-gate cannot catch because it only imports modules.
+accepts `none`. React relies on `model_params`. `reasoning_format` has no
+openai-client parameter, so it goes in `extra_body`; as a keyword it raises TypeError.
 
 Two call sites stay out, on purpose:
 
@@ -293,28 +296,23 @@ guessed, and it shares `monitor._parse_tasks` with the digest so the two can nev
 disagree about what is open.
 
 `delegate_task` runs one isolated worker: `handle()` again with an empty context, a
-restricted tool list, 8 iterations and `MODELS["worker"]`. It is how a job stops
-having to fit in the parent's context window. Three constraints make it safe rather
+restricted tool list, 8 iterations and `MODELS["worker"]`. Three constraints make it safe rather
 than merely useful, each covered by `tests/test_delegation.py`:
 
-- **Worker tools are intersected with what the parent still holds**, not with the
-  full list. Without that, a parent that had read the web - and so lost `write_file`
-  and `shell` - could hand the write to a worker, and the symmetric quarantine would
-  be one indirection deep and worth nothing.
+- **Worker tools are intersected with what the parent still holds**, not the full
+  list, so a parent that read the web cannot hand a write to a worker.
 - **Granting a worker `search` or `fetch_url` counts as the parent reading the web.**
   The worker returns text the parent acts on, so `_delegation_wants_web` folds into
   `batch_reads_web` and the parent's state-changing tools close as they would on a
   direct read. `delegate_task` is itself in `_QUARANTINED_AFTER_WEB`.
-- **One worker at a time** (`_delegation_gate`), on a different model from the parent
-  (20b, not react's 120b). Groq free tier is 8000 TPM per bucket and the parent is
-  mid-turn with the user waiting; fanning out 429s the hot path. Depth is capped at 1
+- **One worker at a time** (`_delegation_gate`), on 20b, not react's 120b: fanning
+  out 429s the hot path while the user waits. Depth is capped at 1
   so workers cannot delegate, and at 3 delegations per turn. Workers never get
   `send_message`, `scheduled_message`, `restart_self`, `memory_write`,
   `task_update` or `delegate_task`; `tests/test_delegation.py` asserts the whole set.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
-with an optional `context` of up to 6 surrounding lines. It is Python, not a
-shelled-out grep, because the pattern comes from a model. It skips private files through `_is_private` and `.git`, `__pycache__`
+with an optional `context` of up to 6 surrounding lines, in Python. It skips private files through `_is_private` and `.git`, `__pycache__`
 and the venv. Read-only, so it is in neither quarantine set.
 
 Up to 8 iterations:
@@ -526,6 +524,7 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | `evaluator` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
 | `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
+| `judge` | `openai/gpt-oss-20b` | shares research's 8000; follow-through verdicts |
 | `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
 | `presence` | `openai/gpt-oss-120b` | shares chat's 8000; check-ins |
 | `vision` | `qwen/qwen3.8-27b` | shares router's 8000; 2048 an image, when sent |

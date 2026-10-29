@@ -24,6 +24,7 @@ MODELS = {
     "evaluator": "openai/gpt-oss-20b",   # shares research's bucket
     "summary": "openai/gpt-oss-20b",     # shares research's bucket
     "worker": "openai/gpt-oss-20b",      # delegated workers; see below
+    "judge": "openai/gpt-oss-20b",       # shares research's bucket: whether a React reply stopped short
     "screening": "openai/gpt-oss-120b",  # shares chat's bucket: one ~2000 token gig screen a day
     # 2026-10-22: on 20b the check-in assumed a shift on the user's stated day off.
     # Replayed on the same facts, 120b named the day off. One or two calls a day.

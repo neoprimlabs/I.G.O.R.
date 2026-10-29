@@ -90,6 +90,17 @@ class IgorBot(discord.Client):
                     await self._send_chunked(message.channel, response)
             except Exception as e:
                 logger.error("Failed to send response - %s: %s", type(e).__name__, e)
+                return
+            await self._follow_through(message.channel)
+
+    async def _follow_through(self, channel: discord.abc.Messageable) -> None:
+        """More rounds on a React reply that stopped short, typing while each runs."""
+        async def send(text: str) -> None:
+            await self._send_chunked(channel, _sanitize(text))
+        try:
+            await self._orchestrator.follow_through(send, typing=channel.typing)
+        except Exception as e:
+            logger.error("Follow-through failed - %s: %s", type(e).__name__, e)
 
     async def _send_chunked(self, channel: discord.abc.Messageable, content: str) -> None:
         limit = 2000

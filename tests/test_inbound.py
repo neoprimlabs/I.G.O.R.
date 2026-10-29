@@ -282,7 +282,7 @@ def test_long_document_skips_the_router() -> None:
         classified.append(text)
         return "Direct"
 
-    async def route(destination, task, file_mode=False):
+    async def route(destination, task, file_mode=False, carry=None):
         routed.append(destination)
         return "ok"
 

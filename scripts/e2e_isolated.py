@@ -83,6 +83,10 @@ async def _run(messages: list[str], react_only: bool, config) -> None:
         before = _md_snapshot(config.MEMORY_DIR)
         reply, _ = await o.process(config.AUTHORIZED_USER_ID, message)
         print(f"\nUSER: {message}\nIGOR: {reply}")
+
+        async def send(text):
+            print(f"\nIGOR (followed through): {text}")
+        await o.follow_through(send)
         _print_changes(before, _md_snapshot(config.MEMORY_DIR))
 
 

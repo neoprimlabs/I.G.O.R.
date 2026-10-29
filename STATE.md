@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-28**
+Last updated: **2026-10-29**
 
 ---
 
@@ -114,9 +114,14 @@ and a three-word phrase reused from its last five gets one rewrite. Fixtures are
 invented: the repo is public, and personal details from the conversation never go in
 a tracked file or a commit message. History rewritten 2026-10-29 on the user's word
 to remove personal details that had been committed (filter-repo, force-pushed by
-the user; files unchanged; backup `C:\Dev\IGOR_backup\history-rewrite\nigor-before-20261029.bundle`). The user lifted the feature freeze 2026-10-28.
-Next Hermes build under discussion: `/goal`, keep working until a judge model says
-done. Next: the walkthrough with the user, a demo script run
+the user; files unchanged; backup `C:\Dev\IGOR_backup\history-rewrite\igor-before-20261029.bundle`). The user lifted the feature freeze 2026-10-28.
+Built 2026-10-29, Hermes' `/goal` with IGOR deciding when (the user's choice):
+`followthrough.py`. A React reply that ran out of steps or ends by offering to go on
+is judged by 20b (done, continue, needs_user); on continue, up to 3 more rounds,
+each reply sent as it lands, none with under 60000 120b tokens left today. A failed
+judge means stop (Hermes fails open). A round keeps the turn's web and private
+lockouts, and any user message stops it at its next step. Offline tests only so far:
+the first live judge verdicts are in the journal as `Follow-through judge`. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
@@ -684,9 +689,8 @@ to `agents/monitor.py:890` and quoted its docstring; delegating `write_file` fro
 web-quarantined parent was refused; a worker's own delegation was refused at the
 depth cap.
 
-**Not done, and not a Hermes gap:** a general loop-until-done. `research_loop` has a
-100-iteration autonomous loop but it is research-specific. Generalising it is the
-larger ambition noted in auto-memory, and it is beyond parity rather than part of it.
+**Loop-until-done**: Hermes has it as `/goal`. Built 2026-10-29 as
+`followthrough.py`, three rounds at most for the daily cap.
 A `kanban`-style multi-agent board is also unbuilt; delegation is its prerequisite
 and now exists.
 

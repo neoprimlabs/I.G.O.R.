@@ -1654,10 +1654,11 @@ async def handle(
     _depth: int = 0,
     label: str = "React",
     force_tool: str | None = None,
+    carry: dict | None = None,
 ) -> str:
     kwargs = dict(max_tokens=max_tokens, max_iterations=max_iterations, model=model,
                   allowed_tools=allowed_tools, system_override=system_override,
-                  _depth=_depth, label=label, force_tool=force_tool)
+                  _depth=_depth, label=label, force_tool=force_tool, carry=carry)
     if _depth or _RECEIPTS.get() is not None:
         return await _handle(message, context, **kwargs)
     token = _RECEIPTS.set([])
@@ -1680,6 +1681,7 @@ async def _handle(
     _depth: int = 0,
     label: str = "React",
     force_tool: str | None = None,
+    carry: dict | None = None,
 ) -> str:
     client = _get_client()
     use_model = model or config.MODELS["react"]
@@ -1722,9 +1724,18 @@ async def _handle(
         tools = [t for t in tools if t["function"]["name"] != "read_file"]
         if force_tool is None:
             force_tool, forced_done = "search", False
-    web_read = False
-    private_read = False
+    # A follow-through round (followthrough.py) is part of the turn before it: what that
+    # turn read stays read, so a web page can never steer a write the user did not ask
+    # for. The turn reports back what it read, whether it ran out of steps, and stops
+    # at its next step once the user writes again.
+    carry = {} if carry is None else carry
+    web_read = bool(carry.get("web"))
+    private_read = bool(carry.get("private"))
+    stop = carry.get("stop")
     for i in range(max_iterations):
+        if stop is not None and stop.is_set():
+            logger.info("ReAct stopped at iteration %d: the user wrote again", i + 1)
+            return ""
         if web_read:
             tools = [t for t in tools if t["function"]["name"] not in _QUARANTINED_AFTER_WEB]
         if private_read:
@@ -1839,11 +1850,11 @@ async def _handle(
 
             results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])
             if batch_reads_web and not web_read:
-                web_read = True
+                web_read = carry["web"] = True
                 logger.info("ReAct: untrusted web content entered the turn, quarantining %d tools",
                             len(_QUARANTINED_AFTER_WEB))
             if batch_reads_private and not batch_reads_web and not private_read:
-                private_read = True
+                private_read = carry["private"] = True
                 logger.info("ReAct: private data entered the turn, closing the web for the rest of it")
             messages = messages + [
                 {
@@ -1865,6 +1876,7 @@ async def _handle(
         break
 
     logger.warning("ReAct hit max iterations (%d) - forcing a final answer", max_iterations)
+    carry["out_of_steps"] = True
     messages = messages + [{
         "role": "user",
         "content": "[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open. Describe only what this turn did: which searches actually ran and what they returned. If you did not search, say so plainly; never present an earlier turn's results as new, or claim to have checked sources you did not.]",

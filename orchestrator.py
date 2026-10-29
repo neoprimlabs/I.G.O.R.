@@ -425,6 +425,12 @@ class Orchestrator:
         self._notify_file = notify_file or notify
         self._monitor_declined = False
         self._last_route = ""
+        # followthrough.py: the React reply waiting to be followed through once the bot
+        # has sent it, the stop for one under way, and a count of the user's messages so
+        # a reply overtaken by a newer message is not followed through.
+        self._pending_follow: tuple[str, str, dict] | None = None
+        self._stop_follow: asyncio.Event | None = None
+        self._seq = 0
         from context_store import load_timed
         self._context: list[dict] = load_timed(_CONTEXT_KEEP)
 
@@ -446,6 +452,15 @@ class Orchestrator:
         settled = approvals.answer(content)
         if settled:
             return settled, False
+
+        # Any other message ends a follow-through, the round in flight included: Hermes'
+        # "user messages always preempt". After approvals, since a yes to a command that
+        # a round is waiting on belongs to that round.
+        self._seq += 1
+        seq = self._seq
+        self._pending_follow = None
+        if self._stop_follow is not None:
+            self._stop_follow.set()
 
         file_mode = content.lower().startswith("file:")
         task = content[5:].strip() if file_mode else content
@@ -473,8 +488,9 @@ class Orchestrator:
 
         self._monitor_declined = False
         turn = llm.start_turn()
+        carry: dict = {}
         try:
-            response = await self._route(destination, task, file_mode=file_mode)
+            response = await self._route(destination, task, file_mode=file_mode, carry=carry)
         except openai.RateLimitError as e:
             logger.error("Route to %s rate limited after all retries", destination)
             return _rate_limit_reply(e), False
@@ -500,6 +516,8 @@ class Orchestrator:
         self._update_context(task, response)
         if file_mode:
             return response, file_mode
+        if destination == "React" and seq == self._seq:
+            self._pending_follow = (task, response, carry)
         parts = []
         if destination == "Monitor" and not self._monitor_declined:
             parts.append("`[Monitor]`")
@@ -617,7 +635,8 @@ class Orchestrator:
 
         return _file_caller
 
-    async def _route(self, destination: str, content: str, file_mode: bool = False) -> str:
+    async def _route(self, destination: str, content: str, file_mode: bool = False,
+                     carry: dict | None = None) -> str:
         from agents import monitor, react, research_loop
 
         if destination == "ResearchLoop":
@@ -742,7 +761,7 @@ class Orchestrator:
             )
 
         react.set_notify(self._notify)
-        response = await react.handle(content, self._window(), max_tokens=max_tokens)
+        response = await react.handle(content, self._window(), max_tokens=max_tokens, carry=carry)
 
         if file_mode:
             from agents import evaluator
@@ -757,6 +776,48 @@ class Orchestrator:
                 if not passed:
                     response = f"[Evaluator warning: {feedback}]\n\n{response}"
         return response
+
+    async def follow_through(self, send: Callable[[str], Awaitable[None]], typing=None) -> int:
+        """Further rounds on the React turn just answered, if it stopped short
+        (followthrough.py). The bot calls this once that reply is sent; each round's
+        reply goes out through send. Returns how many rounds ran."""
+        pending, self._pending_follow = self._pending_follow, None
+        if pending is None:
+            return 0
+        import followthrough
+        stop = asyncio.Event()
+        self._stop_follow = stop
+        try:
+            return await followthrough.run(*pending, stop, self._round, send, typing)
+        finally:
+            if self._stop_follow is stop:
+                self._stop_follow = None
+
+    async def _round(self, message: str, carry: dict) -> str:
+        from agents import react
+        react.set_notify(self._notify)
+        turn = llm.start_turn()
+        try:
+            reply = await react.handle(message, self._window(), max_tokens=2048, carry=carry)
+        finally:
+            notice = llm.end_turn(turn)
+        if not reply.strip():
+            return reply
+        self._store_round(reply)
+        return f"{reply}\n\n{notice}" if notice else reply
+
+    def _store_round(self, text: str) -> None:
+        """A follow-through round's reply. Conversation, not a post, though no user
+        message comes before it: the continuation that asked for it was IGOR's own."""
+        from context_store import append
+        entry = {"role": "assistant", "content": _cap(text.strip(), _STORE_CAP),
+                 "ts": datetime.now(timezone.utc).timestamp()}
+        self._context.append(entry)
+        if len(self._context) > _CONTEXT_KEEP:
+            self._context = self._context[-_CONTEXT_KEEP:]
+        append("assistant", entry["content"])
+        import compression
+        compression.schedule()
 
     def _window(self, char_budget: int = _CONTEXT_BUDGET_REACT,
                 with_summary: bool = True) -> list[dict]:
