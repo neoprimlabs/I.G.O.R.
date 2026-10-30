@@ -32,6 +32,8 @@ request through `load_tools` (Hermes' Tool Search).
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
+**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`.
+
 **Routing.** Eleven fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
@@ -66,8 +68,7 @@ days, `search_history`); messages leaving the window fold into a running summary
 (`compression.py`, 20b) in every prompt. `memory_read` and
 `memory_write` take names from a fixed list; `memory_write` edits dated entries (add,
 patch, remove), several in one call saved together or not at all, as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
-with no web content, and reading one closes the web for that turn. A job search
-keeps them shut.
+with no web content, and reading one closes the web for that turn.
 
 **Checkpoints**: `write_file`, `patch_file` and `memory_write` keep a file's old copy
 first (`checkpoints.py`, newest 20); the user's `rollback` restores them.
@@ -83,8 +84,7 @@ reply that ran out of steps or offers to go on is judged by 20b. On `continue`, 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
 
-**MCP**: `mcp_server.py` serves six read-only tools (notes, conversation and watch
-search, usage, this summary) to the user's other agents, over SSH on stdio. No port,
+**MCP**: `mcp_server.py` serves six read-only tools to the user's other agents, over SSH on stdio. No port,
 no writes, no private files.
 
 <!-- END SELF SUMMARY -->
@@ -123,7 +123,10 @@ A Discord DM travels this path every time:
    with the text in the message; a long one goes to React with a 20b summary instead.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
-   auth check in the system; everything downstream trusts it.
+   auth check in the system; everything downstream trusts it. A yes or no to a
+   waiting approval comes next, then `commands.py` (Hermes' gateway commands: the whole
+   message, no model). Other messages take one turn at a time, in order (Hermes' queue
+   mode); `stop` ends the turn in flight at its next step.
 3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
    `file:` request skips the router entirely and goes to React, because it is
    document work regardless of what it asks for. Run-together clock times are
@@ -263,9 +266,7 @@ past 6h) and the cheapest match, labelled unchecked.
 `available` boolean and a price in cents: keyless, no model call. `aoostar.com`
 blocks Oracle's IPs (429s), so fetches fall back to the `r.jina.ai` relay (third-party,
 public URLs only). A failed fetch carries the old state
-forward (or the next success fakes a restock); state is kept raw and available-AND-under-ceiling, so an
-over-target restock cannot suppress a later alert; the variant filter is anchored
-to the region option, since `variant: us` once matched "warehouse".
+forward (or the next success fakes a restock).
 
 **Watch history** (`history.py`, `memory/history.db`) keeps every successful
 observation (stock and price per variant, the price watch's cheapest match, each new
@@ -333,7 +334,8 @@ React can only give a `brief`, written to be self-contained. When due,
 `fetch_url`, `memory_read`, `search_memory`), 180s timeout; a brief naming IGOR
 gets the self summary. If that fails or returns
 nothing, the tool-less `compose()` writes it; if that fails too, the brief itself is
-sent. Words the user dictated go in double quotes and are kept verbatim.
+sent. Words the user dictated go in double quotes and are kept verbatim. A brief can ask
+to speak only if something is so; the run answers `[SILENT]` and nothing goes (Hermes' cron).
 
 A second brief due within 5 minutes of a pending one is merged into it. A correction
 is `update`, which edits a pending message in place by id. `repeat` (daily, weekdays, weekly) moves
@@ -365,7 +367,7 @@ screen holds the gigs; picks go out in the post's own words.
 
 ### ConfigEdit
 
-Rebuilt from the old ProdMem write helper. Edits exactly three files:
+Edits exactly three files:
 `digest_config.md`, `schedule_config.md`, `watchlist.md`. Rejects any other
 filename, validates digest section names against the set the digest actually
 reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
@@ -394,8 +396,7 @@ Findings are delivered as a **raw file attachment with no model pass over them**
 followed by an offer to synthesize on request. A `synthesize research` fast path
 routes to React with an instruction to read the file and not search.
 
-This shape is also, incidentally, the Dual LLM pattern for injection defence: the
-context that sees untrusted web content holds no tools.
+This is also the Dual LLM pattern: the context that sees web content holds no tools.
 
 ### Overnight loop
 
@@ -468,7 +469,7 @@ React holds all three legs of the "lethal trifecta" in one context: private data
 (memory files), untrusted content (`fetch_url`, `search`), and outward action
 (`shell`, file writes, self-modification).
 
-Three controls, none of which costs a model call:
+Four controls, none of which costs a model call:
 
 1. **Framing.** Search and fetch results are wrapped in
    `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
@@ -481,7 +482,9 @@ Three controls, none of which costs a model call:
    turn. Both layers, because one batch can contain a search and a shell call and
    `asyncio.gather` gives no ordering guarantee, so the batch is judged as a whole
    before anything runs.
-3. **Addresses.** `url_safety.py`, as Hermes': `fetch_url` and the heartbeat refuse
+3. **Secrets.** `sanitize.redact` (Hermes' `redact_secrets`) strips key shapes and IGOR's
+   own keys from tool results, outbound text and logs.
+4. **Addresses.** `url_safety.py`, as Hermes': `fetch_url` and the heartbeat refuse
    loopback, private, link-local and metadata addresses on every redirect hop. DNS
    rebinding is the known gap.
 
@@ -539,8 +542,7 @@ the model's limit.
 Every model here reasons, so `max_tokens` covers hidden reasoning plus output;
 under about 1024 returns empty content with a 200 OK.
 
-**The `openai` package is a client library, not a provider.** Every client uses
-`base_url="https://api.groq.com/openai/v1"` and `GROQ_API_KEY`. Nothing talks to OpenAI.
+Every client uses the `openai` package against Groq's `base_url`; nothing talks to OpenAI.
 
 ---
 

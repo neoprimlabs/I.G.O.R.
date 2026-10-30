@@ -35,6 +35,10 @@ def _setup_logging() -> None:
     file_handler.setLevel(logging.ERROR)
     file_handler.setFormatter(fmt)
 
+    from sanitize import RedactingFilter
+    console.addFilter(RedactingFilter())
+    file_handler.addFilter(RedactingFilter())
+
     root.addHandler(console)
     root.addHandler(file_handler)
 
@@ -102,7 +106,7 @@ def _smoke_test() -> None:
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
                    "agents.inbound", "approvals", "clock", "sandbox", "checkpoints",
-                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough"):
+                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands"):
         try:
             __import__(module)
         except Exception as e:

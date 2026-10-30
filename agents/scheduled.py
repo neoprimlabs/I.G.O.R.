@@ -374,6 +374,9 @@ def set_paused(entry_id: str, paused: bool, now: Optional[datetime] = None) -> s
     return f"Resumed {entry_id}. Next: {_local(entry['due'])}."
 
 
+_SILENT = "[SILENT]"
+
+
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                       now: Optional[datetime] = None,
                       compose: Optional[Callable] = None) -> int:
@@ -407,10 +410,13 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                 written = None
             text = (written or "").strip() or brief
         body = text
+        # Hermes' cron: a job with nothing to report says so and nothing is sent. A failed
+        # run never gets here with the mark, so it still reaches the user.
+        silent = bool(brief) and not entry.get("content") and _SILENT in text
         if now - datetime.fromisoformat(entry["due"]) > _LATE_AFTER:
             text = f"(Scheduled for {_local(entry['due'])}, delivered late.)\n{text}"
         try:
-            ok = bool(await send_fn(text))
+            ok = silent or bool(await send_fn(text))
         except Exception as e:
             logger.error("Scheduled message %s send raised - %s: %s", entry["id"], type(e).__name__, e)
             ok = False
@@ -424,17 +430,19 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
             return delivered
 
         if ok:
-            delivered += 1
+            delivered += not silent
             kept = next((x for x in entries if x["id"] == entry["id"]), None)
             if kept is not None and kept.get("repeat"):
                 kept["due"] = _next_occurrence(datetime.fromisoformat(kept["due"]),
                                                kept["repeat"], now).isoformat()
                 kept["attempts"] = 0
-                kept["recent"] = ([body[:_RECENT_CHARS]] + (kept.get("recent") or []))[:_KEEP_RECENT]
-                logger.info("Scheduled message %s delivered, next %s", entry["id"], kept["due"])
+                if not silent:
+                    kept["recent"] = ([body[:_RECENT_CHARS]] + (kept.get("recent") or []))[:_KEEP_RECENT]
+                logger.info("Scheduled message %s %s, next %s", entry["id"],
+                            "stayed silent" if silent else "delivered", kept["due"])
             else:
                 entries = [x for x in entries if x["id"] != entry["id"]]
-                logger.info("Scheduled message %s delivered", entry["id"])
+                logger.info("Scheduled message %s %s", entry["id"], "stayed silent" if silent else "delivered")
         else:
             for x in entries:
                 if x["id"] != entry["id"]:

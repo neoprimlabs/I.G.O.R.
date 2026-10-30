@@ -431,6 +431,10 @@ class Orchestrator:
         self._pending_follow: tuple[str, str, dict] | None = None
         self._stop_follow: asyncio.Event | None = None
         self._seq = 0
+        # One turn at a time, in the order sent (Hermes' queue mode). Two at once shared one
+        # 8000 TPM bucket and could answer out of order. stop reaches the turn in flight.
+        self._turn_lock = asyncio.Lock()
+        self._stop_turn: asyncio.Event | None = None
         from context_store import load_timed
         self._context: list[dict] = load_timed(_CONTEXT_KEEP)
 
@@ -453,6 +457,11 @@ class Orchestrator:
         if settled:
             return settled, False
 
+        import commands
+        command = commands.parse(content)
+        if command and command != "retry":
+            return await self._command(command), False
+
         # Any other message ends a follow-through, the round in flight included: Hermes'
         # "user messages always preempt". After approvals, since a yes to a command that
         # a round is waiting on belongs to that round.
@@ -462,6 +471,54 @@ class Orchestrator:
         if self._stop_follow is not None:
             self._stop_follow.set()
 
+        async with self._turn_lock:
+            if command == "retry":
+                content = self._forget_last_exchange()
+                if content is None:
+                    return "There is no message to retry.", False
+                prefer_tools = prefer_tools or content.startswith("[Document the user sent")
+            return await self._turn(content, prefer_tools, seq)
+
+    async def _command(self, command: str) -> str:
+        import commands
+        if command == "help":
+            return commands.HELP
+        if command == "usage":
+            return usage.summary()
+        if command == "status":
+            from agents import monitor
+            running = ("Working on a message." if self._stop_turn
+                       else "Following through on a message." if self._stop_follow else "Nothing is running.")
+            return f"{running}\n{monitor.status_block()}"
+        if command == "undo":
+            async with self._turn_lock:
+                removed = self._forget_last_exchange()
+            if removed is None:
+                return "There is nothing to undo."
+            return (f"Removed from the conversation: {_cap(removed, 100)}\n"
+                    "Files and notes it changed stay as they are; rollback puts those back.")
+        # stop
+        from agents import research_loop
+        stopped = False
+        for event in (self._stop_turn, self._stop_follow):
+            if event is not None and not event.is_set():
+                event.set()
+                stopped = True
+        task = research_loop._loop_task
+        if task is not None and not task.done():
+            return await research_loop.stop()
+        return "Stopping at the next step." if stopped else "Nothing is running."
+
+    def _forget_last_exchange(self) -> str | None:
+        """Hermes' /undo: the last user message and the replies to it, in the store and in
+        the copy prompts are built from. The user's words, or None if there are none."""
+        from context_store import load_timed, remove_last_exchange
+        removed = remove_last_exchange()
+        if removed is not None:
+            self._context = load_timed(_CONTEXT_KEEP)
+        return removed
+
+    async def _turn(self, content: str, prefer_tools: bool, seq: int) -> tuple[str, bool] | None:
         file_mode = content.lower().startswith("file:")
         task = content[5:].strip() if file_mode else content
         task = _spell_out_times(task)
@@ -488,7 +545,9 @@ class Orchestrator:
 
         self._monitor_declined = False
         turn = llm.start_turn()
-        carry: dict = {}
+        stop = asyncio.Event()
+        self._stop_turn = stop
+        carry: dict = {"stop": stop}
         try:
             response = await self._route(destination, task, file_mode=file_mode, carry=carry)
         except openai.RateLimitError as e:
@@ -506,6 +565,11 @@ class Orchestrator:
 
         finally:
             backup_notice = llm.end_turn(turn)
+            self._stop_turn = None
+
+        if stop.is_set() and not response.strip():
+            self._update_context(task, "[stopped by the user before answering]")
+            return None
 
         if destination in ("ResearchLoop", "StopResearch"):
             return response, file_mode

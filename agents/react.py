@@ -305,7 +305,7 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "update", "pause", "resume", "list", "cancel"]},
-                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If the user dictated exact words, put them in double quotes"},
+                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If the user dictated exact words, put them in double quotes"},
                 "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM"},
                 "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
@@ -1968,6 +1968,8 @@ async def _handle(
                         tc.function.name, args,
                         allow_private=not (web_read or batch_reads_web))
                     _record_receipt(tc.function.name, args, result)
+                from sanitize import redact
+                result = redact(result)
                 if len(result) > _TOOL_RESULT_CAP:
                     result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
                 return result

@@ -1234,15 +1234,8 @@ def _watcher_status(now: Optional[datetime] = None) -> str:
     return "\n".join(lines)
 
 
-async def handle(
-    message: str,
-    context: list[dict],
-    call_claude: Callable[..., Awaitable[str]],
-) -> str:
-    if any(word in message.lower() for word in ("trigger", "run digest", "send digest")):
-        await _morning_digest()
-        return "Morning digest triggered."
-
+def status_block() -> str:
+    """Everything Monitor knows about IGOR's own state. No model call."""
     status_lines = []
 
     if _scheduler and _scheduler.running:
@@ -1273,7 +1266,18 @@ async def handle(
     except Exception as e:
         logger.error("Could not read stock watch state - %s: %s", type(e).__name__, e)
 
-    status_block = "\n".join(status_lines)
-    system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block}"
+    return "\n".join(status_lines)
+
+
+async def handle(
+    message: str,
+    context: list[dict],
+    call_claude: Callable[..., Awaitable[str]],
+) -> str:
+    if any(word in message.lower() for word in ("trigger", "run digest", "send digest")):
+        await _morning_digest()
+        return "Morning digest triggered."
+
+    system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block()}"
     messages = context + [{"role": "user", "content": message}]
     return await call_claude(system, messages)

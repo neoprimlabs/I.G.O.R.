@@ -183,6 +183,21 @@ def max_id() -> int:
         return 0
 
 
+def remove_last_exchange() -> "str | None":
+    """Delete the last user message and the replies after it, and return the user's words.
+    Posts sent since stay: they happened whether or not the exchange did."""
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT id, content FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 1").fetchone()
+            if row is None:
+                return None
+            conn.execute("DELETE FROM messages WHERE id >= ? AND content NOT LIKE '[sent proactively]%'", (row[0],))
+            return row[1]
+    except Exception:
+        return None
+
+
 def clear() -> None:
     try:
         with _conn() as conn:
