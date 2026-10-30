@@ -303,8 +303,16 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
            seen.get("listing", "")[:160])
 
     text = jobs.format_for_discord(found, notes)
-    _check("the pick is shown with its note", "worth a look" in text and "LLM evaluation" in text
-           and "AI Trainer" in text and "https://x/1" in text, text[:160])
+    _check("the pick is shown", "worth a look" in text and "AI Trainer" in text and "https://x/1" in text, text[:160])
+    # 2026-10-30: told to claim only what the profile states, the note still invented
+    # experience. Whatever the model writes after a number goes nowhere.
+    _check("and nothing the model wrote about the user goes with it", "LLM evaluation" not in text, text[:200])
+    _check("it says when the feed did not give what a posting asks", "What it asks for is not in the feed." in text, text[:200])
+    numbers = jobs._pick_numbers
+    _check("numbers are read one to a line", numbers("3.\n7\n12)") == [3, 7, 12], str(numbers("3.\n7\n12)")))
+    _check("or several on one line", numbers("3, 7, 12") == [3, 7, 12], str(numbers("3, 7, 12")))
+    _check("a note after a number changes nothing", numbers("2. A good match.\n5: Also fine.") == [2, 5])
+    _check("a sentence that opens with a figure is not a pick", numbers("5 or more years is too many.") == [])
     _check("and the listing still stands without notes", "worth a look" not in jobs.format_for_discord(found))
     # 2026-10-22: three postings went out under "(No postings worth applying to.)".
     _check("a ranking that picked nothing sends nothing",
@@ -315,27 +323,12 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     three = [{"title": "Accounting Operations", "company": "Plaid", "url": "https://x/a"},
              {"title": "QA/DevOps Engineer", "company": "Discord", "url": "https://x/b"},
              {"title": "CRM Retention Junior", "company": "Bullfinch", "url": "https://x/c"}]
-    text = jobs.format_for_discord(three, "2. QA/DevOps Engineer - Discord - Fits the deploy work.")
+    three[1]["description"] = "<li>2+ years of experience with CI pipelines.</li><li>A sense of humour.</li>"
+    text = jobs.format_for_discord(three, "2. Fits the deploy work you do.")
     _check("only the pick goes out", "QA/DevOps" in text and "Plaid" not in text and "Bullfinch" not in text,
            text)
-    _check("its echoed title is not repeated", text.count("QA/DevOps Engineer - Discord") == 1, text)
-    # 2026-10-24: the note echoed the bare title, without the company.
-    text = jobs.format_for_discord(three, "2. QA/DevOps Engineer - fits your deploy work.")
-    _check("nor is a bare echoed title", text.count("QA/DevOps Engineer") == 1 and "Fits your deploy" in text,
-           text)
-    # Live 2026-10-26: en dashes after the title, and part of a longer title echoed.
-    priced = [{"title": "AI Trainer", "company": "iMerit", "url": "https://x/a"},
-              {"title": "Generalist AI Trainer $35 hour", "company": "LinkedIn", "url": "https://x/b"}]
-    dashed = jobs.format_for_discord(priced, "1. AI Trainer – your daily evaluation work fits.\n"
-                                             "2. Generalist AI Trainer – your model testing matches.")
-    _check("an en dash after an echoed title is stripped, so no stray bullet",
-           "\nYour daily evaluation work fits." in dashed and "–" not in dashed, dashed)
-    _check("and part of a longer title echoed is stripped too",
-           "\nYour model testing matches." in dashed and dashed.count("Generalist AI Trainer") == 1, dashed)
-    _check("a note that only starts like a sentence keeps its words",
-           "Strong fit - you have it" in jobs.format_for_discord(priced[:1], "1. Strong fit - you have it."), "")
-    _check("the ranking writes to the user as you",
-           '"you" and "your", never "he"' in jobs._RANK_SYSTEM)
+    _check("with what the posting asks, in its own words",
+           "Asks for: 2+ years of experience with CI pipelines." in text and "Fits the deploy" not in text, text)
     _check("and the rest are counted, not listed", "2 other new postings did not fit" in text, text)
     text = jobs.format_for_discord(three, "9. Something that matches no posting.")
     _check("a pick number that matches nothing falls back to the plain listing",
@@ -354,12 +347,15 @@ def test_what_was_found_is_kept() -> None:
               "location": "Worldwide", "source": "remotive"},
              {"title": "QA Tester Entry Level", "company": "Ace IT", "url": "https://x/2",
               "location": "Remote", "source": "remoteok"}]
+    found[0]["description"] = "<li>1 year of annotation experience.</li>"
     jobs.record_found(found, "1. AI Trainer - matches the daily LLM evaluation work.", now=NOW)
 
     text = (path / "jobs_found.md").read_text(encoding="utf-8")
     _check("the postings are kept", "AI Trainer" in text and "QA Tester" in text, text[:120])
     _check("with their links", "https://x/1" in text, text[:200])
-    _check("and the fit notes", "daily LLM evaluation" in text, text[:300])
+    _check("and which was picked, with what it asks", "Picked. Asks for: 1 year of annotation experience" in text, text[:300])
+    _check("the other is not marked", text.count("Picked.") == 1, text[:300])
+    _check("and nothing the model wrote about the user is kept", "daily LLM evaluation" not in text, text[:300])
 
     later = [{"title": "Support Specialist", "company": "Warehance", "url": "https://x/3",
               "location": "Remote", "source": "wwr"}]
@@ -642,6 +638,12 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("years come first", asks.startswith("8+ years"), asks)
     _check("and the rest of what it asks follows", "Proficiency in TypeScript" in asks, asks)
     _check("the company's opening is left behind", "agentic company" not in asks and "humour" not in asks, asks)
+    _check("a company's age is not an ask", jobs._asks("<p>For over 20 years, Example Co has served teams.</p>") == "")
+    _check("nor is a heading, or the word required in passing",
+           jobs._asks("<p>Required Skills:</p><p>Deliver the required solution for dealers.</p>") == "")
+    _check("the parts read as one sentence",
+           "level; Proficiency" in asks and ".;" not in asks, asks)
+    _check("a soft hyphen from a feed is removed", "customer facing" in jobs._asks("<li>1+ years of customer \u00adfacing work.</li>").replace("  ", " "))
     _check("a range of years counts", "3\u20136+ years" in jobs._asks("<li>3\u20136+ years of Acme CRM development</li>"))
     _check("a posting that asks nothing gives nothing", jobs._asks("<p>We are a great team.</p>") == "")
     _check("nor does a posting with no description", jobs._asks("") == "" and jobs._asks(None) == "")
@@ -673,10 +675,10 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("and a posting with nothing to quote is its title alone",
            seen.get("listing", "").endswith("2. AI Trainer - Scale Labs"), seen.get("listing", ""))
     system = jobs._RANK_SYSTEM
-    _check("it may not invent or stretch the profile", "never stretch it" in system)
+    _check("it writes numbers, not notes", "only the numbers" in system and "no notes" in system)
+    _check("experience is counted from the profile's dates", "profile's dates" in system)
     _check("it leaves out years the profile cannot meet", "5 or more years" in system)
     _check("and a platform the profile does not show", "platform or skill the profile does not show" in system)
-    _check("and it does not tell them they can apply", "good fit or that they can or should apply" in system)
 
 
 if __name__ == "__main__":

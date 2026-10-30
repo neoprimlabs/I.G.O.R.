@@ -363,7 +363,7 @@ plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring t
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
-ranks on what each posting asks, and only its picks are sent. On those remote-only boards a location naming
+picks by what each posting asks; picks go out with those asks, no note. On those remote-only boards a location naming
 the US counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
