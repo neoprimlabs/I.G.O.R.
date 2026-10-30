@@ -320,12 +320,13 @@ newest two), then shortens or blanks the history before this message, oldest
 first. If it still does not fit, the loop breaks to the forced-final-answer path, which trims with
 `keep_recent=0`.
 
-**Search behaviour.** Queries containing both a recency word and an absolute date
-have the date stripped, because the model writes its training-era year into
-queries. A recency query with no `recency_days` gets a 180-day window
+**Search behaviour.** A date in a recency query is stripped (the model writes its
+training-era year). A recency query with no `recency_days` gets a 180-day window
 automatically. Each result is Exa's answer to the query from that page, not its first
 500 characters, which were mostly navigation. These models make one tool call a step, so
-`queries` takes up to 8 lookups in one call.
+`queries` takes up to 8 lookups in one call. `fetch_url` returns a page's text a window at
+a time, or with `question` what it says on one thing; a page it cannot read goes through
+Exa. A failed search says so, rather than reading as no results.
 
 ### Scheduled messages and presence
 
@@ -493,8 +494,6 @@ Consequence: "search for X and save it to tasks.md" takes two turns. React repor
 what it found and the user asks for the write separately, which is a confirmation
 gate on any action derived from the open web.
 
-Classifier-based screening was deliberately not built; the constraint is structural.
-
 ---
 
 ## Models and rate limits
@@ -543,7 +542,6 @@ the model's limit.
 Every model here reasons, so `max_tokens` covers hidden reasoning plus output;
 under about 1024 returns empty content with a 200 OK.
 
-Every client uses the `openai` package against Groq's `base_url`; nothing talks to OpenAI.
 
 ---
 

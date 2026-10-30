@@ -278,11 +278,13 @@ _TOOLS = [
     },
     {
         "name": "fetch_url",
-        "description": "Fetch the content of a specific URL. Use when you need to read a full article, documentation page, or web resource directly. Prefer search for discovery, fetch_url for reading a known page.",
+        "description": "Read a specific URL as text. Prefer search for discovery, fetch_url for a known page. If you want one thing from the page, set question: it costs far less than reading it.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "url": {"type": "string", "description": "The URL to fetch"},
+                "question": {"type": "string", "description": "What you want from the page, answered from it in a sentence or two"},
+                "offset": {"type": "integer", "description": "Where to carry on reading a long page, as its last result said"},
             },
             "required": ["url"],
         },
@@ -1493,9 +1495,27 @@ def _strip_stale_dates(query: str) -> tuple[str, str | None]:
     return " ".join(words), query
 
 
-async def _fetch_url(url: str) -> str:
+async def _fetch_url(url: str, offset: int = 0, question: Optional[str] = None) -> str:
+    """The page as text, a window at a time, as read_file pages a file (Hermes' web_extract).
+
+    Found 2026-10-30: this returned raw HTML cut to 4000 characters, mostly scripts and
+    styling on a modern page. What this box cannot fetch or parse goes through Exa, which
+    has its own crawler; aoostar.com and Wikipedia have both refused this host.
+    """
+    import heartbeats
     import httpx
     import url_safety
+    from agents import research
+
+    refused = url_safety.problem(url)
+    if refused:
+        logger.warning("fetch_url refused %s: %s", url, refused)
+        return (f"[refused: {url}: {refused}. IGOR does not fetch private or internal addresses. "
+                "Do not retry it.]")
+    if question:
+        answer = await research._page_answer(url, question)
+        if answer:
+            return answer
 
     class _Refused(Exception):
         pass
@@ -1515,8 +1535,9 @@ async def _fetch_url(url: str) -> str:
                 content_type = resp.headers.get("content-type", "")
                 if "text" not in content_type and "json" not in content_type:
                     return f"[non-text content type: {content_type}]"
-                text = resp.text
-                return text[:8000] if len(text) > 8000 else text
+                if "html" in content_type:
+                    return heartbeats.visible_text(resp.text)
+                return resp.text
         except _Refused as e:
             logger.warning("fetch_url refused %s", e)
             return (f"[refused: {e}. IGOR does not fetch private or internal addresses. "
@@ -1527,7 +1548,24 @@ async def _fetch_url(url: str) -> str:
             return f"[fetch error: {type(e).__name__}: {e}]"
 
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _sync)
+    text = await loop.run_in_executor(None, _sync)
+    if text.startswith(("[HTTP ", "[fetch error", "[non-text")):
+        through_exa = await research._page_text(url)
+        if not through_exa:
+            return text
+        text = through_exa
+    elif text.startswith("[refused"):
+        return text
+    total = len(text)
+    start = max(0, offset)
+    if start >= total and total:
+        return f"[offset {start} is past the end of this page, which is {total} characters]"
+    window = text[start:start + _READ_WINDOW]
+    end = start + len(window)
+    if end < total:
+        window += (f"\n\n[This page is {total} characters; this is {start} to {end}. "
+                   f"Call fetch_url with offset={end} for more.]")
+    return window
 
 
 # These models make one tool call a step, so eight lookups were eight steps, each resending
@@ -1547,8 +1585,11 @@ async def _search_many(queries: list, days=None) -> str:
     wanted = [_strip_stale_dates(str(q))[0] for q in queries[:_MAX_QUERIES]]
 
     async def one(query: str) -> str:
-        results = await research._run_search(query, max_results=_RESULTS_PER_QUERY + 1,
-                                             start_published_date=cutoff, focus=query)
+        try:
+            results = await research._run_search(query, max_results=_RESULTS_PER_QUERY + 1,
+                                                 start_published_date=cutoff, focus=query, raise_errors=True)
+        except Exception as e:
+            return f"{query}\n- search failed ({type(e).__name__}), which says nothing about what exists."
         said = [r for r in results if r.get("body") and not _NOTHING_ON_IT.match(r["body"])]
         room = (_TOOL_RESULT_CAP - 400) // (len(wanted) * _RESULTS_PER_QUERY)
         lines = []
@@ -1651,7 +1692,9 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
     if name == "fetch_url":
         url = inputs.get("url", "")
         logger.info("ReAct fetch_url: %s", url)
-        body = await _fetch_url(url)
+        offset = inputs.get("offset")
+        body = await _fetch_url(url, offset=offset if isinstance(offset, int) else 0,
+                                question=inputs.get("question") or None)
         return f"{_UNTRUSTED_OPEN}\nSource: {url}\n\n{body}\n{_UNTRUSTED_CLOSE}"
 
     if name == "search" and inputs.get("source") == "jobs":
@@ -1685,7 +1728,12 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         if days:
             from datetime import datetime, timedelta, timezone
             cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        results = await research._run_search(query, max_results=5, start_published_date=cutoff, focus=query)
+        try:
+            results = await research._run_search(query, max_results=5, start_published_date=cutoff, focus=query,
+                                                 raise_errors=True)
+        except Exception as e:
+            return (f"[search failed ({type(e).__name__}). This says nothing about what exists: tell "
+                    "the user the search failed, and do not answer from memory as if it had worked.]")
         body = research._format_results(results) if results else "No results found."
         window = f" (published within {days} days)" if cutoff else ""
         return f"{_UNTRUSTED_OPEN}\nSearch results for: {query}{window}\n\n{body}\n{_UNTRUSTED_CLOSE}"

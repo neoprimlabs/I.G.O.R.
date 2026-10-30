@@ -106,6 +106,18 @@ class _Text(HTMLParser):
             self.parts.append(data)
 
 
+def visible_text(body: str) -> str:
+    """A page's visible text, for reading. page_lines below strips times, which is right
+    for comparing two loads of a page and wrong for reading one."""
+    parser = _Text()
+    try:
+        parser.feed(body)
+    except Exception:
+        pass
+    lines = (" ".join(line.split()) for line in "".join(parser.parts).splitlines())
+    return "\n".join(line for line in lines if line)
+
+
 def page_lines(body: str, content_type: str = "text/html") -> list[str]:
     """The page as normalised lines: visible text only, whitespace collapsed, noise
     that changes on every load removed."""

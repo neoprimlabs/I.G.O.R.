@@ -18,6 +18,7 @@ async def _run_search(
     use_summary: bool = False,
     exclude_domains: list[str] | None = None,
     focus: str | None = None,
+    raise_errors: bool = False,
 ) -> list[dict]:
     """Search Exa and return title, url, published date and body text.
 
@@ -80,7 +81,25 @@ async def _run_search(
             return await loop.run_in_executor(None, _sync, None)
     except Exception as e:
         logger.error("Exa search error - %s: %s", type(e).__name__, e)
+        if raise_errors:
+            raise
         return []
+
+
+async def _page_answer(url: str, question: str) -> str:
+    """What one page says on a question. "" when it cannot say."""
+    def _sync() -> str:
+        from exa_py import Exa
+        exa = Exa(api_key=config.EXA_API_KEY)
+        response = exa.get_contents([url], summary={"query": _FOCUS_PROMPT.format(query=question[:300])})
+        return (getattr(response.results[0], "summary", None) or "") if response.results else ""
+
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _sync)
+    except Exception as e:
+        logger.error("Exa page answer error for %s - %s: %s", url, type(e).__name__, e)
+        return ""
 
 
 async def _page_text(url: str, max_chars: int = 30000) -> str:

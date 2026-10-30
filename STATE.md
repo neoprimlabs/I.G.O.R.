@@ -174,7 +174,10 @@ one turn at a time, in order (Hermes' queue mode). `sanitize.redact` scrubs keys
 results, outbound text and logs (Hermes' redact_secrets). Found that day: `read_file('.env')`
 returned every API key, with `fetch_url` still open after a web read. The retained journal
 shows no such read (13 read_file calls, none on a secret) and `.git/config` holds no token, so
-keys were not rotated; `_is_secret_file` now seals those paths from every tool. A scheduled brief can stay silent
+keys were not rotated; `_is_secret_file` now seals those paths from every tool. `fetch_url`
+returned raw HTML cut to 4000 characters; it now returns the page's text in windows, can
+answer one question about a page, and goes through Exa when blocked (Hermes' web_extract).
+A failed search now says so instead of reading as no results. A scheduled brief can stay silent
 (Hermes' cron `[SILENT]`). Overnight research keeps raw results: replayed, focused answers
 were on target but lost the "vendor claim" marks the evidence check needs. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
