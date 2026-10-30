@@ -513,6 +513,12 @@ async def test_write_at_delivery() -> None:
                    for part in re.split(r",|:| and ", area) if part.strip()
                    and part.split()[-1].lower().rstrip("s") not in summary]
         _check("every part a subject names is in the self-summary", not missing, str(missing))
+        # 2026-10-30: "the summary" above passed on the words "self summary", the summary
+        # never said what the running summary was, and the idea proposed building one.
+        _check("the running summary is described there", "running summary" in summary)
+        import inspect
+        _check("an idea is held to the daily budget",
+               "model call to every message" in inspect.getsource(compose.write))
         _check("and the writer is told those parts already exist",
                "already exists" in picked(thursday), picked(thursday)[:300])
         await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 23, 14, 0))

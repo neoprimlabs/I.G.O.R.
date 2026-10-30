@@ -112,13 +112,81 @@ def test_filter() -> None:
     listings = [dict(RELEASE, url=u) for u in (
         "https://www.inferama.com/en/news/models", "https://siliconainews.com/topics/ai-models",
         "https://example.com/category/llm/", "https://example.com/", "https://example.com/blog?page=2")]
-    _check("listing pages are not stories", monitor._filter_news_results(listings, set(), []) == [],
+    listings += [dict(RELEASE, url=u) for u in (
+        "https://aistackcrunch.com/new/",
+        "https://www.aimadetools.com/blog/ai-dev-weekly-032-gpt-61-terra-gemini-carbon-kimi-copilot-fusion/",
+        "https://af.net/realtime/ai-model-releases-october-2026/")]
+    _check("listing pages and roundups are not stories", monitor._filter_news_results(listings, set(), []) == [],
            str([r["url"] for r in monitor._filter_news_results(listings, set(), [])]))
     stories = [dict(RELEASE, url=u) for u in (
         "https://openai.com/index/introducing-gpt-6-1-terra/", "https://particle.ai/blog/introducing-particle-1",
         "https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/")]
     _check("articles under an index or blog path still count",
            len(monitor._filter_news_results(stories, set(), [])) == 3)
+
+
+def test_a_story_is_not_told_twice() -> None:
+    """2026-10-30: both stories in the digest had gone out within two days, by way of other
+    sites. Remembering URLs cannot see that: one story has many."""
+    import asyncio
+    from agents import monitor, research
+
+    same = monitor._same_story
+    _check("a longer name for one story is that story", same("Gemini 4 Carbon", "Google DeepMind Gemini 4 Carbon"))
+    _check("however the name is punctuated", same("GPT-6.1 Terra", "GPT 6.1 Terra release"))
+    _check("another model is another story", not same("Gemini 4 Carbon", "Gemini 4 Lumen"))
+    _check("one shared word is not a story", not same("Gemini", "Gemini 4 Carbon"))
+    _check("nor is a generic name", not same("New AI model release", "Particle-1 model release"))
+
+    text = ("- **Gemini 4 Carbon**: The strongest model yet. Source: [1]\n"
+            "- [Particle-1]: A small model. Source: [2]\n"
+            "- GPT-6.1 Terra: Better visual reasoning. Source: [3]")
+    _check("the names are read off the bullets",
+           monitor._bullet_topics(text) == ["Gemini 4 Carbon", "Particle-1", "GPT-6.1 Terra"],
+           str(monitor._bullet_topics(text)))
+    kept = monitor._drop_repeats(text, ["Google DeepMind Gemini 4 Carbon", "GPT 6.1 Terra"])
+    _check("what was told goes, what was not stays",
+           "Particle-1" in kept and "Gemini" not in kept and "Terra" not in kept, kept)
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    results = [dict(RELEASE, url=f"https://site{n}.example/stories/story-{n}") for n in range(3)]
+    replies, prompts = [], []
+
+    async def search(query, **kwargs):
+        return results
+
+    async def complete(client, model, system, user, **kwargs):
+        prompts.append(user)
+        return replies.pop(0)
+
+    real_search, real_complete, real_client = research._run_search, monitor.llm.complete, monitor._client
+    fetch = monitor._fetch_and_synthesize_ai_news
+    try:
+        research._run_search, monitor.llm.complete, monitor._client = search, complete, object()
+        replies.append("- Gemini 4 Carbon: The strongest model yet. Source: [1]")
+        first = asyncio.run(fetch())
+        _check("the first telling goes out, with its link",
+               "Gemini 4 Carbon" in (first or "") and "site0.example" in (first or ""), str(first))
+        _check("with nothing told yet, no list is sent", "Already told" not in prompts[-1], prompts[-1][:80])
+
+        results[:] = [dict(RELEASE, url=f"https://other{n}.example/stories/story-{n}") for n in range(3)]
+        replies.append("NONE")
+        _check("the model saying nothing new leaves no section", asyncio.run(fetch()) is None)
+        _check("and it was told what the user has heard",
+               "Already told the user" in prompts[-1] and "- Gemini 4 Carbon" in prompts[-1], prompts[-1][:120])
+
+        results[:] = [dict(RELEASE, url=f"https://third{n}.example/stories/story-{n}") for n in range(3)]
+        replies.append("- Google's Gemini 4 Carbon: Told anyway. Source: [1]")
+        _check("a repeat it writes anyway is dropped by code", asyncio.run(fetch()) is None)
+
+        results[:] = [dict(RELEASE, url=f"https://fourth{n}.example/stories/story-{n}") for n in range(3)]
+        replies.append("- Gemini 4 Carbon: Told anyway. Source: [1]\n- Particle-1 mini: A small model. Source: [2]")
+        mixed = asyncio.run(fetch()) or ""
+        _check("the rest of that digest still goes", "Particle-1" in mixed and "Carbon" not in mixed, mixed)
+        _check("and a story sent is remembered by name",
+               "Particle-1 mini" in monitor.watchers.load_seen(monitor._NEWS_TOPICS))
+    finally:
+        research._run_search, monitor.llm.complete, monitor._client = real_search, real_complete, real_client
 
 
 def test_exclusions_are_read_from_the_file() -> None:
@@ -173,6 +241,8 @@ if __name__ == "__main__":
     test_parse_exclusions()
     print("\nfiltering")
     test_filter()
+    print("\na story is not told twice")
+    test_a_story_is_not_told_twice()
     print("\nreading the file")
     test_exclusions_are_read_from_the_file()
     print("\nthe seen store")

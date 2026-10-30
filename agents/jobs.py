@@ -22,6 +22,7 @@ instead, and each was confirmed reachable from the server on 2026-09-23:
 Fetching costs no tokens. Only drafting an application calls a model.
 """
 
+import html
 import json
 import logging
 import os
@@ -143,6 +144,7 @@ def _from_remotive(payload: str) -> list[dict]:
                     "url": (job.get("url") or "").strip(),
                     "pay": pay, "pay_floor": _pay_floor(pay),
                     "posted": (job.get("publication_date") or "")[:10],
+                    "description": job.get("description") or "",
                     "source": "remotive"})
     return out
 
@@ -165,6 +167,7 @@ def _from_remoteok(payload: str) -> list[dict]:
                     "pay": f"${low:,}-${max(low, high):,}/yr" if low else "",
                     "pay_floor": round(low / 2080, 2) if low else None,
                     "posted": (job.get("date") or "")[:10],
+                    "description": job.get("description") or "",
                     "source": "remoteok"})
     return out
 
@@ -208,6 +211,7 @@ def _from_wwr(payload: str) -> list[dict]:
                     "location": "",
                     "url": (item.findtext("link") or "").strip(),
                     "posted": _rss_date(item.findtext("pubDate")),
+                    "description": item.findtext("description") or "",
                     "source": "wwr"})
     return out
 
@@ -467,12 +471,16 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
 
 _RANK_SYSTEM = """You help one person decide which job postings are worth their time.
 
-You get their profile and a numbered list of postings. Reply with one line per posting worth applying to, in this format:
+You get their profile and a numbered list of postings, each with what it asks for where the listing says. Reply with one line per posting worth applying to, in this format:
 
-N. <one sentence on why it fits, or what the stretch is>
+N. <one sentence: what the posting asks for and what in the profile meets it, or what is missing>
 
 Rules:
-- Judge against the profile. A posting needing years of formal experience they do not have is a stretch; say so plainly rather than dropping it.
+- Judge against the profile and what the posting asks. Claim only what the profile states, and never stretch it to fit.
+- A posting asking for a year or two the profile lacks is a stretch: say so plainly, naming what it asks.
+- Leave out a posting that asks for 5 or more years in a field the profile shows no paid work in, or whose main requirement is a platform or skill the profile does not show.
+- With only a title to go on, say that the posting's requirements are not known.
+- Never write that they are a good fit or that they can or should apply. Being listed already says that.
 - If standing preferences follow the profile, they override fit: leave out a posting that breaks one.
 - Order best fit first. Leave out anything clearly not worth their time.
 - One sentence each, written to them: "you" and "your", never "he", "she" or "they".
@@ -500,6 +508,33 @@ def _profile() -> str:
     return ""
 
 
+_YEARS_RE = re.compile(r"\d\s*\+?\s*(?:years|yrs)", re.IGNORECASE)
+_ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\brequired\b|\bmust\b|proficien|experience (?:with|in|building)",
+                      re.IGNORECASE)
+_ASKS_CHARS = 240
+
+
+def _asks(description: str) -> str:
+    """What a posting says it requires, years first, out of its HTML.
+
+    On 2026-10-30 the ranking told the user "you can apply" to a role asking for "8+
+    years ... at least 5 years at the Principal Engineer level" and one asking for "3-6+
+    years of Salesforce development": it was only ever given titles, and the feeds had
+    the rest all along. The opening of a posting is about the company, so this looks
+    for the sentences that ask for something.
+    """
+    text = re.sub(r"<[^>]+>", "\n", html.unescape(description or ""))
+    parts = [re.sub(r"\s+", " ", p).strip() for p in re.split(r"\n|(?<=[.!?;])\s+", text)]
+    hits = [p for p in parts if 8 < len(p) < 200 and _ASKS_RE.search(p)]
+    hits.sort(key=lambda p: not _YEARS_RE.search(p))
+    out = ""
+    for hit in hits:
+        if len(out) + len(hit) > _ASKS_CHARS:
+            break
+        out += (" | " if out else "") + hit
+    return out
+
+
 async def rank(found: list[dict], ask=None) -> str:
     """One model call for the whole day's shortlist. Returns notes, or empty."""
     profile = _profile()
@@ -507,9 +542,12 @@ async def rank(found: list[dict], ask=None) -> str:
         return ""
     import proposals
     profile = proposals.with_preferences(profile)
-    listing = "\n".join(
-        f"{i + 1}. {j['title']} - {j.get('company') or 'unknown company'}"
-        for i, j in enumerate(found[:_MAX_RANKED]))
+
+    def entry(i, j):
+        asks = _asks(j.get("description", ""))
+        return (f"{i + 1}. {j['title']} - {j.get('company') or 'unknown company'}"
+                + (f"\n   Asks: {asks}" if asks else ""))
+    listing = "\n".join(entry(i, j) for i, j in enumerate(found[:_MAX_RANKED]))
     try:
         if ask is not None:
             return (await ask(profile, listing) or "").strip()

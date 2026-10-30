@@ -61,7 +61,8 @@ papers and proposals in `memory/work/`, reported in the digest. Nothing is appli
 without the user's yes.
 
 **Memory** is markdown in `memory/` plus `context.db`, the conversation store (90
-days, `search_history`). `memory_read` and
+days, `search_history`); messages leaving the window fold into a running summary
+(`compression.py`, 20b) in every prompt. `memory_read` and
 `memory_write` take names from a fixed list; `memory_write` edits dated entries (add,
 patch, remove), several in one call saved together or not at all, as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for that turn. A job search
@@ -231,8 +232,6 @@ orchestrator notifies and sleeps on a per-minute limit but answers at once on th
 daily cap, quoting the wait from Groq's 429 body (`_rate_limit_reply`), the evaluator fails open, Monitor drops the digest
 section, the research loop stops and reports what it has.
 
-Tested by `tests/test_llm.py`.
-
 ### Direct
 
 One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
@@ -296,8 +295,8 @@ guessed, and it shares `monitor._parse_tasks` with the digest so the two can nev
 disagree about what is open.
 
 `delegate_task` runs one isolated worker: `handle()` again with an empty context, a
-restricted tool list, 8 iterations and `MODELS["worker"]`. Three constraints make it safe rather
-than merely useful, each covered by `tests/test_delegation.py`:
+restricted tool list, 8 iterations and `MODELS["worker"]`. Three constraints,
+each covered by `tests/test_delegation.py`:
 
 - **Worker tools are intersected with what the parent still holds**, not the full
   list, so a parent that read the web cannot hand a write to a worker.
@@ -330,7 +329,7 @@ On iteration exhaustion, one final tool-free call forces a real answer.
 `max_tokens` and, above 7000, blanks the oldest tool results (protecting the
 newest two) until it fits. Only tool results are touched. If it still does not
 fit, the loop breaks to the forced-final-answer path, which trims with
-`keep_recent=0`. Without this, long tool sessions 413'd around iteration 7.
+`keep_recent=0`.
 
 **Search behaviour.** Queries containing both a recency word and an absolute date
 have the date stripped, because the model writes its training-era year into
@@ -366,7 +365,7 @@ plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring t
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
-ranks, and only its picks are sent. On those remote-only boards a location naming
+ranks on what each posting asks, and only its picks are sent. On those remote-only boards a location naming
 the US counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
@@ -442,8 +441,9 @@ sessions the goal's one living `paper.md` is written, then revised (under 7500 c
 code cuts a long draft's least-sourced sections, never the shortlist or unsure).
 Code checks a "What I am unsure about" heading, 3 distinct links from the
 findings or paper and a revision keeping a third of its links, one retry told why,
-then the Evaluator (FAIL keeps a draft). Code labels each shortlist item `(evidence:
-independent|self-reported)`, unstated as self-reported, independent first.
+then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
+item (independent, self-reported, no income shown; unchecked if that fails); code
+sorts strongest first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees. A failed write waits a night.
 

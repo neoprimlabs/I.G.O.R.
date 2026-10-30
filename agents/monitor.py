@@ -468,6 +468,7 @@ End each bullet with "Source: [n]", where n is the bracketed number of the resul
 Rules:
 - At most 3 bullets, one per distinct development. If only two results are distinct, write two
 - Never two bullets from the same result or about the same story
+- If a list of what the user was already told comes first, write nothing on anything in it, whatever a result adds. If that leaves nothing, reply with the single word NONE
 - Lead with the most significant development
 - Stay inside what the result actually says. Do not add detail it does not contain, and do not resolve an unfamiliar or technical claim into a more familiar one - keep each story in the field its source puts it in.
 - Reuse the source's own wording for the key nouns rather than substituting your own
@@ -697,12 +698,56 @@ def _remember_news(urls, now=None) -> None:
 _INDEX_SEGMENTS = {"topics", "topic", "category", "categories", "tag", "tags", "section",
                    "sections", "archive", "archives"}
 _INDEX_LAST = {"news", "models", "blog", "latest", "articles", "posts", "updates", "releases",
-               "research", "ai", "ai-news", "ai-models", "home", "index"}
+               "research", "ai", "ai-news", "ai-models", "home", "index", "new", "whats-new",
+               "changelog", "trending", "today"}
+# A weekly roundup is mostly what was already in the digest: on 2026-10-30, GPT-6.1 Terra
+# again, two days after OpenAI's own post, by way of ".../ai-dev-weekly-032-...".
+_ROUNDUP_RE = re.compile(
+    r"(?:^|-)(?:weekly|roundup|round-up|recap|digest|newsletter)(?:-|$)"
+    r"|releases?-(?:january|february|march|april|may|june|july|august|september|october"
+    r"|november|december)-\d{4}")
 
 
 def _is_listing(url: str) -> bool:
     path = [s.lower() for s in url.split("?")[0].split("#")[0].split("/")[3:] if s]
-    return not path or bool(_INDEX_SEGMENTS & set(path)) or path[-1] in _INDEX_LAST
+    return (not path or bool(_INDEX_SEGMENTS & set(path)) or path[-1] in _INDEX_LAST
+            or any(_ROUNDUP_RE.search(s) for s in path))
+
+
+# The seen store above goes by URL, and one story has many: both stories on 2026-10-30
+# had gone out within two days, from other sites. What was told is kept by name too.
+_NEWS_TOPICS = "news_topics.json"
+_TOPIC_RE = re.compile(r"\s*-\s*\**\[?([^\]:*\n]{2,80}?)\]?\**\s*:")
+_TOPIC_NOISE = {"a", "an", "the", "new", "ai", "model", "models", "release", "releases",
+                "released", "launch", "launches", "update", "announces", "announced"}
+_TOPICS_SHOWN = 30
+
+
+def _topic_words(topic: str) -> set:
+    return set(re.findall(r"[a-z0-9]+", topic.lower())) - _TOPIC_NOISE
+
+
+def _same_story(a: str, b: str) -> bool:
+    """"Gemini 4 Carbon" and "Google DeepMind's Gemini 4 Carbon" are one story."""
+    x, y = _topic_words(a), _topic_words(b)
+    return min(len(x), len(y)) >= 2 and (x <= y or y <= x)
+
+
+def _drop_repeats(text: str, told: list) -> str:
+    """The prompt lists what was told, and code holds to it."""
+    kept = []
+    for block in re.split(r"\n(?=\s*-\s)", (text or "").strip()):
+        m = _TOPIC_RE.match(block)
+        if m and any(_same_story(m.group(1), old) for old in told):
+            logger.info("AI news: dropped a story already told: %s", m.group(1))
+            continue
+        kept.append(block)
+    return "\n".join(kept)
+
+
+def _bullet_topics(text: str) -> list:
+    blocks = re.split(r"\n(?=\s*-\s)", (text or "").strip())
+    return [m.group(1).strip() for m in (_TOPIC_RE.match(b) for b in blocks) if m]
 
 
 def _filter_news_results(results, seen_urls, exclusions):
@@ -753,16 +798,25 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
             return None
 
         formatted = research._format_results(unique_results)
+        told = sorted(watchers.load_seen(_NEWS_TOPICS).items(), key=lambda kv: kv[1])
+        told = [topic for topic, _ in told][-_TOPICS_SHOWN:]
+        already = ("Already told the user. Not news to them, so no bullet on any of these:\n"
+                   + "\n".join(f"- {t}" for t in told) + "\n\n") if told else ""
         synthesis = await llm.complete(
             _client,
             config.MODELS["summary"],
             _AI_NEWS_SYNTHESIS_PROMPT,
-            f"Search results:\n\n{formatted}",
+            f"{already}Search results:\n\n{formatted}",
             max_tokens=1536,
             label="AI news",
         )
         _remember_news([r.get("url", "") for r in unique_results if r.get("url")])
-        return _attach_sources(_one_bullet_per_source(synthesis), unique_results)
+        fresh = _drop_repeats(_one_bullet_per_source(synthesis), told)
+        if not fresh.strip() or fresh.strip().upper().rstrip(".") == "NONE":
+            logger.info("AI news: nothing the user has not already been told")
+            return None
+        watchers.remember(_NEWS_TOPICS, _bullet_topics(fresh), days=_NEWS_SEEN_DAYS)
+        return _attach_sources(fresh, unique_results)
     except Exception as e:
         logger.error("AI news fetch failed - %s: %s", type(e).__name__, e)
         return None

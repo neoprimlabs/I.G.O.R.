@@ -69,6 +69,7 @@ class _Stubs:
         self.caps = []
         self.empty_write = False
         self.write_users = []
+        self.audits = 0
 
     async def search(self, query, max_results=5):
         self.queries.append(query)
@@ -83,6 +84,11 @@ class _Stubs:
             self.n += 1
             self.plan_users.append(user)
             return f"query number {self.n}"
+        if system.startswith("You check the evidence"):
+            self.audits += 1
+            if getattr(self, "audit_fails", False):
+                raise RuntimeError("20b is down")
+            return '{"1": "self-reported"}'
         if system.startswith("You turn raw search results"):
             lines = [f"- fact {self.n}-{i} (https://e.example/{self.n}/{i})"
                      for i in range(self.findings_per_step)]
@@ -97,8 +103,7 @@ class _Stubs:
              else f"Claim {i} ([src](https://e.example/1/{i})).\n")
             for i in range(self.links))
         if getattr(self, "shortlist", False):
-            label = " (evidence: independent)" if self.writes > 1 else ""
-            body += f"\n## Ranked shortlist\n1. Claim 0 again{label}\n"
+            body += "\n## Ranked shortlist\n1. Claim 0 again\n"
         if self.unsure:
             body += "\n## What I am unsure about\nMuch.\n"
         return body
@@ -518,41 +523,72 @@ def test_paper_written_after_trigger() -> None:
 
 def test_shortlist_says_what_backs_each_idea() -> None:
     """Live 2026-10-28 the paper ranked first "proven recurring revenue" resting on two
-    "how I made $X" posts. Hermes: one source is reporting, two are corroboration."""
+    "how I made $X" posts. Asked to grade itself, the writer then called four of six ideas
+    independent on 2026-10-30, on price pages, a funding press release and a case study
+    its own findings marked as a vendor claim. So a second model decides, not the writer."""
     from agents import overnight
     norm = overnight.normalize_shortlist
-    good = ("# P\n\n## Ranked shortlist\n\n1. **Alerts** - firms pay $199/mo (evidence: independent)\n"
-            "2. **Wrappers** - one developer reports $4k/mo\n   two blog posts (evidence: Self-Reported)\n"
-            "\n## What I am unsure about\nMuch.\n")
-    out = norm(good)
-    _check("a labelled shortlist in order keeps its items and order",
-           "1. **Alerts** - firms pay $199/mo (evidence: independent)\n" in out
-           and "2. **Wrappers**" in out and "two blog posts (evidence: self-reported)\n" in out, out)
+    paper = ("# P\n\n## Ideas\n- Revenue: $4k/mo <https://e.example/a> (independent).\n\n"
+             "## Ranked Shortlist of Most Promising Models  \n\n"
+             "1. **Wrappers** - recurring revenue (evidence: independent).  \n"
+             "2. **Alerts** - firms pay $199/mo\n   per two pages (evidence: Self-Reported)\n"
+             "3. **Legal docs** - investor backing.  \n"
+             "4. **NFT mints** - emerging passive income.\n\n"
+             "## What I am unsure about\n\n- Churn.\n")
+
+    def items(text):
+        shortlist = text.split("## Ranked")[1].split("## What")[0]
+        return [line for line in shortlist.splitlines() if line[:1].isdigit()]
+
+    unchecked = norm(paper)
+    _check("the writer's own grades count for nothing",
+           "(evidence: independent)" not in unchecked and "Self-Reported" not in unchecked
+           and unchecked.count("(evidence: unchecked)") == 4, unchecked)
+    _check("nor do they stay in the body", "(independent)" not in unchecked, unchecked)
+    _check("with no verdict the writer's order stands",
+           [i[:12] for i in items(unchecked)] == ["1. **Wrapper", "2. **Alerts*", "3. **Legal d", "4. **NFT min"],
+           str(items(unchecked)))
     _check("and the sections around it are untouched",
-           out.startswith("# P\n\n## Ranked shortlist\n\n1.") and out.endswith("\n## What I am unsure about\nMuch.\n"), out)
+           unchecked.startswith("# P\n\n## Ideas\n") and unchecked.endswith("\n## What I am unsure about\n\n- Churn.\n"),
+           unchecked)
     _check("a paper with no shortlist is unchanged", norm("# P\n\n## Findings\nx\n") == "# P\n\n## Findings\nx\n")
 
-    # The three drafts of 2026-10-29, cut down: a label written in prose, an odd label,
-    # and an idea that states nothing about what backs it.
-    drafts = ("# P\n\n## Ranked Shortlist of Most Promising Models  \n\n"
-              "1. **Wrappers** - recurring revenue; independent exit data (evidence: self-reported).  \n"
-              "2. **Alerts** - high willingness to pay; self-reported revenue figures.  \n"
-              "3. **Legal docs** - investor backing, independent revenue reports.  \n"
-              "4. **Biotech filings** - savings per filing (evidence: vendor claim, self-reported).  \n"
-              "5. **NFT mints** - emerging passive income.\n\n"
-              "## What I am unsure about\n\n- Churn.\n")
-    out = norm(drafts)
-    shortlist = out.split("## Ranked")[1].split("## What")[0]
-    items = [line for line in shortlist.splitlines() if line[:1].isdigit()]
-    _check("every item ends with a label, read from its own words when not written as one",
-           len(items) == 5 and all(i.endswith(("(evidence: independent)", "(evidence: self-reported)"))
-                                   for i in items), "\n".join(items))
-    _check("an independent idea moves above the seller's word, renumbered",
-           items[0].startswith("1. **Legal docs**") and items[0].endswith("(evidence: independent)")
-           and items[1].startswith("2. **Wrappers**"), "\n".join(items))
-    _check("an idea that says nothing about its backing counts as the seller's word",
-           items[4].startswith("5. **NFT mints**") and items[4].endswith("(evidence: self-reported)"), items[4])
-    _check("an odd label is made plain", "vendor claim" not in out and "4. **Biotech filings**" in out, out)
+    labelled = norm(paper, {1: "self-reported", 2: "no income shown", 3: "independent"})
+    got = items(labelled)
+    _check("the check's labels are written, strongest first, renumbered",
+           got[0].startswith("1. **Legal docs**") and got[0].endswith("(evidence: independent)")
+           and got[1].startswith("2. **Wrappers**") and got[1].endswith("(evidence: self-reported)")
+           and got[2].startswith("3. **Alerts**"), "\n".join(got))
+    _check("a price is its own label, on the item's last line",
+           "per two pages (evidence: no income shown)" in labelled, labelled)
+    _check("an idea the check did not reach stays unchecked, last",
+           got[3].startswith("4. **NFT mints**") and got[3].endswith("(evidence: unchecked)"), got[3])
+
+    parse = overnight._parse_audit
+    _check("a verdict is read",
+           parse('{"1": "independent", "2": "No income shown"}') == {1: "independent", 2: "no income shown"})
+    _check("a verdict in a code fence is read", parse('```json\n{"1": "self-reported"}\n```') == {1: "self-reported"})
+    _check("an unknown label is not one", parse('{"1": "strong", "2": "unchecked", "x": "independent"}') == {})
+    _check("nor is prose or a list", parse("it looks independent") == {} and parse("[1, 2]") == {})
+
+    asked = {}
+
+    async def answers(system, user, max_tokens, cap=None):
+        asked.update(system=system, user=user, max_tokens=max_tokens)
+        return '{"1": "self-reported"}'
+
+    async def broken(system, user, max_tokens, cap=None):
+        raise RuntimeError("20b is down")
+
+    _check("the check labels what it is given", _run(overnight.audit_evidence(paper, answers)) == {1: "self-reported"})
+    _check("with the paper and the items numbered",
+           "$4k/mo" in asked["user"] and "\n4. **NFT mints**" in asked["user"], asked["user"][-200:])
+    _check("and a budget a reasoning model cannot spend to nothing", asked["max_tokens"] >= 1024)
+    _check("it says a price and a funding round are not income",
+           "A price shows what is asked" in asked["system"] and "funding round is not income" in asked["system"])
+    _check("a check that fails leaves the ideas unchecked", _run(overnight.audit_evidence(paper, broken)) == {})
+    asked.clear()
+    _check("no shortlist, no call", _run(overnight.audit_evidence("# P\n\n## Findings\nx\n", answers)) == {} and not asked)
 
     overnight_mod, goals, work, tmp, calls = _fresh()
     goals.add("Ways an agent could earn money, ranked shortlist", "research")
@@ -560,11 +596,29 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     s = _Stubs(findings_per_step=5)
     s.shortlist = True
     _run(overnight_mod.tick(NIGHT_TIME, search=s.search, complete=s.complete))
-    paper = work.folder(gid) / "paper.md"
-    _check("an unlabelled shortlist no longer costs the night's paper",
-           s.writes == 1 and paper.exists(), str(s.writes))
-    _check("it is written labelled",
-           paper.exists() and "1. Claim 0 again (evidence: self-reported)" in paper.read_text(encoding="utf-8"))
+    paper_path = work.folder(gid) / "paper.md"
+    _check("an unlabelled shortlist does not cost the night's paper",
+           s.writes == 1 and paper_path.exists(), str(s.writes))
+    _check("the check's verdict is what gets written",
+           paper_path.exists() and "1. Claim 0 again (evidence: self-reported)" in paper_path.read_text(encoding="utf-8"))
+    tmp.cleanup()
+
+    overnight_mod, goals, work, tmp, calls = _fresh()
+    goals.add("Ways an agent could earn money, ranked shortlist", "research")
+    gid = _first_id(goals)
+    s = _Stubs(findings_per_step=5)
+    s.shortlist, s.audit_fails = True, True
+    _run(overnight_mod.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    paper_path = work.folder(gid) / "paper.md"
+    _check("a check that fails does not cost the paper, which says unchecked",
+           paper_path.exists() and "1. Claim 0 again (evidence: unchecked)" in paper_path.read_text(encoding="utf-8"))
+    tmp.cleanup()
+
+    overnight_mod, goals, work, tmp, calls = _fresh()
+    goals.add("Study autonomous systems", "research")
+    s = _Stubs(findings_per_step=5)
+    _run(overnight_mod.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    _check("a paper with no shortlist costs no check", s.audits == 0, str(s.audits))
     tmp.cleanup()
 
 
@@ -581,6 +635,12 @@ def test_paper_citations_are_plain_links() -> None:
     _check("gpt-oss citations still count as sources", paper.exists())
     _check("and are written as Markdown autolinks", "Claim 0 <https://e.example/1/0>." in text
            and "【" not in text and "】" not in text, text[:300])
+    # 2026-10-30: "MRRhttps://a.example/https://b.example/" in the paper the user opened.
+    joined = overnight._for_file("MRR【https://a.example/x】【https://b.example/y】<https://c.example/z>")
+    _check("sources in a row are kept apart",
+           joined == "MRR <https://a.example/x> <https://b.example/y> <https://c.example/z>", joined)
+    change = overnight._heading_change("# P\n", "# P\n## New\n")
+    _check("one section added reads as one", change == "1 section added, 0 dropped", change)
     tmp.cleanup()
 
 

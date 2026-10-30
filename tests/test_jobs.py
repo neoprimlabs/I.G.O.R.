@@ -625,6 +625,60 @@ def test_a_refused_force_is_let_go() -> None:
            "tool_choice" not in calls[2] and reply.startswith("Searched the boards."), reply)
 
 
+def test_ranking_sees_what_a_posting_asks() -> None:
+    """2026-10-30: "you can apply" to a role asking for 8+ years at Principal level and one
+    asking for 3-6+ years of one platform. The ranking only ever saw titles; the feeds
+    carry the rest. Postings here are invented, in the shape We Work Remotely sends."""
+    import asyncio
+    from agents import jobs
+
+    posting = ("<p>Headquarters: Remote</p><p>About Example Co: we are the agentic company, "
+               "trusted by millions.</p><h3>About You</h3><ul>"
+               "<li>Proficiency in TypeScript and SQL.</li>"
+               "<li>8+ years of experience in data engineering, with at least 5 years at the "
+               "Principal Engineer level.</li><li>A sense of humour &amp; curiosity.</li></ul>")
+    asks = jobs._asks(posting)
+    _check("what it asks for is read out of the HTML", "8+ years of experience" in asks and "<" not in asks, asks)
+    _check("years come first", asks.startswith("8+ years"), asks)
+    _check("and the rest of what it asks follows", "Proficiency in TypeScript" in asks, asks)
+    _check("the company's opening is left behind", "agentic company" not in asks and "humour" not in asks, asks)
+    _check("a range of years counts", "3\u20136+ years" in jobs._asks("<li>3\u20136+ years of Acme CRM development</li>"))
+    _check("a posting that asks nothing gives nothing", jobs._asks("<p>We are a great team.</p>") == "")
+    _check("nor does a posting with no description", jobs._asks("") == "" and jobs._asks(None) == "")
+    _check("it stays short whatever the posting",
+           len(jobs._asks("".join(f"<li>{n} years of skill number {n}.</li>" for n in range(90)))) <= jobs._ASKS_CHARS)
+
+    wwr = ('<rss><channel><item><title>Example Co: Software Engineer</title><link>https://x/1</link>'
+           '<description><![CDATA[<li>8+ years of backend experience.</li>]]></description></item></channel></rss>')
+    _check("the description is kept from the feed",
+           "8+ years" in jobs._from_wwr(wwr)[0].get("description", ""), str(jobs._from_wwr(wwr)))
+    remotive = json.dumps({"jobs": [{"title": "T", "company_name": "C", "url": "https://x/2", "description": "<li>2 years of QA.</li>"}]})
+    _check("from Remotive too", "2 years" in jobs._from_remotive(remotive)[0]["description"])
+    remoteok = json.dumps([{"legal": "notice"}, {"position": "T", "company": "C", "url": "https://x/3", "description": "<li>3 years of QA.</li>"}])
+    _check("and RemoteOK", "3 years" in jobs._from_remoteok(remoteok)[0]["description"])
+
+    path = _fresh()
+    (path / "private").mkdir()
+    (path / "private" / "profile.md").write_text(PROFILE_FIXTURE, encoding="utf-8")
+    seen = {}
+
+    async def _fake(profile, listing):
+        seen["listing"] = listing
+        return ""
+
+    asyncio.run(jobs.rank([{"title": "Software Engineer", "company": "Example Co", "url": "https://x/1", "description": posting},
+                           {"title": "AI Trainer", "company": "Scale Labs", "url": "https://x/2"}], ask=_fake))
+    _check("the ranking is given what each posting asks",
+           "1. Software Engineer - Example Co\n   Asks: 8+ years" in seen.get("listing", ""), seen.get("listing", ""))
+    _check("and a posting with nothing to quote is its title alone",
+           seen.get("listing", "").endswith("2. AI Trainer - Scale Labs"), seen.get("listing", ""))
+    system = jobs._RANK_SYSTEM
+    _check("it may not invent or stretch the profile", "never stretch it" in system)
+    _check("it leaves out years the profile cannot meet", "5 or more years" in system)
+    _check("and a platform the profile does not show", "platform or skill the profile does not show" in system)
+    _check("and it does not tell them they can apply", "good fit or that they can or should apply" in system)
+
+
 if __name__ == "__main__":
     print("a saved exclusion counts")
     test_a_saved_exclusion_counts()
@@ -646,6 +700,8 @@ if __name__ == "__main__":
     test_exclusions_are_whole_words()
     print("\nseen store and collection")
     test_seen_and_collect()
+    print("\nwhat a posting asks")
+    test_ranking_sees_what_a_posting_asks()
     print("\nranking against a profile")
     test_ranking_uses_a_profile_without_contact_details()
     print("\nwhat was found is kept")

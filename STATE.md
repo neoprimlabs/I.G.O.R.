@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-29**
+Last updated: **2026-10-30**
 
 ---
 
@@ -124,7 +124,18 @@ lockouts, and any user message stops it at its next step. Judge eval on 20b
 (`tests/eval_followthrough.py`, invented cases): 5/6 first, the miss a complete summary
 judged "continue" for being brief; 6/6 after the prompt said quality is not its
 question. The full loop has not run live yet; its verdicts log as `Follow-through
-judge`. Next: the walkthrough with the user, a demo script run
+judge`. From the 10-30 output: the writer graded its own evidence and called four of
+six ideas independent, on price pages, a funding press release and a case study its
+findings had marked as a vendor claim, so 20b now labels each shortlist item after
+the writer (independent, self-reported, no income shown; unchecked if the check fails)
+and any grade the writer leaves is stripped; sources in a row no longer run together.
+Both news stories were repeats from other sites, so what was told is kept by name
+(`news_topics.json`, 14 days): the prompt lists it, code drops what gets through, and
+roundups count as listings. The idea proposed a per-turn 120b summariser because the
+self-summary never said a running summary exists; it says so now, and an idea may not
+add a model call to every message. The job ranking only ever saw titles and said "you
+can apply" to a role asking for 8+ years at Principal level: it now gets what each
+posting asks, from the feeds, and may not claim fit. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

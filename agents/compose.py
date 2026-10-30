@@ -167,7 +167,8 @@ async def write(brief: str, now: Optional[datetime] = None,
                      "\n\nAnything you call existing - a tool, a command, a model's job, a file, "
                      "a step - must appear in that summary, by the name it uses there, doing only "
                      "what the summary says it does. Everything else is part of your proposal and "
-                     "must be described as new.")
+                     "must be described as new. It must fit the daily token budget too: nothing "
+                     "that adds a model call to every message or to every item of anything.")
         if recent:
             area = _IGOR_AREAS[(now or datetime.now()).toordinal() % len(_IGOR_AREAS)]
             # 2026-10-28: "safety: approvals, ... checkpoints and rollback" came back as a
