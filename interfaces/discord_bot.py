@@ -67,7 +67,7 @@ class IgorBot(discord.Client):
             from agents import inbound
             try:
                 async with message.channel.typing():
-                    parts, prefer_tools = await inbound.read(message.attachments)
+                    parts, prefer_tools = await inbound.read(message.attachments, ask=content)
                 content = inbound.combine(content, parts)
             except Exception as e:
                 logger.error("Reading attachments failed - %s: %s", type(e).__name__, e)

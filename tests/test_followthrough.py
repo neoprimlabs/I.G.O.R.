@@ -50,6 +50,7 @@ def test_what_gets_judged() -> None:
         _check(f"not judged: {ending!r}", not ft.worth_judging(f"Here are all three.\n\n{ending}", {}))
     _check("receipt lines are not the reply's ending",
            not ft.worth_judging("All three are listed above.\n\n-# Saved: shall I continue later", {}))
+    _check("a turn too big to start is not judged", not ft.worth_judging(PARTIAL, {"too_big": True, "out_of_steps": False}))
     long_reply = "Shall I continue?\n\n" + "A finished comparison. " * 40
     _check("only the ending counts", not ft.worth_judging(long_reply, {}))
 
@@ -100,7 +101,7 @@ def test_the_continuation_is_written_in_code() -> None:
     _check("and nothing the user did not ask for", "nothing the user did not ask for" in text)
 
 
-def _run(verdicts, replies, headroom=150000, stop_after=None, failing_round=None, carry=None):
+def _run(verdicts, replies, headroom=150000, stop_after=None, failing_round=None, carry=None, request=REQUEST):
     """followthrough.run with the judge, the budget and the rounds stubbed."""
     import followthrough as ft
     judged, rounds, sent = [], [], []
@@ -125,7 +126,7 @@ def _run(verdicts, replies, headroom=150000, stop_after=None, failing_round=None
     try:
         ft.judge = judge
         ft.usage.headroom = lambda model: headroom
-        count = asyncio.run(ft.run(REQUEST, PARTIAL, carry if carry is not None else {}, stop,
+        count = asyncio.run(ft.run(request, PARTIAL, carry if carry is not None else {}, stop,
                                    do_round, send))
     finally:
         ft.judge, ft.usage.headroom = real_judge, real_headroom
@@ -174,6 +175,33 @@ def test_the_loop() -> None:
     _check("and each round has the stop", all("stop" in c for _, c in rounds))
     _check("but not the last turn's step count", all("out_of_steps" not in c for _, c in rounds))
 
+    from agents.react import _UNTRUSTED_OPEN
+    with_document = f"[Document the user sent: a.txt]\n{_UNTRUSTED_OPEN}\nA page.\n[END]"
+    count, judged, rounds, sent = _run(["continue", "done"], ["a"], carry={"out_of_steps": True}, request=with_document)
+    # Live 2026-10-30 the first round ran with every tool open and a transcript in its history.
+    _check("a document in the user's message counts as read in every round",
+           rounds and rounds[0][1].get("web") is True, str(rounds))
+
+    async def too_big_round(message, round_carry):
+        round_carry["too_big"] = True
+        return "Nothing to report."
+    judged_calls = []
+
+    async def judge_continue(request, reply):
+        judged_calls.append(reply)
+        return "continue", "stub"
+    real_judge, real_headroom = ft.judge, ft.usage.headroom
+    sent2 = []
+
+    async def send2(text):
+        sent2.append(text)
+    try:
+        ft.judge, ft.usage.headroom = judge_continue, (lambda model: 150000)
+        count = asyncio.run(ft.run(REQUEST, PARTIAL, {"out_of_steps": True}, asyncio.Event(), too_big_round, send2))
+    finally:
+        ft.judge, ft.usage.headroom = real_judge, real_headroom
+    _check("a round too big to start ends it", count == 1 and len(judged_calls) == 1, f"{count} {judged_calls}")
+
 
 def _fake_client(script):
     """A React client that answers from script: a list of tool calls or final strings."""
@@ -210,6 +238,69 @@ def _react(message, script, carry, max_iterations=8):
 
 def _offered(call) -> set:
     return {t["function"]["name"] for t in call.get("tools") or []}
+
+
+def test_a_long_message_keeps_its_tools() -> None:
+    """Live 2026-10-30: the prompt plus a full window was about 6600 of the 7000 ceiling, and
+    history could not be trimmed, so a 1800-character message was refused before its first
+    step. React answered with no tools, opening "In this turn I did not run any searches"."""
+    from agents import react
+
+    system = {"role": "system", "content": "s" * 8500}
+    history = [{"role": "system", "content": "Summary of the conversation. " * 40},
+               {"role": "user", "content": "the oldest thing said " * 110},
+               {"role": "assistant", "content": "an older answer " * 140},
+               {"role": "user", "content": "short"},
+               {"role": "assistant", "content": "the newest answer " * 100}]
+    message = {"role": "user", "content": "d" * 1800}
+    full = [system] + history + [message]
+    budget = react._estimate_tokens(full, 2048)
+    _check("the fixture is over the ceiling", budget > react._BUDGET_CEILING, str(budget))
+    out, fits = react._trim_to_budget(full, 2048)
+    _check("without the history's bounds nothing can give", not fits)
+    out, fits = react._trim_to_budget(full, 2048, history_end=len(history) + 1)
+    _check("the conversation gives way, and the request fits", fits, str(react._estimate_tokens(out, 2048)))
+    _check("the oldest goes first and the newest stays whole",
+           "[shortened for budget]" in out[2]["content"] and out[5]["content"] == history[4]["content"],
+           str([len(m["content"]) for m in out]))
+    _check("the running summary is kept while anything else can give", out[1] == history[0])
+    _check("the system prompt and the user's message are untouched", out[0] == system and out[-1] == message)
+    _check("the caller's own list is not changed", full[2] == history[1])
+
+    results = [{"role": "tool", "content": "r" * 4000} for _ in range(2)]
+    packed = [system] + history + [{"role": "user", "content": "go"}] + results
+    out, fits = react._trim_to_budget(packed, 2048, history_end=len(history) + 1)
+    _check("the last two tool results outrank every word of history", fits and out[-1] == results[-1] and out[-2] == results[-2],
+           str(react._estimate_tokens(out, 2048)))
+    _check("the summary goes when shortening is not enough", out[1]["content"] == react._TRIM_PLACEHOLDER, out[1]["content"][:40])
+    block = {"role": "user", "content": f"{react._UNTRUSTED_OPEN}\n{'d' * 3000}\n{react._UNTRUSTED_CLOSE}"}
+    out, _ = react._trim_to_budget([system, block, {"role": "assistant", "content": "a" * 6000}, message], 2048, history_end=3)
+    _check("an untrusted block is never cut through its closing marker",
+           out[1]["content"] == react._TRIM_PLACEHOLDER or react._UNTRUSTED_CLOSE in out[1]["content"], out[1]["content"][:80])
+
+    context = history
+    fake, calls = _fake_client(["Read it."])
+    real_client, real_prompt = react._get_client, react._get_system_prompt
+    carry = {}
+    try:
+        react._get_client, react._get_system_prompt = (lambda: fake), (lambda: "s" * 8500)
+        reply = asyncio.run(react.handle("d" * 1800, context, max_tokens=2048, carry=carry))
+    finally:
+        react._get_client, react._get_system_prompt = real_client, real_prompt
+    _check("the turn starts with its tools", calls and "read_file" in _offered(calls[0]), str(len(calls)))
+    _check("and is not reported as too big or out of steps", not carry.get("too_big") and not carry.get("out_of_steps"), str(carry))
+
+    fake, calls = _fake_client(["Something short."])
+    carry = {}
+    try:
+        react._get_client, react._get_system_prompt = (lambda: fake), (lambda: "s" * 30000)
+        reply = asyncio.run(react.handle("hello", [], max_tokens=2048, carry=carry))
+    finally:
+        react._get_client, react._get_system_prompt = real_client, real_prompt
+    _check("a prompt nothing can shrink is reported as too big", carry.get("too_big") is True and "out_of_steps" not in carry, str(carry))
+    note = calls[0]["messages"][-1]["content"]
+    _check("and is not told to report on searches it never ran",
+           "did not search" not in note and "Do not mention this note" in note, note)
 
 
 def test_react_carries_the_turn() -> None:
@@ -322,6 +413,8 @@ if __name__ == "__main__":
     test_the_continuation_is_written_in_code()
     print("\nthe loop")
     test_the_loop()
+    print("\na long message keeps its tools")
+    test_a_long_message_keeps_its_tools()
     print("\nReact carries the turn")
     test_react_carries_the_turn()
     print("\nthe orchestrator")

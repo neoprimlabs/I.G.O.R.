@@ -135,7 +135,16 @@ roundups count as listings. The idea proposed a per-turn 120b summariser because
 self-summary never said a running summary exists; it says so now, and an idea may not
 add a model call to every message. The job ranking only ever saw titles and said "you
 can apply" to a role asking for 8+ years at Principal level: it now gets what each
-posting asks, from the feeds, and may not claim fit. Next: the walkthrough with the user, a demo script run
+posting asks, from the feeds, and may not claim fit. Same day, a 19,000-character
+transcript sent alone drew "In this turn I did not run any searches", then "I need the
+remaining portion": prompt plus a full window is about 6600 of React's 7000 ceiling and
+history could not be trimmed, so any message over about 1400 characters, or one big
+tool result (10-25), ended the turn with no tools. History now gives way, oldest first.
+A long document gets one 20b summary on arrival (`inbound._digest`; Hermes pages, which
+this budget cannot hold), falling back to the opening. That was the follow-through's
+first live run: it judged and retried a turn that had run nothing, so a turn too big to
+start is no longer followed through, and a document in the message counts as read in
+every round. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

@@ -15,8 +15,11 @@ React round costs about 15000:
 - A judge that fails means stop. Hermes fails open because its turn budget is the
   backstop; here the backstop would be the user's day.
 - A round is part of the turn before it. What that turn read from the web or from
-  private files stays read (react.py's quarantine), so a web page cannot steer a write
-  the user never asked for. Hermes has no such rule to keep.
+  private files stays read (react.py's quarantine), and so does a document or image in
+  the user's message, so outside text cannot steer a write the user never asked for.
+  Hermes has no such rule to keep.
+- A turn whose prompt was too big to start ran no tools, and a round would meet the
+  same prompt. Live 2026-10-30 one did, for 5000 tokens and a second empty reply.
 - A message from the user ends it, the round in flight included, at that round's next
   step. Hermes lets the turn in flight finish.
 """
@@ -87,6 +90,8 @@ def _without_receipts(reply: str) -> str:
 
 
 def worth_judging(reply: str, carry: dict) -> bool:
+    if carry.get("too_big"):
+        return False
     return bool(carry.get("out_of_steps")) or bool(_OFFERS_MORE.search(_without_receipts(reply)[-_TAIL:]))
 
 
@@ -136,6 +141,8 @@ async def run(request: str, reply: str, carry: dict, stop: asyncio.Event,
     """Rounds after the user's turn, each reply sent as it comes. Returns how many ran."""
     if not worth_judging(reply, carry):
         return 0
+    from agents.react import _UNTRUSTED_OPEN
+    outside_text = _UNTRUSTED_OPEN in request
     rounds = 0
     while rounds < MAX_ROUNDS and not stop.is_set():
         left = usage.headroom(config.MODELS["react"])
@@ -147,7 +154,8 @@ async def run(request: str, reply: str, carry: dict, stop: asyncio.Event,
         if verdict != "continue" or stop.is_set():
             break
         rounds += 1
-        carry = {"web": carry.get("web", False), "private": carry.get("private", False), "stop": stop}
+        carry = {"web": carry.get("web", False) or outside_text,
+                 "private": carry.get("private", False), "stop": stop}
         try:
             async with (typing() if typing else contextlib.nullcontext()):
                 reply = await do_round(continuation(request, rounds), carry)
@@ -156,4 +164,6 @@ async def run(request: str, reply: str, carry: dict, stop: asyncio.Event,
             break
         if reply.strip():
             await send(reply)
+        if carry.get("too_big"):
+            break
     return rounds

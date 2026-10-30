@@ -83,7 +83,7 @@ def _docx(paragraphs) -> bytes:
     return buf.getvalue()
 
 
-def _run(attachments, transcribe=None, describe=None):
+def _run(attachments, transcribe=None, describe=None, digest=None, ask=""):
     from agents import inbound
 
     async def no_transcribe(data, name):
@@ -92,8 +92,12 @@ def _run(attachments, transcribe=None, describe=None):
     async def no_describe(urls):
         raise AssertionError("describe was not expected")
 
+    async def no_digest(text, ask=""):
+        return ""
+
     return asyncio.run(inbound.read(attachments, transcribe=transcribe or no_transcribe,
-                                    describe=describe or no_describe, now=NOW))
+                                    describe=describe or no_describe, now=NOW,
+                                    digest=digest or no_digest, ask=ask))
 
 
 def test_kinds() -> None:
@@ -186,6 +190,50 @@ def test_documents() -> None:
            str(len(parts[0])))
     _check("and the message names the saved file", "memory/inbox/" in parts[0] or "inbox" in parts[0], parts[0][:200])
 
+    # Live 2026-10-30: a 19,000-character transcript. React could hold two read windows
+    # of it, so the whole document is summarised on arrival by one 20b call.
+    asked = []
+
+    async def summarise(text, ask=""):
+        asked.append((text, ask))
+        return "A contract between two firms. Payment falls due in 30 days."
+
+    parts, tools = _run([_Att("contract.txt", "text/plain", long_text)], digest=summarise, ask="any traps?")
+    _check("a long document is summarised on arrival", "Payment falls due in 30 days" in parts[0], parts[0][:300])
+    _check("the summary replaces the opening", "line of the contract" not in parts[0], parts[0][:300])
+    _check("it is handed the whole of the text", asked and asked[0][0].count("line of the contract") == 400)
+    _check("and the user's words", asked and asked[0][1] == "any traps?")
+    _check("the message says what it is and where the exact text is",
+           "another model's summary of the whole of it" in parts[0] and "read_file has the exact text" in parts[0], parts[0][:300])
+    _check("it still goes to the tool agent", tools is True)
+    _check("and the summary stays inside the untrusted markers",
+           parts[0].index("UNTRUSTED EXTERNAL") < parts[0].index("Payment falls due")
+           < parts[0].index("END UNTRUSTED"), parts[0][:300])
+
+    huge_text = ("line of the contract\n" * 2000).encode()
+    parts, _ = _run([_Att("contract.txt", "text/plain", huge_text)], digest=summarise)
+    _check("a document past one call's limit says how far the summary reaches",
+           "summary of its first 20,000 characters" in parts[0], parts[0][:300])
+
+    async def too_long(text, ask=""):
+        return "x" * 9000
+
+    parts, _ = _run([_Att("contract.txt", "text/plain", long_text)], digest=too_long)
+    _check("a summary that runs long is held to size", len(parts[0]) < 2200, str(len(parts[0])))
+
+    async def down(text, ask=""):
+        raise RuntimeError("20b is down")
+
+    parts, tools = _run([_Att("contract.txt", "text/plain", long_text)], digest=down)
+    _check("a failed summary falls back to the opening",
+           "line of the contract" in parts[0] and "read_file pages through the rest" in parts[0] and tools is True, parts[0][:300])
+    asked.clear()
+    parts, _ = _run([_Att("note.txt", "text/plain", b"A short note.")], digest=summarise)
+    _check("a short document costs no call", "A short note." in parts[0] and not asked)
+    many = [_Att(f"c{n}.txt", "text/plain", long_text) for n in range(4)]
+    _run(many, digest=summarise)
+    _check("at most two summaries a message", len(asked) == 2, str(len(asked)))
+
     parts, _ = _run([_Att("clip.mp4", "video/mp4", b"x")])
     _check("an unsupported file is named, not ignored", "was not read" in parts[0], parts[0])
     huge = _Att("big.pdf", "application/pdf", size=11 * 1024 * 1024)
@@ -258,6 +306,9 @@ def test_combine() -> None:
     from agents import inbound
     _check("the user's words come first", inbound.combine("what is this?", ["[Image 1 ...]"]) == "what is this?\n\n[Image 1 ...]")
     _check("an attachment alone stands on its own", inbound.combine("", ["(voice note) hi"]) == "(voice note) hi")
+    alone = inbound.combine("", ["[Document the user sent: a.txt]"])
+    _check("a document alone says the user sent no words, and what to do", "no message" in alone and "what it says" in alone, alone)
+    _check("with their words it does not", "no message" not in inbound.combine("look", ["[Document the user sent: a.txt]"]))
 
 
 def test_inbox_reads_are_untrusted() -> None:

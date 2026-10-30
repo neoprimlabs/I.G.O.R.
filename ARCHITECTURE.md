@@ -124,7 +124,7 @@ A Discord DM travels this path every time:
    attachments go through `agents/inbound.py` first: voice notes become text
    (Whisper), up to 3 images are described by qwen inside untrusted markers, and
    PDFs, Word, Excel, notebooks and text are saved to `memory/inbox/` (untrusted)
-   with the opening in the message; a long one goes to React.
+   with the text in the message; a long one goes to React with a 20b summary instead.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
    auth check in the system; everything downstream trusts it.
@@ -168,8 +168,6 @@ A Discord DM travels this path every time:
 
    Any failure - unparseable output, exception, timeout - falls through to React.
    The verdict is logged as `Router: <verdict> -> <destination>`.
-
-   The router skips `call_claude`'s 30s rate-limit sleeps.
 
 5. **`orchestrator._route`** - builds a bound `call_claude`, sets max_tokens
    (2048 chat, 3072 file mode), dispatches to the destination.
@@ -327,8 +325,8 @@ On iteration exhaustion, one final tool-free call forces a real answer.
 
 **Budget guard.** Before every request, `_trim_to_budget` estimates prompt plus
 `max_tokens` and, above 7000, blanks the oldest tool results (protecting the
-newest two) until it fits. Only tool results are touched. If it still does not
-fit, the loop breaks to the forced-final-answer path, which trims with
+newest two), then shortens or blanks the history before this message, oldest
+first. If it still does not fit, the loop breaks to the forced-final-answer path, which trims with
 `keep_recent=0`.
 
 **Search behaviour.** Queries containing both a recency word and an absolute date

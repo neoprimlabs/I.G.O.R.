@@ -33,6 +33,8 @@ _BUDGET_CEILING = 7000
 _CHARS_PER_TOKEN = 3.5
 _KEEP_RECENT_TOOL_RESULTS = 2
 _TRIM_PLACEHOLDER = "[trimmed for budget]"
+_SHORTENED_HISTORY_CHARS = 200
+_SHORTENED_MARK = " [shortened for budget]"
 
 # Indirect prompt injection defence. React holds private data (memory files),
 # reads untrusted content (the open web), and can act outward (shell, file writes,
@@ -454,12 +456,18 @@ def _trim_to_budget(
     messages: list[dict],
     max_tokens: int,
     keep_recent: int = _KEEP_RECENT_TOOL_RESULTS,
+    history_end: int = 0,
 ) -> tuple[list[dict], bool]:
-    """Blank the oldest tool results until the request fits the TPM ceiling.
+    """Make the request fit the TPM ceiling, giving up what is needed least first.
 
-    Returns (messages, fits). Tool results are the only thing trimmed: the system
-    prompt, the user's message and the assistant's own reasoning all have to
-    survive for the answer to make sense.
+    Returns (messages, fits). The oldest tool results go first, then the conversation
+    before this message (messages[1:history_end]), oldest first: shortened, then blanked.
+    The system prompt, the user's message and the assistant's own reasoning survive.
+
+    History used to be untouchable, and the prompt plus a full window is already about
+    6600 of the 7000. Live 2026-10-30 a document's 1800-character message was refused
+    before its first step, so React answered with no tools, having read nothing; on
+    10-25 one search result did the same. A turn matters more than an old turn's words.
     """
     before = _estimate_tokens(messages, max_tokens)
     if before <= _BUDGET_CEILING:
@@ -478,9 +486,24 @@ def _trim_to_budget(
         if estimate <= _BUDGET_CEILING:
             break
 
+    # The running summary and the time note sit in a system entry: kept to the last pass.
+    for limit in (_SHORTENED_HISTORY_CHARS, 0):
+        for i in range(1, history_end):
+            if estimate <= _BUDGET_CEILING:
+                break
+            content = out[i].get("content") or ""
+            if limit and out[i].get("role") == "system":
+                continue
+            # Cut short, an untrusted block would lose its closing marker.
+            whole = not limit or _UNTRUSTED_OPEN in content
+            shorter = _TRIM_PLACEHOLDER if whole else content[:limit] + _SHORTENED_MARK
+            if len(shorter) < len(content):
+                out[i] = {**out[i], "content": shorter}
+                estimate = _estimate_tokens(out, max_tokens)
+
     if estimate != before:
         logger.info(
-            "ReAct trimmed tool results for budget: ~%d -> ~%d tokens (ceiling %d)",
+            "ReAct trimmed for budget: ~%d -> ~%d tokens (ceiling %d)",
             before, estimate, _BUDGET_CEILING,
         )
     return out, estimate <= _BUDGET_CEILING
@@ -1732,6 +1755,7 @@ async def _handle(
     web_read = bool(carry.get("web"))
     private_read = bool(carry.get("private"))
     stop = carry.get("stop")
+    history_end = len(context) + 1
     for i in range(max_iterations):
         if stop is not None and stop.is_set():
             logger.info("ReAct stopped at iteration %d: the user wrote again", i + 1)
@@ -1740,12 +1764,13 @@ async def _handle(
             tools = [t for t in tools if t["function"]["name"] not in _QUARANTINED_AFTER_WEB]
         if private_read:
             tools = [t for t in tools if t["function"]["name"] not in _WEB_TOOLS]
-        messages, fits = _trim_to_budget(messages, max_tokens)
+        messages, fits = _trim_to_budget(messages, max_tokens, history_end=history_end)
         if not fits:
             logger.warning(
                 "ReAct still over budget after trimming at iteration %d - forcing a final answer",
                 i + 1,
             )
+            carry["too_big"] = i == 0
             break
         must = {}
         if not forced_done and any(t["function"]["name"] == force_tool for t in tools):
@@ -1875,15 +1900,21 @@ async def _handle(
         logger.warning("ReAct unexpected finish_reason: %s", choice.finish_reason)
         break
 
-    logger.warning("ReAct hit max iterations (%d) - forcing a final answer", max_iterations)
-    carry["out_of_steps"] = True
+    if not carry.get("too_big"):
+        logger.warning("ReAct hit max iterations (%d) - forcing a final answer", max_iterations)
+        carry["out_of_steps"] = True
+    # With no tool run there is nothing to report. Told to say so plainly, a turn on
+    # 2026-10-30 opened "In this turn I did not run any searches" to a user who asked none.
+    ran_tools = any(m.get("role") == "tool" for m in messages)
     messages = messages + [{
         "role": "user",
-        "content": "[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open. Describe only what this turn did: which searches actually ran and what they returned. If you did not search, say so plainly; never present an earlier turn's results as new, or claim to have checked sources you did not.]",
+        "content": ("[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open. Describe only what this turn did: which searches actually ran and what they returned. If you did not search, say so plainly; never present an earlier turn's results as new, or claim to have checked sources you did not.]"
+                    if ran_tools else
+                    "[system: answer now from this conversation, without tools. If it does not hold what you need, say what is missing in one sentence. Do not mention this note or what you did not do.]"),
     }]
     # Last chance, so trim everything eligible rather than protecting recent
     # results. Arriving here over budget would 413 and lose the whole turn.
-    messages, _ = _trim_to_budget(messages, max_tokens, keep_recent=0)
+    messages, _ = _trim_to_budget(messages, max_tokens, keep_recent=0, history_end=history_end)
     try:
         final = await llm.create(client, use_model, label, params=False,
                                  messages=messages, max_tokens=max_tokens)

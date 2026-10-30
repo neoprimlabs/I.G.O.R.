@@ -11,6 +11,7 @@ Spends the real daily token budget: one message is several model calls.
 On the server, as igor:
     cd /opt/igor && venv/bin/python scripts/e2e_isolated.py "message" ["follow-up" ...]
     venv/bin/python scripts/e2e_isolated.py --react "message"   (React alone, no history)
+    venv/bin/python scripts/e2e_isolated.py --attach /path/file "message"   (as if attached)
 """
 import asyncio
 import difflib
@@ -37,7 +38,8 @@ def _md_snapshot(memory: Path) -> dict:
 
 def main(argv: list[str]) -> None:
     react_only = argv[:1] == ["--react"]
-    messages = argv[1:] if react_only else argv
+    attach = argv[1] if argv[:1] == ["--attach"] else None
+    messages = argv[1:] if react_only else argv[2:] if attach else argv
     if not messages:
         raise SystemExit(__doc__)
 
@@ -57,14 +59,26 @@ def main(argv: list[str]) -> None:
         import config
         assert config.BASE_DIR.resolve() == root.resolve(), config.BASE_DIR
         code_before = _hashes(root)
-        asyncio.run(_run(messages, react_only, config))
+        asyncio.run(_run(messages, react_only, config, attach))
         changed = sorted(k for k, v in _hashes(root).items() if code_before.get(k) != v)
         print("\ncode files the run changed (in the copy only):", changed or "none")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-async def _run(messages: list[str], react_only: bool, config) -> None:
+class _Attachment:
+    """What inbound.read uses of a discord.Attachment."""
+
+    def __init__(self, path: str) -> None:
+        self.path = Path(path)
+        self.filename, self.content_type, self.url = self.path.name, None, ""
+        self.size = self.path.stat().st_size
+
+    async def read(self) -> bytes:
+        return self.path.read_bytes()
+
+
+async def _run(messages: list[str], react_only: bool, config, attach: str | None = None) -> None:
     async def notify(_):
         pass
 
@@ -81,8 +95,13 @@ async def _run(messages: list[str], react_only: bool, config) -> None:
     o = orchestrator.Orchestrator(notify)
     for message in messages:
         before = _md_snapshot(config.MEMORY_DIR)
-        reply, _ = await o.process(config.AUTHORIZED_USER_ID, message)
-        print(f"\nUSER: {message}\nIGOR: {reply}")
+        content, prefer_tools = message, False
+        if attach:
+            from agents import inbound
+            parts, prefer_tools = await inbound.read([_Attachment(attach)], ask=message)
+            content, attach = inbound.combine(message, parts), None
+        reply, _ = await o.process(config.AUTHORIZED_USER_ID, content, prefer_tools=prefer_tools)
+        print(f"\nUSER: {content}\nIGOR: {reply}")
 
         async def send(text):
             print(f"\nIGOR (followed through): {text}")
