@@ -641,6 +641,8 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("a company's age is not an ask", jobs._asks("<p>For over 20 years, Example Co has served teams.</p>") == "")
     _check("nor is a heading, or the word required in passing",
            jobs._asks("<p>Required Skills:</p><p>Deliver the required solution for dealers.</p>") == "")
+    _check("nor is a heading with no colon", jobs._asks("<p>Required Qualifications</p><p>Requirements / Must Have</p>") == "")
+    _check("nor the same words inside a longer word", jobs._asks("<p>Support Developer Experience initiatives across teams.</p>") == "")
     _check("the parts read as one sentence",
            "level; Proficiency" in asks and ".;" not in asks, asks)
     _check("a soft hyphen from a feed is removed", "customer facing" in jobs._asks("<li>1+ years of customer \u00adfacing work.</li>").replace("  ", " "))
@@ -677,7 +679,8 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     system = jobs._RANK_SYSTEM
     _check("it writes numbers, not notes", "only the numbers" in system and "no notes" in system)
     _check("experience is counted from the profile's dates", "profile's dates" in system)
-    _check("it leaves out years the profile cannot meet", "5 or more years" in system)
+    _check("it leaves out years the profile cannot meet", "2 or more years" in system)
+    _check("and a posting limited to another country", "country other than the United States" in system)
     _check("and a platform the profile does not show", "platform or skill the profile does not show" in system)
 
 

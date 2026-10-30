@@ -480,8 +480,9 @@ You get their profile and a numbered list of postings, each with what it asks fo
 
 Rules:
 - Judge against the profile and what the posting asks. Count experience only as the profile's dates show it.
-- Keep a posting asking for a year or two the profile lacks only if everything else fits.
-- Leave out a posting that asks for 5 or more years in a field the profile shows no paid work in, or whose main requirement is a platform or skill the profile does not show.
+- A posting asking for about a year the profile lacks can stay if everything else fits.
+- Leave out a posting that asks for 2 or more years in a field the profile shows no work in, or whose main requirement is a platform or skill the profile does not show.
+- Leave out a posting whose title limits it to a country other than the United States.
 - With only a title to go on, keep a posting only if the title alone is a direct fit.
 - If standing preferences follow the profile, they override fit: leave out a posting that breaks one.
 - Leave out anything clearly not worth their time.
@@ -511,9 +512,10 @@ def _profile() -> str:
 # Followed by what the years are of: "For over 20 years, Example Co has..." is not an ask.
 _YEARS_RE = re.compile(r"\d\s*\+?\s*(?:years?|yrs?)\b(?:\s+\S+){0,2}?\s+"
                        r"(?:of|experience|in|working|hands-on|professional|building|at)\b", re.IGNORECASE)
-_ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:with|in|building)"
+_ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:with|in|building)\b"
                       r"|\brequired (?:skills|experience|qualifications)\b|\bexperience required\b",
                       re.IGNORECASE)
+_ASKS_HEADING = re.compile(r"(?:required|requirements?)\b.{0,30}$", re.IGNORECASE)
 _ASKS_CHARS = 240
 
 
@@ -528,7 +530,8 @@ def _asks(description: str) -> str:
     """
     text = re.sub(r"<[^>]+>", "\n", html.unescape(description or "")).replace("\u00ad", "")
     parts = [re.sub(r"\s+", " ", p).strip(" .;") for p in re.split(r"\n|(?<=[.!?;])\s+", _repair(text))]
-    hits = [p for p in parts if 8 < len(p) < 200 and not p.endswith(":") and _ASKS_RE.search(p)]
+    hits = [p for p in parts if 8 < len(p) < 200 and not p.endswith(":")
+            and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)]
     hits.sort(key=lambda p: not _YEARS_RE.search(p))
     out = ""
     for hit in hits:
