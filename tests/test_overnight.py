@@ -88,7 +88,7 @@ class _Stubs:
             self.audits += 1
             if getattr(self, "audit_fails", False):
                 raise RuntimeError("20b is down")
-            return '{"1": "self-reported"}'
+            return '{"1": {"shows": "earnings", "from": "seller"}}'
         if system.startswith("You turn raw search results"):
             lines = [f"- fact {self.n}-{i} (https://e.example/{self.n}/{i})"
                      for i in range(self.findings_per_step)]
@@ -565,27 +565,39 @@ def test_shortlist_says_what_backs_each_idea() -> None:
            got[3].startswith("4. **NFT mints**") and got[3].endswith("(evidence: unchecked)"), got[3])
 
     parse = overnight._parse_audit
-    _check("a verdict is read",
-           parse('{"1": "independent", "2": "No income shown"}') == {1: "independent", 2: "no income shown"})
-    _check("a verdict in a code fence is read", parse('```json\n{"1": "self-reported"}\n```') == {1: "self-reported"})
-    _check("an unknown label is not one", parse('{"1": "strong", "2": "unchecked", "x": "independent"}') == {})
+    # Code works the label out: asked for one, 20b repeated the paper's own "independent".
+    _check("earnings a third party reports are independent",
+           parse('{"1": {"shows": "earnings", "from": "third party"}}') == {1: "independent"})
+    _check("earnings their earner reports are self-reported",
+           parse('{"1": {"shows": "Earnings", "from": "Seller"}}') == {1: "self-reported"})
+    _check("a price, a funding round or anything else shows no income, whoever says it",
+           parse('{"1": {"shows": "price", "from": "third party"}, "2": {"shows": "funding", "from": "seller"},'
+                 ' "3": {"shows": "other", "from": "third party"}}')
+           == {1: "no income shown", 2: "no income shown", 3: "no income shown"})
+    _check("a verdict in a code fence is read",
+           parse('```json\n{"1": {"shows": "price", "from": "seller"}}\n```') == {1: "no income shown"})
+    _check("a grade instead of the facts is not one",
+           parse('{"1": "independent", "2": {"shows": "strong", "from": "seller"}, "x": {"shows": "price", "from": "seller"}}') == {})
     _check("nor is prose or a list", parse("it looks independent") == {} and parse("[1, 2]") == {})
 
     asked = {}
 
     async def answers(system, user, max_tokens, cap=None):
         asked.update(system=system, user=user, max_tokens=max_tokens)
-        return '{"1": "self-reported"}'
+        return '{"1": {"shows": "earnings", "from": "seller"}}'
 
     async def broken(system, user, max_tokens, cap=None):
         raise RuntimeError("20b is down")
 
     _check("the check labels what it is given", _run(overnight.audit_evidence(paper, answers)) == {1: "self-reported"})
-    _check("with the paper and the items numbered",
+    _check("with the paper's sections and the ideas numbered",
            "$4k/mo" in asked["user"] and "\n4. **NFT mints**" in asked["user"], asked["user"][-200:])
+    _check("and not what the writer says of them in the shortlist",
+           "recurring revenue" not in asked["user"] and "investor backing" not in asked["user"], asked["user"])
     _check("and a budget a reasoning model cannot spend to nothing", asked["max_tokens"] >= 1024)
     _check("it says a price and a funding round are not income",
            "A price shows what is asked" in asked["system"] and "funding round is not income" in asked["system"])
+    _check("and offers no grade to repeat", "independent" not in asked["system"])
     _check("a check that fails leaves the ideas unchecked", _run(overnight.audit_evidence(paper, broken)) == {})
     asked.clear()
     _check("no shortlist, no call", _run(overnight.audit_evidence("# P\n\n## Findings\nx\n", answers)) == {} and not asked)

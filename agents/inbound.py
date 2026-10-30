@@ -404,7 +404,10 @@ async def read(attachments, transcribe=None, describe=None,
         if long and digests < _MAX_DIGESTS:
             digests += 1
             try:
-                summary = (await digest(text, ask))[:_EXCERPT_CHARS]
+                summary = await digest(text, ask)
+                if len(summary) > _EXCERPT_CHARS:
+                    # Live 2026-10-30 a summary ran over and stopped mid-word.
+                    summary = summary[:_EXCERPT_CHARS].rsplit("\n", 1)[0]
             except Exception as e:
                 logger.error("Document summary failed, sending the opening - %s: %s", type(e).__name__, e)
         if summary:

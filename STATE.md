@@ -126,9 +126,12 @@ judged "continue" for being brief; 6/6 after the prompt said quality is not its
 question. The full loop has not run live yet; its verdicts log as `Follow-through
 judge`. From the 10-30 output: the writer graded its own evidence and called four of
 six ideas independent, on price pages, a funding press release and a case study its
-findings had marked as a vendor claim, so 20b now labels each shortlist item after
-the writer (independent, self-reported, no income shown; unchecked if the check fails)
-and any grade the writer leaves is stripped; sources in a row no longer run together.
+findings had marked as a vendor claim, so after the writer 20b answers what each idea's
+best source shows and who says it, and code makes the label (independent, self-reported,
+no income shown; unchecked if the check fails). Asked for a label outright, 20b repeated
+the paper's four "independent"; on the same paper the two questions gave one independent
+(API wrappers, on WrapperExits' sales data, arguable) and five no income shown. Any grade
+the writer leaves is stripped, and sources in a row no longer run together.
 Both news stories were repeats from other sites, so what was told is kept by name
 (`news_topics.json`, 14 days): the prompt lists it, code drops what gets through, and
 roundups count as listings. The idea proposed a per-turn 120b summariser because the

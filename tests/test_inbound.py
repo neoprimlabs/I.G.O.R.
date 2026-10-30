@@ -216,10 +216,11 @@ def test_documents() -> None:
            "summary of its first 20,000 characters" in parts[0], parts[0][:300])
 
     async def too_long(text, ask=""):
-        return "x" * 9000
+        return "A whole point.\n" * 60 + "A point cut in ha" + "x" * 9000
 
     parts, _ = _run([_Att("contract.txt", "text/plain", long_text)], digest=too_long)
     _check("a summary that runs long is held to size", len(parts[0]) < 2200, str(len(parts[0])))
+    _check("and stops at the end of a line", "A whole point.\n[END" in parts[0] and "A point cut" not in parts[0], parts[0][-200:])
 
     async def down(text, ask=""):
         raise RuntimeError("20b is down")
