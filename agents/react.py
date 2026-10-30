@@ -663,8 +663,25 @@ _NEVER_READABLE = frozenset({"corrections.md", "drafts.md"})
 _PRIVATE_MEMORY = frozenset({"resume.md"})
 
 
+# Found 2026-10-30: read_file('.env') returned every API key. The sandbox hid the file from
+# the shell, but read_file and fetch_url both stay open after a web read, so a page could have
+# asked for the keys and a URL carrying them. As in Hermes these are refused outright.
+_SECRET_NAMES = frozenset({"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials", "credentials.json",
+                           "secrets.json", "webhook.txt", ".netrc", ".npmrc", ".pypirc"})
+_SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
+_SECRET_FOLDERS = frozenset({".ssh", ".git", ".gnupg"})
+
+
+def _is_secret_file(resolved) -> bool:
+    name = resolved.name.lower()
+    return (name == ".env" or name.startswith(".env.") or name.endswith(_SECRET_SUFFIXES)
+            or name in _SECRET_NAMES or ".local." in name or bool(_SECRET_FOLDERS & set(resolved.parts)))
+
+
 def _private_kind(resolved) -> str:
     """"never", "guarded", or "" for an ordinary file."""
+    if _is_secret_file(resolved):
+        return "never"
     try:
         relative = resolved.relative_to(config.MEMORY_DIR.resolve())
     except (ValueError, OSError):
@@ -823,6 +840,9 @@ def _path_problem(relative: str, allow_private: bool = False) -> Optional[str]:
         return "[access denied: unreadable path]"
     if not str(resolved).startswith(str(config.BASE_DIR.resolve())):
         return "[access denied: path outside IGOR root]"
+    if _is_secret_file(resolved):
+        return ("[sealed: this file holds credentials and no tool may read or change it, in any "
+                "turn. It exists. Do not ask the user to paste what it holds.]")
     kind = _private_kind(resolved)
     if kind == "never":
         return ("[sealed: this file holds text derived from untrusted input and no agent "
@@ -1250,6 +1270,8 @@ _UNWRITABLE_PARTS = frozenset({"venv", ".venv", ".git", ".cache", "site-packages
 
 
 def _unwritable(resolved) -> bool:
+    if _is_secret_file(resolved):
+        return True
     try:
         parts = resolved.relative_to(config.BASE_DIR.resolve()).parts
     except ValueError:

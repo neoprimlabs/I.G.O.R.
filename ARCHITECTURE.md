@@ -188,7 +188,7 @@ A Discord DM travels this path every time:
 | Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` | none |
 
 `agents/research.py` is an Exa search wrapper (`_run_search`, `_format_results`),
-called by React and Monitor. It is not routable and not an agent.
+called by React and Monitor.
 
 ### llm.complete - the shared text-completion wrapper
 
@@ -482,8 +482,9 @@ Four controls, none of which costs a model call:
    turn. Both layers, because one batch can contain a search and a shell call and
    `asyncio.gather` gives no ordering guarantee, so the batch is judged as a whole
    before anything runs.
-3. **Secrets.** `sanitize.redact` (Hermes' `redact_secrets`) strips key shapes and IGOR's
-   own keys from tool results, outbound text and logs.
+3. **Secrets.** No tool reads or changes `.env`, key files, `.git/` or `*.local.*`
+   (`_is_secret_file`), and `sanitize.redact` (Hermes' `redact_secrets`) strips key shapes
+   and IGOR's own keys from tool results, outbound text and logs.
 4. **Addresses.** `url_safety.py`, as Hermes': `fetch_url` and the heartbeat refuse
    loopback, private, link-local and metadata addresses on every redirect hop. DNS
    rebinding is the known gap.

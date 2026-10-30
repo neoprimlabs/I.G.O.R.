@@ -171,7 +171,10 @@ prices. Not yet run end to end on 120b, which was near its cap that day. `e2e_is
 now counts its spend in the real ledger, which had read 116000 low. Commands in code, no
 model: stop, retry, undo, usage, status, help (Hermes' gateway commands). Messages now take
 one turn at a time, in order (Hermes' queue mode). `sanitize.redact` scrubs keys from tool
-results, outbound text and logs (Hermes' redact_secrets). A scheduled brief can stay silent
+results, outbound text and logs (Hermes' redact_secrets). Found that day: `read_file('.env')`
+returned every API key, with `fetch_url` still open after a web read. The retained journal
+shows no such read (13 read_file calls, none on a secret) and `.git/config` holds no token, so
+keys were not rotated; `_is_secret_file` now seals those paths from every tool. A scheduled brief can stay silent
 (Hermes' cron `[SILENT]`). Overnight research keeps raw results: replayed, focused answers
 were on target but lost the "vendor claim" marks the evidence check needs. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded

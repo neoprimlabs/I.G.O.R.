@@ -139,7 +139,7 @@ async def test_writes() -> None:
     _check("write_file refuses the Python environment",
            "not editable" in out and not (root / planted).exists(), out[:90])
     out = await react._write_server_file(".git/hooks_helper.py", "x = 1")
-    _check("and .git", "not editable" in out and not (root / ".git").exists(), out[:90])
+    _check("and .git", "sealed" in out and not (root / ".git").exists(), out[:90])
     (root / "venv" / "lib").mkdir(parents=True)
     (root / "venv" / "lib" / "site.py").write_text("ok = True\n", encoding="utf-8")
     out = await react._patch_server_file("venv/lib/site.py", "ok = True", "ok = False")
