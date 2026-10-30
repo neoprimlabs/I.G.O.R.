@@ -138,7 +138,10 @@ roundups count as listings. The idea proposed a per-turn 120b summariser because
 self-summary never said a running summary exists; it says so now, and an idea may not
 add a model call to every message. The job ranking only ever saw titles and said "you
 can apply" to a role asking for 8+ years at Principal level: it now gets what each
-posting asks, from the feeds, and may not claim fit. Same day, a 19,000-character
+posting asks, from the feeds, and may not claim fit. Replayed, its notes on 20b can
+still overstate the user's experience, so that is not solved. `memory/private/profile.md`
+corrected on the user's word: it called kinds of job they have never done direct fits
+(backup `profile.md.bak-20261030`). Same day, a 19,000-character
 transcript sent alone drew "In this turn I did not run any searches", then "I need the
 remaining portion": prompt plus a full window is about 6600 of React's 7000 ceiling and
 history could not be trimmed, so any message over about 1400 characters, or one big
