@@ -368,8 +368,8 @@ the US counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
-posts; red flags drop in code or a daily 120b screen, blocking the poster, and a
-failed screen holds the gigs.
+posts; red flags drop in code or a daily 120b screen, blocking the poster; a failed
+screen holds the gigs; picks go out in the post's own words.
 
 ### ConfigEdit
 
@@ -683,4 +683,4 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 - **Spoken replies.** Voice notes are transcribed; speech waits for IGOR's own app,
   the user's choice.
 - **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
-  global, `context.db` has no user column. Single-user is assumed throughout.
+  global, `context.db` has no user column.

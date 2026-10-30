@@ -292,6 +292,29 @@ def test_parse() -> None:
     _check("unusable output is None, so the gigs are held", gigs._parse("I cannot help with that.", 3) is None)
     _check("NONE is not a verdict either", gigs._parse("NONE", 3) is None)
     _check("empty output is None", gigs._parse("", 3) is None)
+    bare = gigs._parse("3.\n1.\nRED 2: scam", 3)
+    _check("a number alone is a pick", bare is not None and list(bare[0]) == [3, 1] and bare[2] == {2: "scam"}, str(bare))
+    tmp.cleanup()
+
+
+def test_a_pick_shows_the_posts_own_words() -> None:
+    """2026-10-30: "strong AI agent building and n8n experience", of someone whose notes
+    say they have not built with n8n for a client. The line shown now comes from the post."""
+    gigs, tmp = _fresh()
+    asks = gigs._what_it_asks
+    _check("what a post asks for is quoted",
+           asks({"body": "We run a clinic. 2+ years of experience with n8n. Paid hourly."})
+           == "Asks for: 2+ years of experience with n8n.", asks({"body": "We run a clinic. 2+ years of experience with n8n."}))
+    _check("a post that asks nothing in those words shows its opening",
+           asks({"body": "Need a chatbot for our dental office, paying 500 dollars."})
+           == "The post says: Need a chatbot for our dental office, paying 500 dollars.", asks({"body": "Need a chatbot."}))
+    long_post = "word " * 80
+    shown = asks({"body": long_post})
+    _check("an opening stops at a word, and says it was cut", shown.endswith("word...") and len(shown) < 240, shown)
+    _check("links are left out", "http" not in asks({"body": "See https://x.example/job for our chatbot build."}))
+    _check("a post with no body says so", asks({"body": None}) == "The post gives no detail." == asks({}))
+    _check("the screen is told to write nothing after a pick's number",
+           "with nothing after it" in gigs._RANK_SYSTEM and "Fits because" not in gigs._RANK_SYSTEM)
     tmp.cleanup()
 
 
@@ -336,7 +359,12 @@ def test_screened_run_sends_and_blocks() -> None:
     _check("one message is sent", len(sent) == 1, str(sent))
     message = sent[0] if sent else ""
     _check("it lists only the pick, numbered", message.startswith("**New gigs worth a look**")
-           and "1. [Hiring] AI chatbot" in message and "new to n8n" in message, message)
+           and "1. [Hiring] AI chatbot" in message, message)
+    _check("what the model wrote about the user goes nowhere",
+           "new to n8n" not in message and "Python agent work" not in message, message)
+    _check("the line under it is the post's own", "Asks for:" in message or "The post says:" in message, message)
+    _check("nor is it kept for later",
+           "new to n8n" not in (config.MEMORY_DIR / "gigs_found.md").read_text(encoding="utf-8"))
     _check("skipped and red-flagged gigs are not shown", "Shopify" not in message and "MirrorFly" not in message, message)
     _check("the red-flagged account is blocked", "n8n:shyamvijay" in gigs.blocked(), str(gigs.blocked()))
     _check("the screening call never sees contact details", "@" not in listings[0][0], listings[0][0])
