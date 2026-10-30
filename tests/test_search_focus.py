@@ -1,0 +1,120 @@
+"""React's search asks Exa what each page says on the query, not for the page's opening.
+
+Run: python tests/test_search_focus.py   (repo root, stdlib only, no network)
+
+Live 2026-10-30: asked to price eight products, React spent 45000 tokens on one, searching
+Notion three times, because a page's first 500 characters seldom hold the answer and old
+results are trimmed for budget. A focused result is shorter and holds the fact.
+"""
+
+import asyncio
+import sys
+import tempfile
+import types
+from pathlib import Path
+from types import SimpleNamespace
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import config
+
+config.MEMORY_DIR = Path(tempfile.mkdtemp())
+
+_failures: list[str] = []
+
+
+def _check(name: str, condition: bool, detail: str = "") -> None:
+    print(f"  {'pass' if condition else 'FAIL'}  {name}" + ("" if condition else f"  {detail}"))
+    if not condition:
+        _failures.append(name)
+
+
+class _Exa:
+    """Stands in for exa_py.Exa and records what it was asked."""
+    calls: list = []
+    fail_focus = False
+
+    def __init__(self, api_key=None):
+        pass
+
+    def search_and_contents(self, query, **kwargs):
+        _Exa.calls.append((query, kwargs))
+        if _Exa.fail_focus and isinstance(kwargs.get("summary"), dict):
+            raise RuntimeError("summary is unavailable")
+        return SimpleNamespace(results=[SimpleNamespace(
+            title="Pricing", url="https://e.example/pricing", published_date="2026-10-01T00:00:00Z",
+            summary="Plus is $10 per member per month." if "summary" in kwargs else None,
+            text="Skip to content. Toggle navigation." if "text" in kwargs else None)])
+
+
+def _search(**kwargs):
+    from agents import research
+    _Exa.calls = []
+    real = sys.modules.get("exa_py")
+    sys.modules["exa_py"] = types.SimpleNamespace(Exa=_Exa)
+    try:
+        return asyncio.run(research._run_search("notion price", **kwargs))
+    finally:
+        if real is None:
+            sys.modules.pop("exa_py", None)
+        else:
+            sys.modules["exa_py"] = real
+
+
+def test_focus() -> None:
+    results = _search(focus="notion price")
+    asked = _Exa.calls[0][1]
+    _check("the page's answer is what comes back", results[0]["body"] == "Plus is $10 per member per month.", str(results))
+    _check("Exa is asked about the query", "notion price" in asked["summary"]["query"], str(asked))
+    _check("and told to stay on the page", "Only what the page states" in asked["summary"]["query"])
+    _check("numbers are kept as written", "numbers exactly as written" in asked["summary"]["query"])
+    _check("raw text is not paid for too", "text" not in asked, str(asked))
+    _check("the date still comes through", results[0]["published"] == "2026-10-01", str(results))
+
+    long_query = "x" * 2000
+    _search(focus=long_query)
+    _check("a long query is held to size", len(_Exa.calls[0][1]["summary"]["query"]) < 600)
+
+    _Exa.fail_focus = True
+    try:
+        results = _search(focus="notion price")
+    finally:
+        _Exa.fail_focus = False
+    _check("if focus fails it falls back to raw text", len(_Exa.calls) == 2 and "text" in _Exa.calls[1][1]
+           and results[0]["body"].startswith("Skip to content"), str(_Exa.calls))
+
+
+def test_other_callers_are_unchanged() -> None:
+    _search()
+    _check("a plain search still gets 500 characters", _Exa.calls[0][1]["text"] == {"max_characters": 500}, str(_Exa.calls))
+    results = _search(use_summary=True)
+    _check("the digest's summary is untouched", _Exa.calls[0][1]["summary"] is True and results[0]["body"].startswith("Plus"))
+
+
+def test_react_asks_for_focus() -> None:
+    from agents import react, research
+    seen = {}
+
+    async def run_search(query, **kwargs):
+        seen.update(query=query, **kwargs)
+        return [{"title": "T", "url": "https://e.example/a", "body": "Plus is $10.", "published": "2026-10-01"}]
+
+    real = research._run_search
+    try:
+        research._run_search = run_search
+        out = asyncio.run(react._execute_tool("search", {"query": "notion price"}))
+    finally:
+        research._run_search = real
+    _check("React's search is focused on its query", seen.get("focus") == "notion price", str(seen))
+    _check("the result is still marked untrusted", out.startswith(react._UNTRUSTED_OPEN) and "Plus is $10." in out, out[:120])
+
+
+if __name__ == "__main__":
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            print(name)
+            fn()
+    if _failures:
+        print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
+        sys.exit(1)
+    print("\nall pass")

@@ -96,7 +96,7 @@ def set_notify(fn: Callable[[str], Awaitable[None]]) -> None:
 _TOOLS = [
     {
         "name": "search",
-        "description": "Search the web for current information, documentation, news, or facts. Use specific, targeted queries. Call multiple times with different queries to cover different angles. Search runs on Exa: do NOT put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. For news, naming the source type ('AI research paper', 'AI product launch') gives more precise hits than the topic alone. To find jobs, set source to \"jobs\": it searches the remote-only job boards IGOR watches, live, and returns the postings themselves with their links and only the pay each one states. Web search is not for job listings.",
+        "description": "Search the web for current information, documentation, news, or facts. Each result is what that page says on your query, so ask for one thing at a time and use fetch_url only when you need the whole page. Use specific, targeted queries. Search runs on Exa: do NOT put a year in the query, Exa ranks by recency on its own and a year suffix degrades results. For news, naming the source type ('AI research paper', 'AI product launch') gives more precise hits than the topic alone. To find jobs, set source to \"jobs\": it searches the remote-only job boards IGOR watches, live, and returns the postings themselves with their links and only the pay each one states. Web search is not for job listings.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1627,7 +1627,7 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         if days:
             from datetime import datetime, timedelta, timezone
             cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        results = await research._run_search(query, max_results=5, start_published_date=cutoff)
+        results = await research._run_search(query, max_results=5, start_published_date=cutoff, focus=query)
         body = research._format_results(results) if results else "No results found."
         window = f" (published within {days} days)" if cutoff else ""
         return f"{_UNTRUSTED_OPEN}\nSearch results for: {query}{window}\n\n{body}\n{_UNTRUSTED_CLOSE}"

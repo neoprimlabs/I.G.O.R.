@@ -322,7 +322,8 @@ first. If it still does not fit, the loop breaks to the forced-final-answer path
 **Search behaviour.** Queries containing both a recency word and an absolute date
 have the date stripped, because the model writes its training-era year into
 queries. A recency query with no `recency_days` gets a 180-day window
-automatically.
+automatically. Each result is Exa's answer to the query from that page, not its first
+500 characters, which were mostly navigation.
 
 ### Scheduled messages and presence
 
@@ -368,10 +369,8 @@ Rebuilt from the old ProdMem write helper. Edits exactly three files:
 filename, validates digest section names against the set the digest actually
 reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
 
-**If its output matches the current file, it writes nothing and says so.** The
-router is an 8B model and questions have classified as `CONFIG`; a write agent
-reachable by a question needs a guard that does not depend on classification being
-right.
+**If its output matches the current file, it writes nothing and says so**: a write
+agent a question can reach needs a guard that does not depend on routing.
 
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
 whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
@@ -387,12 +386,8 @@ whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
    enter another context
 4. **APPEND** - code, not a model, writes to `research.md`
 
-Every model call goes through `_call`, a thin wrapper over `llm.complete` that
-handles both silent failures of a reasoning model on a tight budget (empty and
-clipped output are valid 200 OKs). **Both calls run at `reasoning_effort` low**,
+Every model call goes through `_call`, a wrapper over `llm.complete`. **Both calls run at `reasoning_effort` low**,
 4x to 7x fewer completion tokens than unset.
-
-Gathering and synthesis stay in separate contexts.
 
 Findings are delivered as a **raw file attachment with no model pass over them**,
 followed by an offer to synthesize on request. A `synthesize research` fast path
@@ -582,7 +577,7 @@ this file and is read with `read_file`.
 Every agent's `_get_system_prompt()` returns `memory/prompt_<agent>.md` when it
 exists and is not empty, else `_DEFAULT_SYSTEM_PROMPT`. Overrides take effect immediately, no restart. Reset by deleting or emptying the
 file. Prompt files are edited through Claude Code sessions only, never through
-Discord: ProdMem's legacy `%%WRITE%%` regex truncates at the first `%%END%%`.
+Discord.
 
 **No `prompt_*.md` files exist on the server.** Every agent runs its built-in
 default, so the prompt in the source is the prompt in play.
@@ -648,7 +643,7 @@ other start sets it aside. Below the host (terminated once, July 2026), the PC's
 ## Dead weight
 
 - **Critic is off** (`ENABLE_CRITIC = False`), so `_critic_pass` and
-  `_CRITIC_PROMPT` never execute. `_write_skill` and `skills_react.md` are gone. GAMEPLAN V.1.
+  `_CRITIC_PROMPT` never execute. GAMEPLAN V.1.
 
 ---
 
