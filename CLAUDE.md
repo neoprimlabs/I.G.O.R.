@@ -39,6 +39,10 @@ The runtime is the server. There is no local run.
   unmeasured - do not assume 200000 carries over. Before designing anything that
   sends a large fixed prompt on every call, divide the cap by that prompt size and
   ask whether the answer is a usable number of requests per day.
+- **Prompt caching does nothing on this account.** Groq's docs offer it for gpt-oss and
+  say cached tokens do not count against limits. Measured 2026-10-30 on both models:
+  `prompt_tokens_details` is null on identical calls seconds apart and the count does not
+  fall. Do not reorder prompts for it without measuring again.
 - **Rate limits are PER MODEL and independent buckets.** Different models = separate
   buckets (that is why roles are assigned different models). Same model for two roles
   = SHARED bucket. Re-measured 2026-08-18 after the Llama removal: every

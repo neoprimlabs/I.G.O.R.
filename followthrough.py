@@ -7,9 +7,11 @@ a plain user-role message sends the agent back in, up to 20 turns. The user chos
 switching it on with a command. So there is no goal to set: after a React reply that
 shows signs of stopping short, the judge reads the user's message and the reply.
 
-Where this differs from Hermes, it is for 120b's 200000-token daily cap, where one
-React round costs about 15000:
-- Three rounds at most, and none once less than FLOOR is left today.
+Where this differs from Hermes, it is for 120b's 200000-token daily cap, where a React
+call costs about 5000 and a turn that uses its 8 steps about 40000:
+- Three rounds at most, ROUND_STEPS steps each, none once CEILING has been spent on this
+  request or less than FLOOR is left today. Worked out on 15000 a round at first, which
+  holds only for a round that finishes quickly; these are the ones likely not to.
 - The first judge call is only made for a reply that ran out of steps or ends by
   offering to go on, not after every turn.
 - A judge that fails means stop. Hermes fails open because its turn budget is the
@@ -40,7 +42,9 @@ import usage
 logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 3
+ROUND_STEPS = 4
 FLOOR = 60000
+CEILING = 45000
 _REQUEST_CAP = 1500
 _REPLY_CAP = 3500
 _TAIL = 400
@@ -143,11 +147,15 @@ async def run(request: str, reply: str, carry: dict, stop: asyncio.Event,
         return 0
     from agents.react import _UNTRUSTED_OPEN
     outside_text = _UNTRUSTED_OPEN in request
+    started = usage.headroom(config.MODELS["react"])
     rounds = 0
     while rounds < MAX_ROUNDS and not stop.is_set():
         left = usage.headroom(config.MODELS["react"])
         if left is not None and left < FLOOR:
             logger.info("Follow-through: %d tokens left today, not continuing", left)
+            break
+        if left is not None and started is not None and started - left >= CEILING:
+            logger.info("Follow-through: %d tokens spent on this request, stopping", started - left)
             break
         verdict, reason = await judge(request, reply)
         logger.info("Follow-through judge after round %d: %s - %s", rounds, verdict, reason[:150])

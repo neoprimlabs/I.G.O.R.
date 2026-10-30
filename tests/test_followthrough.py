@@ -125,7 +125,7 @@ def _run(verdicts, replies, headroom=150000, stop_after=None, failing_round=None
     real_judge, real_headroom = ft.judge, ft.usage.headroom
     try:
         ft.judge = judge
-        ft.usage.headroom = lambda model: headroom
+        ft.usage.headroom = (lambda model: next(headroom)) if hasattr(headroom, "__next__") else (lambda model: headroom)
         count = asyncio.run(ft.run(request, PARTIAL, carry if carry is not None else {}, stop,
                                    do_round, send))
     finally:
@@ -154,6 +154,14 @@ def test_the_loop() -> None:
     _check("not with less than the floor left today", count == 0 and not judged and not rounds)
     count, *_ = _run(["continue", "done"], ["more"], headroom=None)
     _check("a model with no measured cap is not held back by it", count == 1)
+
+    # One round can run its steps out at about 5000 a call. Counting 15000 a round, the
+    # first version could have spent over 100000 of the day's 200000 on one request.
+    spending = iter([150000, 150000, 150000 - ft.CEILING + 1, 150000 - ft.CEILING])
+    count, judged, rounds, sent = _run(["continue"] * 9, ["a", "b", "c"], headroom=spending)
+    _check("it stops once the ceiling is spent on this request", count == 2 and len(judged) == 2, f"{count} {judged}")
+    _check("the ceiling and the steps hold a request near a quarter of the day",
+           ft.ROUND_STEPS <= 4 and ft.CEILING <= 50000, f"{ft.ROUND_STEPS} {ft.CEILING}")
 
     count, judged, rounds, sent = _run(["needs_user"], [])
     _check("a reply waiting on the user stops it", count == 0 and not rounds)
@@ -395,6 +403,20 @@ def test_the_orchestrator() -> None:
     o._classify, o._route = chat, route
     asyncio.run(o.process(config.AUTHORIZED_USER_ID, "how are you"))
     _check("nor is a reply from another agent", o._pending_follow is None)
+
+    from agents import react as react_module
+    seen_round = {}
+
+    async def handle(message, context, **kwargs):
+        seen_round.update(kwargs)
+        return ""
+    real_handle = react_module.handle
+    try:
+        react_module.handle = handle
+        asyncio.run(o._round("Carry on.", {}))
+    finally:
+        react_module.handle = real_handle
+    _check("a round gets fewer steps than a turn", seen_round.get("max_iterations") == followthrough.ROUND_STEPS, str(seen_round))
 
     from context_store import load_timed
     o._store_round("The third: Brand C at 279, 3 years.")

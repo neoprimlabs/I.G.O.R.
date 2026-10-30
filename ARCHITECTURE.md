@@ -26,7 +26,8 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 **React's 20 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`. No others.
+`send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`. No others. Twelve load on
+request through `load_tools` (Hermes' Tool Search).
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
@@ -73,8 +74,8 @@ first (`checkpoints.py`, newest 20); the user's `rollback` restores them.
 
 **Follow-through** (`followthrough.py`, Hermes' /goal, but IGOR decides): a React
 reply that ran out of steps or offers to go on is judged by 20b. On `continue`, up to
-3 more rounds, each reply sent as it lands; none under 60000 tokens left today. A
-round keeps the turn's web and private lockouts; any user message stops it.
+3 more rounds of 4 steps, each reply sent as it lands; stops at 45000 tokens or under
+60000 left today. A round keeps the turn's web and private lockouts; any user message stops it.
 
 **Cost**: Groq's free tier caps tokens per model per day; 120b's daily token budget
 (200000) is shared by Direct and React. `usage.py` counts what IGOR spends.
@@ -107,11 +108,6 @@ and the whole file inside ten 3700-character `read_file` windows.
 - **Persistence:** markdown files plus SQLite, no database server
 - **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
   1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
-
-`anthropic` stays installed, unused, for GAMEPLAN R4.1.
-
-**The runtime is the server.** There is no local run; discord.py is not installed
-locally.
 
 ---
 
@@ -157,14 +153,6 @@ A Discord DM travels this path every time:
    `none`, 15s timeout, on a bucket it has to itself. It returns one word, mapped
    by `_VERDICT_MAP`. The effort setting is load-bearing: without it the 10-token
    budget is spent on hidden reasoning before any verdict is emitted.
-
-   | Verdict | Destination |
-   |---|---|
-   | `CHAT` | Direct |
-   | `TASK` | React |
-   | `MONITOR` | Monitor |
-   | `CONFIG` | ConfigEdit |
-   | `RESEARCH` | ResearchLoop |
 
    Any failure - unparseable output, exception, timeout - falls through to React.
    The verdict is logged as `Router: <verdict> -> <destination>`.
@@ -245,8 +233,10 @@ promising a future action.
 
 System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
-context + user`. All 20 tools (listed in the summary) attach unless `allowed_tools`
-narrows them. Each reply ends with subtext lines of what its saving tools really did,
+context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
+`memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
+twelve (it returns their rules too; a direct call loads the tool and retries). Workers
+and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000

@@ -117,8 +117,9 @@ to remove personal details that had been committed (filter-repo, force-pushed by
 the user; files unchanged; backup `C:\Dev\IGOR_backup\history-rewrite\igor-before-20261029.bundle`). The user lifted the feature freeze 2026-10-28.
 Built 2026-10-29, Hermes' `/goal` with IGOR deciding when (the user's choice):
 `followthrough.py`. A React reply that ran out of steps or ends by offering to go on
-is judged by 20b (done, continue, needs_user); on continue, up to 3 more rounds,
-each reply sent as it lands, none with under 60000 120b tokens left today. A failed
+is judged by 20b (done, continue, needs_user); on continue, up to 3 more rounds of 4
+steps, each reply sent as it lands, stopping at 45000 tokens on the request or under
+60000 120b tokens left today. A failed
 judge means stop (Hermes fails open). A round keeps the turn's web and private
 lockouts, and any user message stops it at its next step. Judge eval on 20b
 (`tests/eval_followthrough.py`, invented cases): 5/6 first, the miss a complete summary
@@ -158,7 +159,11 @@ A long document gets one 20b summary on arrival (`inbound._digest`; Hermes pages
 this budget cannot hold), falling back to the opening. That was the follow-through's
 first live run: it judged and retried a turn that had run nothing, so a turn too big to
 start is no longer followed through, and a document in the message counts as read in
-every round. Next: the walkthrough with the user, a demo script run
+every round. Its cost estimate was wrong (15000 a round; a round using all its steps is
+about 40000), so rounds now get 4 steps and a request stops at 45000. Hermes parity run
+2026-10-30, the user away: prompt caching measured, no effect on this account (CLAUDE.md);
+Tool Search: schemas were 2770 of the 4714 tokens each React call starts with, so 8 tools
+stay loaded and 12 cold ones load through `load_tools`, rules included. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

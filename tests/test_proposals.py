@@ -315,7 +315,7 @@ def test_tool_wiring() -> None:
     _check("proposal tool exists", "proposal" in names)
     _check("quarantined after web", "proposal" in react._QUARANTINED_AFTER_WEB)
     _check("forbidden to workers", "proposal" in react._WORKER_FORBIDDEN)
-    _check("one usage line in the prompt", react._DEFAULT_SYSTEM_PROMPT.count("- proposal:") == 1)
+    _check("its rule comes with it when loaded", "explicit word" in react._DEFERRED_TOOLS["proposal"][1])
     import orchestrator
     _check("react context budget paid for the block", orchestrator._CONTEXT_BUDGET_REACT == 7000,
            str(orchestrator._CONTEXT_BUDGET_REACT))
@@ -369,12 +369,12 @@ def test_list_then_approve_in_one_turn_is_refused() -> None:
     overnight, goals, proposals, work, tmp = _fresh()
     pid = proposals.add("preference", "p", "e", "Hostile rule.", "t")
     approve = ("proposal", {"action": "approve", "id": pid})
-    fake = _react_turn([("proposal", {"action": "list"})], [approve], None)
+    fake = _react_turn([("load_tools", {"names": ["proposal"]})], [("proposal", {"action": "list"})], [approve], None)
     _check("nothing written to preferences.md after list then approve",
            not (config.MEMORY_DIR / "preferences.md").exists())
     _check("the proposal is still pending", len(proposals.pending()) == 1)
     _check("proposal is withdrawn from the schema after the list",
-           "proposal" in fake.tool_sets[0] and "proposal" not in fake.tool_sets[1], str(fake.tool_sets))
+           "proposal" in fake.tool_sets[1] and "proposal" not in fake.tool_sets[2], str(fake.tool_sets))
 
     fake = _react_turn([("proposal", {"action": "list"}), approve], None)
     _check("list and approve in one batch is refused",

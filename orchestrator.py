@@ -794,11 +794,13 @@ class Orchestrator:
                 self._stop_follow = None
 
     async def _round(self, message: str, carry: dict) -> str:
+        import followthrough
         from agents import react
         react.set_notify(self._notify)
         turn = llm.start_turn()
         try:
-            reply = await react.handle(message, self._window(), max_tokens=2048, carry=carry)
+            reply = await react.handle(message, self._window(), max_tokens=2048, carry=carry,
+                                       max_iterations=followthrough.ROUND_STEPS)
         finally:
             notice = llm.end_turn(turn)
         if not reply.strip():
