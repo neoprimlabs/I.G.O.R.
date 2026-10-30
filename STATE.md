@@ -141,7 +141,10 @@ can apply" to a role asking for 8+ years at Principal level: it now gets what ea
 posting asks, from the feeds. Replayed, its one-line notes still invented experience
 whatever the prompt said, so on the user's word the model now only picks by number and
 each pick goes out with the posting's own requirements; `jobs_found.md` holds no model
-notes either (backup `jobs_found.md.bak-20261030`). `memory/private/profile.md`
+notes either (backup `jobs_found.md.bak-20261030`). Replayed on 10-30's 20 real postings
+it picks none, on 20b and 120b alike; with three invented plain fits among 10 of them, it
+passed all three and stopped the rest. Not yet seen in a morning run. The gig watch still
+writes its own "fits because" lines on 120b. `memory/private/profile.md`
 corrected on the user's word: it called kinds of job they have never done direct fits
 (backup `profile.md.bak-20261030`). Same day, a 19,000-character
 transcript sent alone drew "In this turn I did not run any searches", then "I need the
