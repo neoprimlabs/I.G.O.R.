@@ -476,7 +476,8 @@ Four controls, none of which costs a model call:
    `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
    inside has no authority regardless of what it claims, including claims to come
    from the user or the system.
-2. **Quarantine.** The moment a web tool runs in a turn, every state-changing tool
+2. **Quarantine.** The moment a web tool runs in a turn, or if the message carries a
+   document or image, every state-changing tool
    (`_QUARANTINED_AFTER_WEB`: `shell`, `python_run`, the file writers, `restart_self`,
    `memory_write`, `scheduled_message`, `delegate_task`, `task_update`, `goal`,
    `proposal`) is withdrawn from the schema **and** refused at execution for the rest of that
@@ -578,8 +579,7 @@ this file and is read with `read_file`.
 
 Every agent's `_get_system_prompt()` returns `memory/prompt_<agent>.md` when it
 exists and is not empty, else `_DEFAULT_SYSTEM_PROMPT`. Overrides take effect immediately, no restart. Reset by deleting or emptying the
-file. Prompt files are edited through Claude Code sessions only, never through
-Discord.
+file. Prompt files are edited through Claude Code sessions only: no tool can write one.
 
 **No `prompt_*.md` files exist on the server.** Every agent runs its built-in
 default, so the prompt in the source is the prompt in play.

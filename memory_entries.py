@@ -219,7 +219,7 @@ def apply_batch(filename: str, operations: list, today: Optional[str] = None) ->
     shorten entries and take a new one in one call. One at a time, the add is refused
     until the removal lands, and a turn that stops in between keeps only the removal."""
     from agents import prod_memory
-    if filename not in prod_memory._ALLOWED_FILES:
+    if filename.startswith("prompt_") or filename not in prod_memory._ALLOWED_FILES:
         return f"Not written: {filename!r} is not a memory file this tool may edit."
     if not isinstance(operations, list) or not operations:
         return "Not written: operations must be a list of edits, each with an action."
