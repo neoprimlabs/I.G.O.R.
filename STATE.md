@@ -164,7 +164,11 @@ about 40000), so rounds now get 4 steps and a request stops at 45000. Hermes par
 2026-10-30, the user away: prompt caching measured, no effect on this account (CLAUDE.md);
 Tool Search: schemas were 2770 of the 4714 tokens each React call starts with, so 8 tools
 stay loaded and 12 cold ones load through `load_tools`, rules included. React's search
-results are now Exa's answer from each page, not its first 500 characters. Next: the walkthrough with the user, a demo script run
+results are now Exa's answer from each page, not its first 500 characters, and `queries`
+takes up to 8 lookups in one call: live, eight products cost over 70000 tokens and priced
+two; replayed on 20b, the model batched all eight and the one result held all eight
+prices. Not yet run end to end on 120b, which was near its cap that day. `e2e_isolated.py`
+now counts its spend in the real ledger, which had read 116000 low. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

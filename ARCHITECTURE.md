@@ -323,7 +323,8 @@ first. If it still does not fit, the loop breaks to the forced-final-answer path
 have the date stripped, because the model writes its training-era year into
 queries. A recency query with no `recency_days` gets a 180-day window
 automatically. Each result is Exa's answer to the query from that page, not its first
-500 characters, which were mostly navigation.
+500 characters, which were mostly navigation. These models make one tool call a step, so
+`queries` takes up to 8 lookups in one call.
 
 ### Scheduled messages and presence
 

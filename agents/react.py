@@ -101,6 +101,7 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "The search query. For jobs: a few words of the kind of role, such as 'customer support' or 'ai trainer'"},
+                "queries": {"type": "array", "items": {"type": "string"}, "description": "Web only, instead of query: up to 8 separate lookups in this one call, such as the same fact about several things. Costs far less than searching one at a time"},
                 "source": {"type": "string", "enum": ["web", "jobs"], "description": "web (the default) or jobs"},
                 "min_hourly_pay": {"type": "number", "description": "jobs only: keep postings whose stated pay is at least this per hour. Yearly pay counts as 2080 hours"},
                 "recency_days": {
@@ -108,7 +109,6 @@ _TOOLS = [
                     "description": "Only return results published within this many days. Set it whenever the question is time-sensitive: 30 for news, 365 for a field's state of the art. If the query contains a word like latest, recent, current or news and you leave this unset, a 180 day window is applied automatically - so set it explicitly when you need something wider or narrower. Never put a year or month in the query itself to express recency; that reaches for dates from your training data and gets stripped.",
                 },
             },
-            "required": ["query"],
         },
     },
     {
@@ -465,7 +465,7 @@ When to use tools:
 
 How to reason:
 - Think step by step before acting
-- If a task requires multiple searches, do them in sequence - use the result of one to inform the next
+- Several lookups that do not depend on each other go in one search call, with queries. Search in sequence only when one result decides the next query
 - If initial results are insufficient, search again with a refined query
 - Read memory before writing to avoid duplicating existing entries
 - Read a file once and act on it - do not re-read the same file multiple times
@@ -1508,6 +1508,39 @@ async def _fetch_url(url: str) -> str:
     return await loop.run_in_executor(None, _sync)
 
 
+# These models make one tool call a step, so eight lookups were eight steps, each resending
+# the whole prompt: 70000 tokens live on 2026-10-30, for two products of eight. One call taking
+# several queries is how Hermes' tool_search batches. _TOOL_RESULT_CAP is the room for all of them.
+_MAX_QUERIES = 8
+_RESULTS_PER_QUERY = 2
+_NOTHING_ON_IT = re.compile(r"^\W*(nothing|no (information|mention|relevant|details?)|not (stated|mentioned|"
+                            r"specified|discussed|covered)|the page (says nothing|does not)|n/a)\b", re.IGNORECASE)
+
+
+async def _search_many(queries: list, days=None) -> str:
+    from agents import research
+    from datetime import datetime, timedelta, timezone
+    days = days if isinstance(days, int) and days > 0 else None
+    cutoff = ((datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ") if days else None)
+    wanted = [_strip_stale_dates(str(q))[0] for q in queries[:_MAX_QUERIES]]
+
+    async def one(query: str) -> str:
+        results = await research._run_search(query, max_results=_RESULTS_PER_QUERY + 1,
+                                             start_published_date=cutoff, focus=query)
+        said = [r for r in results if r.get("body") and not _NOTHING_ON_IT.match(r["body"])]
+        room = (_TOOL_RESULT_CAP - 400) // (len(wanted) * _RESULTS_PER_QUERY)
+        lines = []
+        for r in said[:_RESULTS_PER_QUERY]:
+            url = r.get("url", "")
+            answer = " ".join(r["body"].split())[:max(60, min(240, room - len(url) - 30))]
+            lines.append(f"- {url} ({r.get('published') or 'date unknown'}): {answer}")
+        return f"{query}\n" + ("\n".join(lines) or "- Nothing found.")
+
+    sections = await asyncio.gather(*[one(q) for q in wanted])
+    dropped = f"\n\n[Only the first {_MAX_QUERIES} queries were searched.]" if len(queries) > _MAX_QUERIES else ""
+    return f"{_UNTRUSTED_OPEN}\n" + "\n\n".join(sections) + dropped + f"\n{_UNTRUSTED_CLOSE}"
+
+
 async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) -> str:
     if name == "python_run":
         code = inputs.get("code", "")
@@ -1609,6 +1642,9 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         loop = asyncio.get_running_loop()
         body = await loop.run_in_executor(None, jobs.search, query, pay)
         return f"{_UNTRUSTED_OPEN}\n{body}\n{_UNTRUSTED_CLOSE}"
+
+    if name == "search" and isinstance(inputs.get("queries"), list) and inputs["queries"]:
+        return await _search_many(inputs["queries"], inputs.get("recency_days"))
 
     if name == "search":
         from agents import research

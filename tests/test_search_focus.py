@@ -109,6 +109,47 @@ def test_react_asks_for_focus() -> None:
     _check("the result is still marked untrusted", out.startswith(react._UNTRUSTED_OPEN) and "Plus is $10." in out, out[:120])
 
 
+def test_several_lookups_in_one_call() -> None:
+    """These models make one tool call a step, so eight lookups were eight whole prompts."""
+    from agents import react, research
+    asked = []
+    pages = {
+        "notion price": [("https://notion.com/pricing", "Plus is $10 per member per month."),
+                         ("https://notion.com/blog", "Nothing on this."),
+                         ("https://reviews.example/notion", "Reviewers report paying $12.")],
+        "figma price": [("https://figma.com/pricing", "Professional is $16 a seat.")],
+        "empty": [],
+    }
+
+    async def run_search(query, **kwargs):
+        asked.append((query, kwargs))
+        return [{"url": u, "body": b, "published": "2026-10-01"} for u, b in pages.get(query, [])]
+
+    real = research._run_search
+    try:
+        research._run_search = run_search
+        out = asyncio.run(react._execute_tool("search", {"queries": ["notion price", "figma price", "empty"], "recency_days": 30}))
+        many = asyncio.run(react._execute_tool("search", {"queries": [f"q{n}" for n in range(12)]}))
+        long_pages = {f"q{n}": [(f"https://example{n}.example/a/long/path/to/a/page", "A fact. " * 80)] * 3 for n in range(8)}
+        pages.update(long_pages)
+        full = asyncio.run(react._execute_tool("search", {"queries": list(long_pages)}))
+    finally:
+        research._run_search = real
+    _check("every query is searched, focused on itself",
+           all(k["focus"] == q for q, k in asked) and {"notion price", "figma price", "empty"} <= {q for q, _ in asked}, str(asked[:3]))
+    _check("each answer sits under its query with its source",
+           "notion price\n- https://notion.com/pricing (2026-10-01): Plus is $10" in out, out)
+    _check("a page with nothing on it is left out", "Nothing on this" not in out and "Reviewers report" in out, out)
+    _check("a query with no answer says so", "empty\n- Nothing found." in out, out)
+    _check("the time window applies to all", all(k.get("start_published_date") for q, k in asked[:3]), str(asked[0]))
+    _check("it is marked untrusted", out.startswith(react._UNTRUSTED_OPEN) and out.endswith(react._UNTRUSTED_CLOSE), out[-60:])
+    _check("eight queries at most, and it says so", many.count("- Nothing found.") == 8 and "Only the first 8" in many, many[-120:])
+    _check("a full batch fits inside the tool result cap", len(full) <= react._TOOL_RESULT_CAP, str(len(full)))
+    schema = next(t for t in react._TOOLS if t["name"] == "search")["input_schema"]
+    _check("the tool offers it", "queries" in schema["properties"] and "required" not in schema, str(schema.keys()))
+    _check("and the prompt says to use it", "go in one search call, with queries" in react._DEFAULT_SYSTEM_PROMPT)
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):

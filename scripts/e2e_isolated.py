@@ -16,7 +16,9 @@ On the server, as igor:
 import asyncio
 import difflib
 import hashlib
+import json
 import logging
+import os
 import shutil
 import sys
 import tempfile
@@ -34,6 +36,34 @@ def _hashes(root: Path) -> dict:
 
 def _md_snapshot(memory: Path) -> dict:
     return {p.name: p.read_text(encoding="utf-8") for p in memory.glob("*.md")}
+
+
+def _read_ledger(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _count_in_the_real_ledger(before: dict, after: dict) -> None:
+    """The copy's memory is thrown away, its spend is not. On 2026-10-30 the ledger read
+    47000 of 120b's 200000 with about 116000 more spent in runs like this, so the budget
+    checks and Monitor's report were all reading low."""
+    real = SOURCE / "memory" / "token_ledger.json"
+    data = _read_ledger(real)
+    added = 0
+    for hour, models in after.items():
+        for model, labels in models.items():
+            spent = sum(labels.values()) - sum(before.get(hour, {}).get(model, {}).values())
+            if spent > 0:
+                row = data.setdefault(hour, {}).setdefault(model, {})
+                row["Isolated run"] = row.get("Isolated run", 0) + spent
+                added += spent
+    if added:
+        tmp = real.with_name(real.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, real)
+        print(f"\ntokens this run spent, added to the real ledger: {added}")
 
 
 def main(argv: list[str]) -> None:
@@ -59,7 +89,12 @@ def main(argv: list[str]) -> None:
         import config
         assert config.BASE_DIR.resolve() == root.resolve(), config.BASE_DIR
         code_before = _hashes(root)
-        asyncio.run(_run(messages, react_only, config, attach))
+        ledger = config.MEMORY_DIR / "token_ledger.json"
+        spent_before = _read_ledger(ledger)
+        try:
+            asyncio.run(_run(messages, react_only, config, attach))
+        finally:
+            _count_in_the_real_ledger(spent_before, _read_ledger(ledger))
         changed = sorted(k for k, v in _hashes(root).items() if code_before.get(k) != v)
         print("\ncode files the run changed (in the copy only):", changed or "none")
     finally:
