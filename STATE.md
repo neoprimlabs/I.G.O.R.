@@ -196,7 +196,11 @@ IGOR's own posts is asked again, and a second one means silence. "Asks for" brok
 ("Strong proficiency in;"), fixed. `week-of-` pages count as roundups. The evidence check called
 two "how I made $X" posts independent beside a site cited for something else; it now answers for
 the source stating the figure, and on the 10-31 paper all seven ideas lack independent proof, so
-the overnight planner is told to look for that. **No feature freeze:** the user ended it for good on
+the overnight planner is told to look for that.
+**Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
+tool calls or on "save that as a skill", each one approved by the user's own message, then named
+in React's prompt and read with `read_file`. Curator: stale at 14 days, archive at 30, nothing
+deleted. No skill exists yet, so the prompt is unchanged until the first approval. **No feature freeze:** the user ended it for good on
 10-30, "I don't want to stop progress and wait for Helfen". Next: the open list in
 `docs/HERMES_PARITY.md`. If an interview is scheduled, then a walkthrough and a demo script.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

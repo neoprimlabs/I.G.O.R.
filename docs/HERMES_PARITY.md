@@ -28,6 +28,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Sandboxed commands | `sandbox.py` | Bubblewrap, not Docker: the host has about 500 MB free. |
 | Checkpoints, `/rollback` | `checkpoints.py` | Files only; the conversation is not rewound. |
 | File-mutation verifier | Receipts under each reply | |
+| Skills, `skills.write_approval` on, curator | `skills.py` | Always on approval: `approve p7`, never a model's call. Hermes defaults to writing freely. Drafted from a night's review or on request, not by a nudge after each hard task. No supporting files or hub, and no consolidation pass, which Hermes also leaves off. Read with `read_file`, so no extra tool schema. |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. |
@@ -44,7 +45,6 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Parked by the user
 
-- **Skills and the curator** (procedures learned from hard tasks). Designed; GAMEPLAN V.1.
 - **Spoken replies, buttons, a dashboard.** These wait for IGOR's own app.
 - **Clones.** GAMEPLAN Phase K.
 

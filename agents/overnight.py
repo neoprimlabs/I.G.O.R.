@@ -20,6 +20,7 @@ import config
 import goals
 import llm
 import proposals
+import skills
 import work
 
 logger = logging.getLogger(__name__)
@@ -597,6 +598,8 @@ _DOCS_ONLY = re.compile(r"^(ARCHITECTURE|STATE|GAMEPLAN|Plan|Design|Docs?|CLAUDE
 # chars (4600 tokens at 3.5 chars a token) and the budget adds 3072, so ~7650 of 8000;
 # the reserve counts chars at 3 a token plus slack. test_overnight asserts the bound.
 _SI_RESERVE = _SI_BUDGET + 16000 // 3 + 500
+_SKILLS_PER_NIGHT = 2
+_SKILL_RESERVE = skills.DRAFT_TOKENS + 1500
 
 _SI_SYSTEM = """You review an AI assistant's recent mistakes and propose fixes.
 
@@ -712,12 +715,41 @@ def _parse_proposals(reply: str) -> tuple[list[dict], int]:
             dropped += 1
             continue
         fields = ("kind", "problem", "evidence", "change", "test")
-        if (not isinstance(obj, dict) or obj.get("kind") not in proposals.KINDS
+        if (not isinstance(obj, dict) or obj.get("kind") not in proposals.REVIEW_KINDS
                 or not all(isinstance(obj.get(k), str) and obj[k].strip() for k in fields)):
             dropped += 1
             continue
         good.append({k: obj[k] for k in fields})
     return good, dropped
+
+
+async def _draft_skills(folder, seen: dict, complete, token_room: int) -> tuple[int, int]:
+    """(skills drafted, tokens set aside for them) from the turns that took real work. Hermes
+    nudges itself after a hard task; here one night's review does it, so a day's chat costs
+    nothing. A failed call stops here and leaves that task to be retried tomorrow."""
+    drafted = spent = 0
+    for task in skills.new_tasks(seen.get("tasks", ""))[:_SKILLS_PER_NIGHT]:
+        if token_room - spent < _SKILL_RESERVE:
+            break
+        try:
+            reply = await complete(skills.DRAFT_SYSTEM, skills.draft_request(task), skills.DRAFT_TOKENS,
+                                   cap=skills.DRAFT_TOKENS)
+        except Exception as e:
+            logger.warning("Skill draft failed, retrying tomorrow - %s: %s", type(e).__name__, e)
+            break
+        spent += _SKILL_RESERVE
+        seen["tasks"] = str(task.get("at", ""))
+        _write_seen(folder, seen)
+        draft = skills.parse_draft(reply or "")
+        if draft is None:
+            continue
+        evidence = f"{task.get('count')} tool calls on {str(task.get('at'))[:10]}: {task.get('request', '')}"
+        pid, why = skills.propose(draft, evidence)
+        if pid:
+            drafted += 1
+        else:
+            logger.info("Skill draft dropped: %s", why)
+    return drafted, spent
 
 
 async def _self_improve_session(goal: dict, state: dict, search, complete, night: str,
@@ -726,12 +758,17 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     folder = work.folder("self-improvement")
     folder.mkdir(parents=True, exist_ok=True)
     seen = _read_seen(folder)
+    drafted, spent = await _draft_skills(folder, seen, complete, token_room)
+    token_room -= spent
+    if drafted:
+        state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
+    note = f"{drafted} skills drafted, " if drafted else ""
     corrections = _new_corrections(seen.get("corrections", ""))
     errors, newest_error = _new_errors(seen.get("errors", ""))
     if not corrections and not errors:
-        return "no new corrections or errors"
+        return f"{note}no new corrections or errors"
     if token_room < _SI_RESERVE:
-        return "review waits for budget"
+        return f"{note}review waits for budget"
 
     waiting = [f"- {p['change']}" for p in proposals.pending()[:10]]
     fixes = [f"- {_shorten(f, _SI_FIX_CHARS)}" for f in _recent_fixes()[:_SI_MAX_FIXES]]
@@ -748,7 +785,7 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     seen["errors"] = newest_error
     _write_seen(folder, seen)
     if not reply or not reply.strip():
-        return "no proposals returned"
+        return f"{note}no proposals returned"
 
     good, dropped = _parse_proposals(reply)
     added = 0
@@ -757,9 +794,9 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
             dropped += 1
         else:
             added += 1
-    if added:
+    if added and not drafted:
         state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
-    return (f"{added} proposals written from {len(corrections)} corrections and "
+    return (f"{note}{added} proposals written from {len(corrections)} corrections and "
             f"{len(errors)} errors, {dropped} dropped")
 
 
@@ -773,6 +810,7 @@ async def tick(now: Optional[datetime] = None, search=None, complete=None) -> st
     try:
         if not work.in_window(now):
             return "outside the overnight window"
+        skills.curate(now)
         night = work.night_of(now)
         if work.stopped(night):
             return f"stopped tonight: {work.stopped(night)}"

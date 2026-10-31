@@ -5,8 +5,9 @@ Its text comes from corrections and logs, which are derived from untrusted input
 every field is flattened to one line and nothing here acts on a proposal by itself.
 decide() is the only path that writes outside the work folder: approving a
 `preference` appends one dated line to memory/preferences.md, which Direct, React and
-the job ranking read. Approving a `prompt` or `code` proposal only marks it for a
-Claude Code session.
+the job ranking read, and approving a `skill` moves its draft to memory/skills/
+(skills.py). Approving a `prompt` or `code` proposal only marks it for a Claude Code
+session.
 """
 
 import logging
@@ -20,7 +21,10 @@ from sanitize import clean
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("preference", "prompt", "code")
+KINDS = ("preference", "prompt", "code", "skill")
+# What the night's review of corrections may raise. A skill needs a draft file behind it,
+# which only skills.propose() writes.
+REVIEW_KINDS = ("preference", "prompt", "code")
 PREFERENCES_CAP = 1500
 _MAX_PENDING = 30
 _KEEP_DECIDED = 40
@@ -150,7 +154,19 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
     if not approve:
         target["status"] = "rejected"
         _save(items)
+        if target["kind"] == "skill":
+            import skills
+            skills.discard(target["change"])
         return f"Rejected {pid}."
+    if target["kind"] == "skill":
+        import skills
+        why = skills.install(target["change"], now)
+        if why:
+            return f"Not approved: {why}. {pid} stays pending. Reject it to clear it."
+        target["status"] = "approved"
+        _save(items)
+        logger.info("Approved skill %s", pid)
+        return f"Approved {pid}: I can now use the skill {skills._name_of(target['change'])}."
     if target["kind"] == "preference":
         text = _preference_text()
         if text and not text.endswith("\n"):
@@ -170,10 +186,18 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
             f"Claude Code session, not by IGOR.")
 
 
+def _skill_steps(p: dict) -> str:
+    """A skill cannot be judged from one line, so its listing carries the draft."""
+    if p["kind"] != "skill":
+        return ""
+    import skills
+    return f"\n{skills.draft_body(p['change'])}"
+
+
 def _listing(items: list[dict]) -> str:
     return "\n\n".join(
         f"{p['id']} [{p['kind']}] {p['date']}\n  Problem: {p['problem']}\n"
-        f"  Evidence: {p['evidence']}\n  Change: {p['change']}\n  Test: {p['test']}"
+        f"  Evidence: {p['evidence']}\n  Change: {p['change']}\n  Test: {p['test']}{_skill_steps(p)}"
         for p in items)
 
 
@@ -184,7 +208,7 @@ def brief_listing() -> str:
         return "No proposals are waiting for you."
     lines = ["**Proposals waiting for you**"]
     for p in items:
-        lines.append(f"{p['id']} ({p['kind']}): {p['problem']}\nChange: {p['change']}")
+        lines.append(f"{p['id']} ({p['kind']}): {p['problem']}\nChange: {p['change']}{_skill_steps(p)}")
     first = items[0]["id"]
     lines.append(f'Reply "approve {first}" or "reject {first}".')
     return "\n\n".join(lines)
@@ -196,6 +220,11 @@ def run_tool(inputs: dict) -> str:
     if action == "list":
         items = pending()
         return _listing(items) if items else "No pending proposals."
+    if action == "approve" and any(p["id"] == str(inputs.get("id") or "").strip().lower() and p["kind"] == "skill"
+                                   for p in pending()):
+        # An approved skill is named in every React prompt, so the yes has to be the user's
+        # own message, which the orchestrator answers in code, and not a model's reading of one.
+        return f'A skill is approved by the user alone. Ask them to reply "approve {inputs.get("id")}".'
     if action in ("approve", "reject"):
         return decide(inputs.get("id") or "", approve=action == "approve")
     return "Unknown action. Use list, approve or reject."

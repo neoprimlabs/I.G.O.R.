@@ -605,12 +605,13 @@ def _openai_tools() -> list:
 
 def _get_system_prompt() -> str:
     import proposals
+    import skills
     path = config.MEMORY_DIR / "prompt_react.md"
     if path.exists():
         content = path.read_text(encoding="utf-8").strip()
         if content:
-            return proposals.with_preferences(content)
-    return proposals.with_preferences(_DEFAULT_SYSTEM_PROMPT)
+            return skills.with_index(proposals.with_preferences(content))
+    return skills.with_index(proposals.with_preferences(_DEFAULT_SYSTEM_PROMPT))
 
 
 
@@ -1289,6 +1290,10 @@ def _unwritable(resolved) -> bool:
     # playbook checks. Prompt files are edited from a Claude Code session only.
     if _is_secret_file(resolved) or resolved.name.startswith("prompt_"):
         return True
+    # A skill reaches React's prompt on the user's approval, which only proposals.decide() acts on.
+    import skills
+    if any(resolved.is_relative_to(folder.resolve()) for folder in (skills._folder(), skills._drafts())):
+        return True
     try:
         parts = resolved.relative_to(config.BASE_DIR.resolve()).parts
     except ValueError:
@@ -1307,7 +1312,7 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
     if _unwritable(resolved):
-        return "[access denied: the Python environment, .git and caches are not editable]"
+        return "[access denied: the Python environment, .git, caches and skills are not editable]"
     if not resolved.exists():
         return f"[not found: {path}]"
     try:
@@ -1339,7 +1344,7 @@ async def _write_server_file(path: str, content: str) -> str:
     if Path(path).suffix not in {".py", ".md"}:
         return "[access denied: only .py and .md files allowed]"
     if _unwritable(resolved):
-        return "[access denied: the Python environment, .git and caches are not editable]"
+        return "[access denied: the Python environment, .git, caches and skills are not editable]"
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         import checkpoints
@@ -1723,7 +1728,11 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
             offset = int(inputs.get("offset") or 0)
         except (TypeError, ValueError):
             offset = 0
-        return await _read_server_file(inputs.get("path", ""), offset, allow_private)
+        result = await _read_server_file(inputs.get("path", ""), offset, allow_private)
+        if not offset and not result.startswith("["):
+            import skills
+            skills.note_read(inputs.get("path", ""))
+        return result
 
     if name == "patch_file":
         return await _patch_server_file(inputs.get("path", ""), inputs.get("old_string", ""), inputs.get("new_string", ""))
@@ -1850,6 +1859,7 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 _SAVING_TOOLS = frozenset({"memory_write", "task_update", "write_file", "patch_file",
                            "scheduled_message", "goal"})
 _RECEIPTS: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_receipts", default=None)
+_TRACE: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_trace", default=None)
 _MAX_RECEIPT_LINES = 4
 
 
@@ -1903,11 +1913,18 @@ async def handle(
     if _depth or _RECEIPTS.get() is not None:
         return await _handle(message, context, **kwargs)
     token = _RECEIPTS.set([])
+    trace_token = _TRACE.set([])
     try:
         reply = await _handle(message, context, **kwargs)
+        # Only a turn the user asked for: a forced tool, a job's own prompt or a
+        # follow-through round is not a task someone would want to repeat.
+        if allowed_tools is None and system_override is None and force_tool is None and not message.startswith("[IGOR is"):
+            import skills
+            skills.record_task(message.split(_UNTRUSTED_OPEN)[0], _TRACE.get(), reply)
         footer = _receipt_footer(_RECEIPTS.get())
         return f"{reply}\n\n{footer}" if footer and reply else (reply or footer)
     finally:
+        _TRACE.reset(trace_token)
         _RECEIPTS.reset(token)
 
 
@@ -2110,6 +2127,12 @@ async def _handle(
                 return result
 
             results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])
+            trace = _TRACE.get()
+            if trace is not None and _depth == 0:
+                for tc, r in zip(tool_calls, results):
+                    if tc.function.name != "load_tools":
+                        failed = f" -> {r[:70]}" if r.startswith("[") and not r.startswith(_UNTRUSTED_OPEN) else ""
+                        trace.append(f"{tc.function.name} {tc.function.arguments[:100]}{failed}")
             if batch_reads_web and not web_read:
                 web_read = carry["web"] = True
                 logger.info("ReAct: untrusted web content entered the turn, quarantining %d tools",

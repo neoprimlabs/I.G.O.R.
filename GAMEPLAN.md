@@ -736,8 +736,9 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase V - The spec's unbuilt vision
 
-- [ ] **V.1 Improvement loop with sign-off buckets.** PARKED by the user 2026-10-19
-  (the skills half; the preference half is built). NOTE 2026-08-08: A.2 gives
+- [x] **V.1 Improvement loop with sign-off buckets.** DONE 2026-10-31: the skills half
+  was parked 2026-10-19 and built once the user lifted every brake (`skills.py`,
+  ARCHITECTURE). Text below is history. NOTE 2026-08-08: A.2 gives
   this the signal it never had. Without captured corrections, improvement has no
   definition and the critic was left guessing, which is how it produced junk.
   Build A.2 first. Was R4.4. Now the highest

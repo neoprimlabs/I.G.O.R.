@@ -461,6 +461,10 @@ class Orchestrator:
         command = commands.parse(content)
         if command and command != "retry":
             return await self._command(command), False
+        skill_action = commands.skill_action(content)
+        if skill_action:
+            import skills
+            return skills.act(*skill_action), False
 
         # Any other message ends a follow-through, the round in flight included: Hermes'
         # "user messages always preempt". After approvals, since a yes to a command that
@@ -485,6 +489,9 @@ class Orchestrator:
             return commands.HELP
         if command == "usage":
             return usage.summary()
+        if command == "skills":
+            import skills
+            return skills.listing()
         if command == "status":
             from agents import monitor
             running = ("Working on a message." if self._stop_turn
@@ -609,6 +616,9 @@ class Orchestrator:
             return "ProposalDecision"
         if _asks_for_proposals(content):
             return "ProposalList"
+        import commands
+        if commands.saves_skill(content):
+            return "SkillSave"
         import checkpoints
         if checkpoints.parse(content):
             return "Rollback"
@@ -743,6 +753,10 @@ class Orchestrator:
         if destination == "ProposalList":
             import proposals
             return proposals.brief_listing()
+
+        if destination == "SkillSave":
+            import skills
+            return await skills.save_that(content, self._window())
 
         if destination == "Rollback":
             # Hermes' /rollback: the user's command, handled in code. No model decides

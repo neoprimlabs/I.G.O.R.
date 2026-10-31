@@ -32,7 +32,7 @@ request through `load_tools` (Hermes' Tool Search).
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`.
+**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`.
 
 **Routing.** Eleven fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
@@ -60,7 +60,7 @@ a day behind code gates, off unless `memory/presence_config.md` says `state: on`
 
 **Overnight loop**: hourly 00:00-06:59 local, a fixed pipeline (20b researches, 120b
 writes) with no acting tools works the standing goals in `memory/goals.md` into sourced
-papers and proposals in `memory/work/`, reported in the digest. Nothing is applied
+papers, proposals and skill drafts in `memory/work/`, reported in the digest. Nothing is applied
 without the user's yes.
 
 **Memory** is markdown in `memory/` plus `context.db`, the conversation store (90
@@ -140,6 +140,7 @@ A Discord DM travels this path every time:
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
    regex       proposal decision / list -> ProposalDecision / ProposalList (code)
+   regex       "save that as a skill"   -> SkillSave (code, one 20b call)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
    regex       _REMEMBERING, skip a job -> Remember (React, memory_write required)
@@ -439,15 +440,23 @@ re-propose fixed mistakes. At most 5 JSON proposals, stored in
 `work/self-improvement/proposals.md` (30 pending, 40 decided kept).
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
-`preference`, `prompt`, `code`. Approving a `preference` appends one dated line to
-`memory/preferences.md`, the only path out of the work folder. `with_preferences`
-adds those lines to the prompts of Direct and React (whichever prompt source) and to
+`preference`, `prompt`, `code`, `skill`. Approving a `preference` appends one dated line to
+`memory/preferences.md`, one of two paths out of the work folder. `with_preferences`
+adds those lines to the prompts of Direct and React and to
 the job ranking profile. Approving a `prompt` or `code` proposal only marks it for a
 Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
 turn the quarantine above closes `proposal` itself, so approval needs a fresh message.
 `goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`
 count the same (Hermes: everything read is untrusted); `search_files` and
 `search_memory` skip those files.
+
+**Skills** (`skills.py`, Hermes' skills and curator with write approval on):
+`work/self-improvement/tasks.jsonl` records each turn's tool calls. At night (turns of 5+
+calls, 2 a night), or on "save that as a skill", a model drafts a procedure beside it and
+raises a `skill` proposal showing the steps. Only the user's own "approve" installs it in
+`memory/skills/`; the `proposal` tool cannot, and the file tools refuse both folders. React's
+prompt indexes them under 200 tokens; `read_file` opens one and counts a use. The curator
+calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is deleted.
 
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
@@ -459,7 +468,7 @@ the Evaluator, which fails open); a daily-cap 429 logs
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
 `digest_config.md` adds finished papers (sent as attachments), the latest draft per goal, pending proposals,
 tokens and searches spent, and any early stop (a capped night reports even with no
-files). A night that produced nothing adds nothing.
+files).
 
 ---
 
@@ -469,7 +478,7 @@ React holds all three legs of the "lethal trifecta" in one context: private data
 (memory files), untrusted content (`fetch_url`, `search`), and outward action
 (`shell`, file writes, self-modification).
 
-Four controls, none of which costs a model call:
+Four controls, none costing a model call:
 
 1. **Framing.** Search and fetch results are wrapped in
    `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
@@ -480,9 +489,8 @@ Four controls, none of which costs a model call:
    (`_QUARANTINED_AFTER_WEB`: `shell`, `python_run`, the file writers, `restart_self`,
    `memory_write`, `scheduled_message`, `delegate_task`, `task_update`, `goal`,
    `proposal`) is withdrawn from the schema **and** refused at execution for the rest of that
-   turn. Both layers, because one batch can contain a search and a shell call and
-   `asyncio.gather` gives no ordering guarantee, so the batch is judged as a whole
-   before anything runs.
+   turn. Both layers, because one batch can hold a search and a shell call and runs in
+   no set order, so it is judged whole.
 3. **Secrets.** No tool reads or changes `.env`, key files, `.git/` or `*.local.*`
    (`_is_secret_file`), and `sanitize.redact` (Hermes' `redact_secrets`) strips key shapes
    and IGOR's own keys from tool results, outbound text and logs.
@@ -490,8 +498,7 @@ Four controls, none of which costs a model call:
    loopback, private, link-local and metadata addresses on every redirect hop. DNS
    rebinding is the known gap.
 
-Consequence: "search for X and save it to tasks.md" takes two turns. React reports
-what it found and the user asks for the write separately, which is a confirmation
+Consequence: "search for X and save it to tasks.md" takes two turns, a confirmation
 gate on any action derived from the open web.
 
 ---
@@ -505,13 +512,10 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | Role | Model | Bucket |
 |---|---|---|
 | `router` | `qwen/qwen3.8-27b` | 8000, sole occupant, ~28 tokens a call |
-| `chat` | `openai/gpt-oss-120b` | 8000, shared with `react` |
-| `react` | `openai/gpt-oss-120b` | shares chat's 8000 |
-| `research` | `openai/gpt-oss-20b` | 8000, shared with `evaluator` and `summary` |
-| `evaluator` | `openai/gpt-oss-20b` | shares research's 8000 |
-| `summary` | `openai/gpt-oss-20b` | shares research's 8000 |
-| `worker` | `openai/gpt-oss-20b` | shares research's 8000; delegated workers |
-| `judge` | `openai/gpt-oss-20b` | shares research's 8000; follow-through verdicts |
+| `chat`, `react` | `openai/gpt-oss-120b` | 8000, shared |
+| `research`, `evaluator`, `summary` | `openai/gpt-oss-20b` | 8000, shared |
+| `worker` | `openai/gpt-oss-20b` | shares research's 8000 |
+| `judge` | `openai/gpt-oss-20b` | shares research's 8000; follow-through, skill drafts |
 | `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
 | `presence` | `openai/gpt-oss-120b` | shares chat's 8000; check-ins |
 | `vision` | `qwen/qwen3.8-27b` | shares router's 8000; 2048 an image, when sent |
@@ -535,9 +539,8 @@ adds every response's token count to `memory/token_ledger.json` hourly, per mode
 and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
 against the cap. It is IGOR's own count: spend that bypasses `record` is invisible.
 
-`max_tokens` counts against TPM at request time: prompt plus reservation is what
-Groq bills against the bucket. Never configure a call where the sum can exceed
-the model's limit.
+`max_tokens` counts against TPM at request time, so prompt plus reservation must stay
+under the model's limit.
 
 Every model here reasons, so `max_tokens` covers hidden reasoning plus output;
 under about 1024 returns empty content with a 200 OK.
@@ -631,8 +634,6 @@ them never takes IGOR down:
 | tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-The probe is anchored to a timestamp taken before the restart, or the last run's line would pass.
-
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
 heartbeat check above. Self-written code runs only once a deploy passes it; any
 other start sets it aside. Below the host (terminated once, July 2026), the PC's
@@ -663,8 +664,6 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** The spec describes five; there are
   five routed destinations but Dev and Comms remain absorbed into React.
-- **Learned skills.** Preferences are learned with the user's approval; Hermes-style
-  skills are designed and parked (GAMEPLAN V.1).
 - **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
 - **Spoken replies.** Voice notes are transcribed; speech waits for IGOR's own app,
   the user's choice.
