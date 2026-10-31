@@ -151,7 +151,7 @@ This is a message to a person, not a status report, in I.G.O.R.'s own voice: for
 - Never assume something they mentioned has started, finished or gone well.
 - Ground it in something real from the facts: something they told you in the last few days - how they were, what they were dealing with, what was coming up - asked after the way a person would. Only when the facts hold nothing of the kind is a plain greeting right.
 - Start with the substance: the question, or an observation about the day or the hour. Never open with a wish about how their day or evening is going ("I trust your...", "I hope your...").
-- Never name a file, a draft, a task list, a count of days, or anything internal to how you work. They did not ask about your filing.
+- Never name a job posting, a digest, a paper, a proposal, a file, a draft, a task list, a count of days, or anything else you sent them or keep. They did not ask about your filing.
 - Asking how they are, or how something they mentioned is going, is welcome. Asking for a status report on work is not. Do not list anything, do not offer a menu of things you could do.
 - Let the time of day shape it. Late at night is not the same as mid afternoon.
 - If your last check-ins are listed, do not reuse their opening, their wording or their subject.
@@ -442,9 +442,13 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
         summary = ""
     if summary:
         lines.append("Summary of older conversation:")
-        lines.extend(f"  {line}" for line in summary[:1500].splitlines() if line.strip())
+        # 2026-10-31 a check-in asked "Has the Customer Success Representative posting been
+        # reviewed?", from the summary's line on the morning's job post and the list below.
+        # It may raise none of what IGOR sent, so it does not see it.
+        lines.extend(f"  {line}" for line in summary[:1500].splitlines()
+                     if line.strip() and not (reason == "checkin" and _WHAT_IGOR_SENT.search(line)))
 
-    if unprompted:
+    if unprompted and reason != "checkin":
         lines.append("Already sent to the user unprompted. Do not repeat, re-raise, "
                      "follow up on, or comment on any of it:")
         for content in unprompted[-4:]:
@@ -495,10 +499,18 @@ def _opening(text: str) -> str:
     return " ".join(re.findall(r"[a-z']+", (text or "").lower())[:3])
 
 
-def _stale(text: str, openings: list[str], earlier: list[str]) -> Optional[str]:
+_WHAT_IGOR_SENT = re.compile(r"\b(?:IGOR|I\.G\.O\.R\.)\s+sent\b|^\W*sent\b", re.IGNORECASE)
+_ABOUT_ITS_OWN_POSTS = re.compile(r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper)\b", re.IGNORECASE)
+
+
+def _stale(text: str, openings: list[str], earlier: list[str], checkin: bool = False) -> Optional[str]:
     """Why a message reads like the ones before it, or None. Shown its last check-ins
     and told not to reuse their wording, the model replayed 2026-10-29 still opened
     "I hope your evening is proceeding smoothly" twice out of two."""
+    hit = _ABOUT_ITS_OWN_POSTS.search(text) if checkin else None
+    if hit:
+        return (f"\"{hit.group(0)}\" is about something you sent or keep. Ask after the person: "
+                "something they told you, how they are, or the day itself.")
     if _opening(text) in openings:
         return f"Your last messages opened with: {'; '.join(openings)}. Open differently."
     words = re.findall(r"[a-z']+", text.lower())
@@ -549,15 +561,20 @@ async def consider(reason: str, now: Optional[datetime] = None,
     # 2026-10-27) although the prompt says to vary it. Code compares openings.
     recent = state.get("openings", [])
     earlier = state.get("checkins", []) if reason == "checkin" else []
-    why = _stale(message, recent, earlier) if message else None
+    checkin = reason == "checkin"
+    why = _stale(message, recent, earlier, checkin) if message else None
     if why:
         try:
             again = _tidy(await (ask or _default_ask)(facts + f"\n\n{why}"))
             state["calls"] = state.get("calls", 0) + 1
-            if again and not _stale(again, recent, earlier):
+            if again and not _stale(again, recent, earlier, checkin):
                 message = again
         except Exception as e:
             logger.warning("Presence (%s) retry for a fresh opening failed - %s", reason, type(e).__name__)
+    # A worn opening still beats silence. Asking the user to report on IGOR's own posts does not.
+    if checkin and message and _ABOUT_ITS_OWN_POSTS.search(message):
+        logger.warning("Presence (checkin) asked about its own posts twice, staying silent: %s", message[:120])
+        message = None
     if message:
         state["openings"] = (recent + [_opening(message)])[-5:]
     if message is None:

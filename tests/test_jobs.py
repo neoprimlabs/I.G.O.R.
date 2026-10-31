@@ -643,6 +643,8 @@ def test_ranking_sees_what_a_posting_asks() -> None:
            jobs._asks("<p>Required Skills:</p><p>Deliver the required solution for dealers.</p>") == "")
     _check("nor is a heading with no colon", jobs._asks("<p>Required Qualifications</p><p>Requirements / Must Have</p>") == "")
     _check("nor the same words inside a longer word", jobs._asks("<p>Support Developer Experience initiatives across teams.</p>") == "")
+    joined = jobs._asks('<li><span>Strong proficiency in </span><span style="font-weight:bold">React</span><span>, Node and SQL</span></li>')
+    _check("inline tags do not break a line", joined == "Strong proficiency in React, Node and SQL", joined)
     _check("the parts read as one sentence",
            "level; Proficiency" in asks and ".;" not in asks, asks)
     _check("a soft hyphen from a feed is removed", "customer facing" in jobs._asks("<li>1+ years of customer \u00adfacing work.</li>").replace("  ", " "))

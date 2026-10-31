@@ -189,7 +189,14 @@ one multi-item request end to end on 120b, which the 10-30 tests left near its c
 `execute_code` built 10-30 (Hermes' tool of that name): a script calls 8 read-only tools and only
 what it prints returns; see ARCHITECTURE. Attacked in the real sandbox: no .env, no memory, no
 keys, no network, no writes. On 20b the model's first step on two suitable jobs was a plain
-tool, with or without a prompt line for it, so that line was not added; retest on 120b. **No feature freeze:** the user ended it for good on
+tool, with or without a prompt line for it, so that line was not added; retest on 120b.
+From the 10-31 output: a check-in asked "Has the ... posting been reviewed?", from the summary's
+line on the job post and the already-sent list, so a check-in now sees neither, a question about
+IGOR's own posts is asked again, and a second one means silence. "Asks for" broke at inline tags
+("Strong proficiency in;"), fixed. `week-of-` pages count as roundups. The evidence check called
+two "how I made $X" posts independent beside a site cited for something else; it now answers for
+the source stating the figure, and on the 10-31 paper all seven ideas lack independent proof, so
+the overnight planner is told to look for that. **No feature freeze:** the user ended it for good on
 10-30, "I don't want to stop progress and wait for Helfen". Next: the open list in
 `docs/HERMES_PARITY.md`. If an interview is scheduled, then a walkthrough and a demo script.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

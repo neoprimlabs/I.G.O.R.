@@ -704,6 +704,7 @@ _INDEX_LAST = {"news", "models", "blog", "latest", "articles", "posts", "updates
 # again, two days after OpenAI's own post, by way of ".../ai-dev-weekly-032-...".
 _ROUNDUP_RE = re.compile(
     r"(?:^|-)(?:weekly|roundup|round-up|recap|digest|newsletter)(?:-|$)"
+    r"|(?:^|-)(?:week-of|this-week|week-in-review)(?:-|$)"
     r"|releases?-(?:january|february|march|april|may|june|july|august|september|october"
     r"|november|december)-\d{4}")
 

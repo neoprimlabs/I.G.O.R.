@@ -331,8 +331,8 @@ def test_posts_do_not_crowd_out_the_conversation() -> None:
         context_store._DB_PATH = original_db
     _check("the user's older message is still in view behind six posts",
            "tomorrow before I work" in bundle, bundle[-900:])
-    _check("the posts are listed as already sent, not as conversation",
-           "Already sent" in bundle and "The gig list" in bundle)
+    _check("the posts are not offered to a check-in at all",
+           "Already sent" not in bundle and "The gig list" not in bundle, bundle[-500:])
     _check("the summary of older conversation is included, with its real dates",
            "Summary of older conversation" in bundle and "Wed Oct 21" in bundle, bundle[-400:])
 
@@ -477,6 +477,31 @@ async def test_an_answered_question_does_not_look_unanswered() -> None:
            proactive > label, f"proactive at {proactive}, label at {label}")
 
 
+async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
+    from agents import presence
+    now = datetime(2026, 10, 31, 18, 30, tzinfo=timezone.utc)
+    bad = "Has the Field Tester posting been reviewed?"
+
+    def state():
+        s = _state()
+        s["checkin"] = {"date": "2026-10-31", "at": now.isoformat(), "sent": False}
+        return s
+
+    for replies, expected, name in (
+            ([bad, "How did the kitchen painting go?"], "How did the kitchen painting go?", "asked again, the better one goes out"),
+            ([bad, "Any news on that posting?"], None, "asked twice, IGOR stays silent")):
+        _fresh(state())
+        asked = []
+
+        async def model(bundle):
+            asked.append(bundle)
+            return replies[min(len(asked), len(replies)) - 1]
+
+        out = await presence.consider("checkin", now=now, ask=model)
+        _check(name, out == expected and len(asked) == 2, f"{out!r} {len(asked)}")
+    _check("and the retry is told why", "about something you sent or keep" in asked[1], asked[1][-200:])
+
+
 async def test_a_fresh_opening() -> None:
     """Four check-ins running opened "I trust your ... is proceeding smoothly"."""
     from agents import presence
@@ -534,10 +559,26 @@ async def test_a_checkin_sees_the_last_few_days() -> None:
         for i in range(4):
             context_store.append("user", f"Which job fits me best, question {i}?")
             context_store.append("assistant", f"Answer {i}.")
+        context_store.append("assistant", "[sent proactively]\nNew remote postings worth a look: Field Tester at Example Co")
+        (path / "conversation_summary.json").write_text(json.dumps({"summary": (
+            "## Done\n- Fri Oct 30 10:30 IGOR sent new remote posting: Field Tester at Example Co\n"
+            "- Sent the morning digest\n## Open\n- The user plans to repaint the kitchen on Sunday")}), encoding="utf-8")
         checkin = presence._facts("checkin", now, None, ["I trust your evening is proceeding smoothly."])
         lull = presence._facts("lull", now, None)
     finally:
         context_store._DB_PATH = original_db
+    # 2026-10-31: "Has the Customer Success Representative posting been reviewed?"
+    _check("a check-in does not see the posts IGOR sent", "Field Tester" not in checkin and "Already sent" not in checkin, checkin[-900:])
+    _check("nor the summary's lines on them", "morning digest" not in checkin, checkin[-900:])
+    _check("but keeps the rest of the summary", "repaint the kitchen" in checkin, checkin[-900:])
+    _check("a lull still sees them, so as not to repeat them", "Already sent" in lull and "Field Tester" in lull, lull[-500:])
+    for bad in ("Has the Field Tester posting been reviewed?", "Did you read the digest?", "Any thoughts on the paper?",
+                "Shall I look at that proposal?"):
+        _check(f"refused: {bad!r}", bool(presence._stale(bad, [], [], checkin=True)), bad)
+    for fine in ("How did the kitchen painting go?", "Has the car come back from the shop?", "How did the interview go?"):
+        _check(f"allowed: {fine!r}", presence._stale(fine, [], [], checkin=True) is None, fine)
+    _check("the rule is for check-ins: a message about a waiting draft may name it",
+           presence._stale("The draft on tariffs has waited a week.", [], []) is None)
     _check("a check-in sees what the user said two days ago, past its six lines",
            "car is in the shop" in checkin and "last three days" in checkin, checkin[-900:])
     _check("but not five days ago, nor a two-word aside",
@@ -697,6 +738,7 @@ if __name__ == "__main__":
     print("\nsilence and cleanup")
     asyncio.run(test_silence_and_cleanup())
     asyncio.run(test_a_fresh_opening())
+    asyncio.run(test_a_checkin_about_its_own_posts_is_not_sent())
     asyncio.run(test_a_checkin_sees_the_last_few_days())
     print("\ntriggers")
     test_triggers()

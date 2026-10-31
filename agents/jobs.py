@@ -516,6 +516,8 @@ _ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:wi
                       r"|\brequired (?:skills|experience|qualifications)\b|\bexperience required\b",
                       re.IGNORECASE)
 _ASKS_HEADING = re.compile(r"(?:required|requirements?)\b.{0,30}$", re.IGNORECASE)
+_BLOCK_TAG = re.compile(r"</?(?:p|div|li|ul|ol|br|h[1-6]|tr|td|th|table|section|article|blockquote|hr)\b[^>]*>",
+                        re.IGNORECASE)
 _ASKS_CHARS = 240
 
 
@@ -528,7 +530,10 @@ def _asks(description: str) -> str:
     the rest all along. The opening of a posting is about the company, so this looks
     for the sentences that ask for something.
     """
-    text = re.sub(r"<[^>]+>", "\n", html.unescape(description or "")).replace("\u00ad", "")
+    # Block tags end a line; inline ones do not. Split on every tag, 2026-10-31 sent "Strong
+    # proficiency in;" for "<span>Strong proficiency in </span><span>React</span>".
+    text = _BLOCK_TAG.sub("\n", html.unescape(description or ""))
+    text = re.sub(r"<[^>]+>", "", text).replace("\u00ad", "")
     parts = [re.sub(r"\s+", " ", p).strip(" .;") for p in re.split(r"\n|(?<=[.!?;])\s+", _repair(text))]
     hits = [p for p in parts if 8 < len(p) < 200 and not p.endswith(":")
             and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)]

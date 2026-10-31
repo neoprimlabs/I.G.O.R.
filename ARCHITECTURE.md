@@ -428,7 +428,7 @@ Code checks a "What I am unsure about" heading, 3 distinct links from the
 findings or paper and a revision keeping a third of its links, one retry told why,
 then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
 item (independent, self-reported, no income shown; unchecked if that fails); code
-sorts strongest first.
+sorts strongest first, and PLAN is told which ideas still lack independent proof.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees. A failed write waits a night.
 

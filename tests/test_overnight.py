@@ -634,6 +634,36 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     tmp.cleanup()
 
 
+def test_the_planner_looks_for_proof() -> None:
+    """2026-10-31: all seven ideas lacked independent proof of income, and the paper was
+    widening with more of them. The labels now steer what gets searched next."""
+    overnight, goals, work, tmp, calls = _fresh()
+    goals.add("Ways an agent could earn money, ranked shortlist", "research")
+    gid = _first_id(goals)
+    folder = work.folder(gid)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "paper.md").write_text(
+        "# Paper\n\n## Ranked shortlist\n\n"
+        "1. **Reports for dentists** - paid $40 a month (evidence: independent)\n"
+        "2. **API wrappers** - one developer reports $4k (evidence: self-reported)\n"
+        "3. Alert services: priced at $29 (evidence: no income shown)\n\n"
+        "## What I am unsure about\n\nMuch.\n", encoding="utf-8")
+    _check("it finds the ideas with no independent proof, by name",
+           overnight._ideas_without_proof(folder) == ["API wrappers", "Alert services"],
+           str(overnight._ideas_without_proof(folder)))
+    s = _Stubs(findings_per_step=1)
+    _run(overnight.tick(NIGHT_TIME, search=s.search, complete=s.complete))
+    plan = s.plan_users[0] if s.plan_users else ""
+    _check("the planner is told to look for proof of them",
+           "API wrappers; Alert services" in plan and "real revenue" in plan, plan[:500])
+    _check("and an idea already proven is left alone", "Reports for dentists." not in plan.split("nothing to sell")[-1], plan[:500])
+    (folder / "paper.md").write_text("# Paper\n\n## Findings\nx\n", encoding="utf-8")
+    _check("a paper with no shortlist asks for nothing", overnight._ideas_without_proof(folder) == [])
+    (folder / "paper.md").unlink()
+    _check("nor does no paper", overnight._ideas_without_proof(folder) == [])
+    tmp.cleanup()
+
+
 def test_paper_citations_are_plain_links() -> None:
     """2026-10-28: the paper the user opened showed every source as 【https://...】."""
     overnight, goals, work, tmp, calls = _fresh()

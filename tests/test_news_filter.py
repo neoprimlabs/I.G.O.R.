@@ -115,7 +115,8 @@ def test_filter() -> None:
     listings += [dict(RELEASE, url=u) for u in (
         "https://aistackcrunch.com/new/",
         "https://www.aimadetools.com/blog/ai-dev-weekly-032-gpt-61-terra-gemini-carbon-kimi-copilot-fusion/",
-        "https://af.net/realtime/ai-model-releases-october-2026/")]
+        "https://af.net/realtime/ai-model-releases-october-2026/",
+        "https://siloadout.com/releases/week-of-2026-10-26/")]
     _check("listing pages and roundups are not stories", monitor._filter_news_results(listings, set(), []) == [],
            str([r["url"] for r in monitor._filter_news_results(listings, set(), [])]))
     stories = [dict(RELEASE, url=u) for u in (

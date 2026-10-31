@@ -182,7 +182,7 @@ _EVIDENCE_KINDS = ("independent", "self-reported", "no income shown", "unchecked
 # "independent" for the same four ideas. Code works the label out from the answers.
 _AUDIT_SYSTEM = """You check the evidence behind a list of ways to earn money, from the sections of a research paper.
 
-For each numbered idea, find the sources the paper cites for it and take the one that comes closest to showing money received. Answer two questions about that source:
+For each numbered idea, find the money figure the paper gives for it and the source that states that figure. A source cited beside a figure it does not state does not count, and if a person's own "how I made $X" post is among them, answer for that post. Answer two questions about that source:
 
 shows - what it shows. "earnings": money someone actually received, such as revenue, income or sales. "price": what something costs or is listed for. "funding": an investment round or a valuation. "other": anything else, including how fast or cheaply something can be made.
 from - who says it. "seller": the person or company that earned the money or sells the product, including a personal "how I made $X" post, a company's own site, case study or press release. "third party": someone with nothing to sell here, such as a news report, a study or a marketplace's sales data.
@@ -376,6 +376,25 @@ def _covered_by_papers(folder) -> str:
     return "\n".join(kept)
 
 
+def _ideas_without_proof(folder) -> list[str]:
+    """Shortlist ideas whose label is anything but independent. On 2026-10-31 that was all
+    seven: the paper kept widening with new ideas priced from vendors' own pages, while
+    nothing looked for whether anyone earns from them."""
+    try:
+        text = (folder / _PAPER).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    for part in re.split(r"(?m)^(?=## )", text)[1:]:
+        if _is_shortlist(part):
+            names = []
+            for block in _shortlist_split(part)[2]:
+                label = _LABEL_RE.search("".join(block))
+                if label and label.group(1).strip().lower() != "independent":
+                    names.append(re.split(r"\s+-\s+|:\s", _ITEM_RE.sub("", block[0].strip()), maxsplit=1)[0].strip(" *"))
+            return names
+    return []
+
+
 def _unique(folder, stem: str, night: str):
     path = folder / f"{stem}-{night}.md"
     n = 2
@@ -404,6 +423,12 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     covered = _covered_by_papers(folder)
     covered_section = (f"\nEarlier papers already covered these; find a different angle:\n{covered}\n"
                        if covered else "")
+    unproven = _ideas_without_proof(folder)
+    if unproven:
+        covered_section += ("\nNo source with nothing to sell shows anyone earning from these ideas in the paper: "
+                            + "; ".join(unproven) + ". Finding out is the most useful angle: search for one of "
+                            "them as a news report, study or marketplace data naming real revenue, or for "
+                            "people who tried it and failed. A vendor's own site proves nothing.\n")
     added = 0
     marker_written = False
     search_error = ""
