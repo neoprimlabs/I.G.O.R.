@@ -182,7 +182,10 @@ A failed search now says so instead of reading as no results. DDGS backs Exa in
 message now closes the tools that change things, as reading an inbox file already did; and
 no tool can write `prompt_*.md`, which memory_write's code and write_file could. A scheduled brief can stay silent
 (Hermes' cron `[SILENT]`). Overnight research keeps raw results: replayed, focused answers
-were on target but lost the "vendor claim" marks the evidence check needs. Next: the walkthrough with the user, a demo script run
+were on target but lost the "vendor claim" marks the evidence check needs. Feature by feature
+against Hermes: `docs/HERMES_PARITY.md`. Still to see in real use: the next digest (no repeat
+stories), job and gig messages (posting's own words), the paper's labels after a revision, and
+one multi-item request end to end on 120b, which the 10-30 tests left near its cap. Next: the walkthrough with the user, a demo script run
 until it holds, and no new features before an interview. Later: a recorded
 demo and the README cost table refreshed once times accumulate.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
