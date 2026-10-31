@@ -200,7 +200,13 @@ the overnight planner is told to look for that.
 **Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
 tool calls or on "save that as a skill", each one approved by the user's own message, then named
 in React's prompt and read with `read_file`. Curator: stale at 14 days, archive at 30, nothing
-deleted. No skill exists yet, so the prompt is unchanged until the first approval. **No feature freeze:** the user ended it for good on
+deleted. No skill exists on the real tree yet, so the prompt is unchanged until the first approval.
+Live 10-31 in the throwaway copy: the draft took 1235 tokens on 20b; React on 120b opened the skill
+as its first step unprompted, twice, then searched three shops in one `queries` call as it said.
+The same check found a turn stopping with no text and no tool call, returned as silence with no log
+line. It predates skills; it now asks once more, then forces an answer. Not yet seen for real: a
+night drafting from a real hard task (5+ tool calls were rare, 4 in 18 days in October), and the
+curator moving anything. **No feature freeze:** the user ended it for good on
 10-30, "I don't want to stop progress and wait for Helfen". Next: the open list in
 `docs/HERMES_PARITY.md`. If an interview is scheduled, then a walkthrough and a demo script.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks

@@ -56,7 +56,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 ## Still open, most useful first
 
 1. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
-2. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, and it is parked with the skills design.
+2. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, the way skills do.
 3. **MCP client.** IGOR serves MCP but cannot use other servers.
 4. **Chained scheduled jobs and pre-run scripts.**
 5. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
