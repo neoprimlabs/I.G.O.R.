@@ -277,9 +277,7 @@ returns changes only, newest first, so a week of hourly "available" is one row.
 `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores, keeping files edited since unless `all`.
 
-`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones,
-editing in place. The digest and presence
-both read this file. An ambiguous `done` is refused with the candidates listed rather than
+`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones. An ambiguous `done` is refused with the candidates listed rather than
 guessed, and it shares `monitor._parse_tasks` with the digest so the two can never
 disagree about what is open.
 
@@ -326,7 +324,8 @@ automatically. Each result is Exa's answer to the query from that page, not its 
 500 characters, which were mostly navigation. These models make one tool call a step, so
 `queries` takes up to 8 lookups in one call. `fetch_url` returns a page's text a window at
 a time, or with `question` what it says on one thing; a page it cannot read goes through
-Exa. A failed search says so, rather than reading as no results.
+Exa. A failed search says so, rather than reading as no results; DDGS backs Exa once the
+`ddgs` package is installed, which it is not yet.
 
 ### Scheduled messages and presence
 

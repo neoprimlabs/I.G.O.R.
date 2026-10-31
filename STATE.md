@@ -177,7 +177,8 @@ shows no such read (13 read_file calls, none on a secret) and `.git/config` hold
 keys were not rotated; `_is_secret_file` now seals those paths from every tool. `fetch_url`
 returned raw HTML cut to 4000 characters; it now returns the page's text in windows, can
 answer one question about a page, and goes through Exa when blocked (Hermes' web_extract).
-A failed search now says so instead of reading as no results. A document or image in the
+A failed search now says so instead of reading as no results. DDGS backs Exa in
+`research._keyless_search`, dormant: installing the package needs the user's yes. A document or image in the
 message now closes the tools that change things, as reading an inbox file already did; and
 no tool can write `prompt_*.md`, which memory_write's code and write_file could. A scheduled brief can stay silent
 (Hermes' cron `[SILENT]`). Overnight research keeps raw results: replayed, focused answers

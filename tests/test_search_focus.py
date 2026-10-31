@@ -84,6 +84,59 @@ def test_focus() -> None:
            and results[0]["body"].startswith("Skip to content"), str(_Exa.calls))
 
 
+def test_a_second_backend_when_exa_fails() -> None:
+    """Exa is the only backend, and digest, overnight research and React all stop without it."""
+    from agents import research
+
+    class _Broken:
+        def __init__(self, api_key=None):
+            pass
+
+        def search_and_contents(self, query, **kwargs):
+            raise RuntimeError("402 credits exhausted")
+
+    class _DDGS:
+        def __init__(self, timeout=None):
+            pass
+
+        def text(self, query, max_results=5):
+            return [{"title": "Pricing", "href": "https://e.example/p", "body": "Plus is $10."}][:max_results]
+
+    def run(ddgs, **kwargs):
+        real = {name: sys.modules.get(name) for name in ("exa_py", "ddgs")}
+        sys.modules["exa_py"] = types.SimpleNamespace(Exa=_Broken)
+        sys.modules["ddgs"] = ddgs
+        try:
+            return asyncio.run(research._run_search("notion price", **kwargs))
+        finally:
+            for name, module in real.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
+    results = run(types.SimpleNamespace(DDGS=_DDGS))
+    _check("DDGS answers when Exa cannot", results == [{"title": "Pricing", "url": "https://e.example/p",
+                                                       "body": "Plus is $10.", "published": ""}], str(results))
+    _check("with no package it is as before", run(None) == [], str(run(None)))
+    try:
+        run(None, raise_errors=True)
+        raised = False
+    except RuntimeError:
+        raised = True
+    _check("and a caller that wants to know still hears of the failure", raised)
+    results = run(types.SimpleNamespace(DDGS=_DDGS), raise_errors=True, focus="notion price")
+    _check("a fallback that works is not a failure", results and results[0]["body"] == "Plus is $10.", str(results))
+
+    class _AlsoBroken:
+        def __init__(self, timeout=None):
+            pass
+
+        def text(self, query, max_results=5):
+            raise RuntimeError("ratelimited")
+    _check("if it fails too, nothing breaks", run(types.SimpleNamespace(DDGS=_AlsoBroken)) == [])
+
+
 def test_other_callers_are_unchanged() -> None:
     _search()
     _check("a plain search still gets 500 characters", _Exa.calls[0][1]["text"] == {"max_characters": 500}, str(_Exa.calls))

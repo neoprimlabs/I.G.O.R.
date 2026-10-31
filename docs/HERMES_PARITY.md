@@ -55,7 +55,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 ## Still open, most useful first
 
 1. **Programmatic tool calling** (`execute_code`). A script calls tools and only its printed output reaches the model. `queries` and `question` took most of the saving; what is left is loops over files and results.
-2. **A second search backend.** Exa is the only one, so if its credits run out, search stops. It now says so instead of reporting no results. Hermes supports several, DDGS among them, with no key.
+2. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
 3. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, and it is parked with the skills design.
 4. **MCP client.** IGOR serves MCP but cannot use other servers.
 5. **Chained scheduled jobs and pre-run scripts.**
@@ -63,4 +63,5 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Waiting on the user
 
+- **Installing `ddgs` on the server.** See the list above: DDGS answers when Exa cannot.
 - **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.

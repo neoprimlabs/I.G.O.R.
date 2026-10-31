@@ -81,8 +81,35 @@ async def _run_search(
             return await loop.run_in_executor(None, _sync, None)
     except Exception as e:
         logger.error("Exa search error - %s: %s", type(e).__name__, e)
+        fallback = await _keyless_search(query, max_results)
+        if fallback:
+            return fallback
         if raise_errors:
             raise
+        return []
+
+
+async def _keyless_search(query: str, max_results: int) -> list[dict]:
+    """Hermes' DDGS backend, for when Exa cannot answer: digest, overnight research and React
+    all stop without it, and its credits can run out. Needs no key. Dormant until the ddgs
+    package is installed in the venv, as Cerebras waits for its key. Results carry a snippet
+    and no date, so they are thinner; that beats none."""
+    def _sync() -> list[dict]:
+        from ddgs import DDGS
+        return [{"title": r.get("title") or "No title", "url": r.get("href") or "",
+                 "body": r.get("body") or "", "published": ""}
+                for r in DDGS(timeout=15).text(query, max_results=max_results)]
+
+    try:
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, _sync)
+        if results:
+            logger.warning("Search fell back to DDGS, %d results", len(results))
+        return results
+    except ImportError:
+        return []
+    except Exception as e:
+        logger.error("DDGS search error - %s: %s", type(e).__name__, e)
         return []
 
 
