@@ -422,6 +422,46 @@ async def test_a_turn_is_recorded() -> None:
         llm.create = real
 
 
+async def test_an_empty_step_is_not_a_silent_reply() -> None:
+    """Found live 2026-10-31, on the turn after a skill was read: finish_reason stop, no text,
+    no tool call. It predates skills; nothing logged it and the user would have got nothing."""
+    _fresh()
+    from agents import react
+    import llm
+    real = llm.create
+    replies, sent = [], []
+
+    async def fake(*a, **k):
+        sent.append(k["messages"])
+        return replies.pop(0)
+
+    llm.create = fake
+    react._get_client = lambda: None
+    try:
+        replies[:] = [_usage_for(None), _usage_for("The answer.")]
+        out = await react.handle("a question", [])
+        _check("asked once more, the second answer is the reply", "The answer." in out and len(sent) == 2, out)
+        _check("and it is told why", "returned nothing" in sent[1][-1]["content"], str(sent[1][-1]))
+
+        sent.clear()
+        replies[:] = [_usage_for(""), _usage_for(""), _usage_for("From what I have, this.")]
+        out = await react.handle("a question", [])
+        _check("empty twice forces a final answer, a third call and no more",
+               "From what I have" in out and len(sent) == 3, out)
+
+        sent.clear()
+        replies[:] = [_usage_for(""), _usage_for(""), _usage_for("")]
+        out = await react.handle("a question", [])
+        _check("empty three times still says something", bool(out.strip()) and len(sent) == 3, repr(out))
+
+        sent.clear()
+        replies[:] = [_usage_for(None, [("read_file", '{"path": "nope.md"}')]), _usage_for(""), _usage_for("Done.")]
+        out = await react.handle("a question", [], max_iterations=2)
+        _check("on the last step it falls through to the final answer", "Done." in out and len(sent) == 3, out)
+    finally:
+        llm.create = real
+
+
 def _tick(overnight, stub):
     async def no_search(query, max_results=5):
         raise AssertionError("self-improvement must not search")
@@ -504,6 +544,7 @@ if __name__ == "__main__":
     test_routing_words()
     asyncio.run(test_react_uses_and_cannot_write_them())
     asyncio.run(test_a_turn_is_recorded())
+    asyncio.run(test_an_empty_step_is_not_a_silent_reply())
     test_the_night_drafts_from_hard_tasks()
     test_the_curator_runs_at_night()
     if _failures:

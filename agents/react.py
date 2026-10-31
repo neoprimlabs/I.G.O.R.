@@ -1999,6 +1999,7 @@ async def _handle(
     # Only the main agent: a worker or scheduled run names its own short list.
     defer = allowed_tools is None and _depth == 0
     loaded: set = {force_tool} if force_tool else set()
+    empty_retried = False
     for i in range(max_iterations):
         if stop is not None and stop.is_set():
             logger.info("ReAct stopped at iteration %d: the user wrote again", i + 1)
@@ -2048,7 +2049,19 @@ async def _handle(
         choice = response.choices[0]
 
         if choice.finish_reason == "stop":
-            return choice.message.content or ""
+            if choice.message.content:
+                return choice.message.content
+            # 2026-10-31 live: after reading a skill, 209 tokens of reasoning, no text, no tool
+            # call and a clean stop. Returned as it was, the user got silence and no log line.
+            logger.warning("ReAct iteration %d stopped with empty content", i + 1)
+            if empty_retried:
+                break
+            empty_retried = True
+            messages = messages + [{
+                "role": "user",
+                "content": "[system note: your last step returned nothing. Call the next tool, or answer the user now.]",
+            }]
+            continue
 
         if choice.finish_reason == "length":
             if choice.message.content:
