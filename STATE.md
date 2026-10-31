@@ -56,7 +56,7 @@ already use for the auto-tagging step", so that clause was cut from
 the job watch sent three
 postings under "no postings worth applying to" (a ranking that picks none now sends
 nothing). Built 2026-10-22 evening: `mcp_server.py`, six read-only tools over SSH on
-stdio for the user's other agents (Hermes is only an MCP client). `mcp==2.3.0` was
+stdio for the user's other agents (Hermes now serves MCP too, through a plugin). `mcp==2.3.0` was
 installed by hand as igor, since the deploy script never runs pip; a fresh venv needs
 it before the gate's import check. Verified end to end from the PC: ready in 3.2s,
 resume.md and ../.env refused. The connect command is in `CLAUDE.local.md`. The

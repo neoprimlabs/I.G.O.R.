@@ -1,6 +1,6 @@
 # IGOR and Hermes Agent, feature by feature
 
-Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source on 2026-10-30. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
+Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation (v0.22.5) and IGOR's source on 2026-10-30. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
 
 Update this file when a row changes. ARCHITECTURE.md describes how each thing works; this only says whether it exists.
 
