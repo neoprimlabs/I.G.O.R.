@@ -29,13 +29,14 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Checkpoints, `/rollback` | `checkpoints.py` | Files only; the conversation is not rewound. |
 | File-mutation verifier | Receipts under each reply | |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
+| `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. |
 | URL safety | `url_safety.py` | |
 | MCP server | `mcp_server.py` | Read-only, over SSH. |
 
 ## Different on purpose
 
-- **The user's notes are not in every React prompt.** Hermes puts USER.md in every session. IGOR's rule is that private data and the open web never share a turn, and React holds `fetch_url`, so a page could ask for those notes in a URL. Direct has no tools, so it gets them.
+- **The user's notes are not in every React prompt.** Hermes puts USER.md in every session. React holds `fetch_url`, so a page could ask for those notes in a URL, and Direct has no tools, so it gets them. This narrows the risk rather than closing it: React can still read `user.md` when a turn needs it, in a turn that also has the web. Closing that would make "use my notes to find X" take two messages.
 - **A document in the message closes the tools that change things**, so "save the key points of this" takes a second message. Hermes has no equivalent rule.
 - **No mid-task budget warnings.** Hermes removed these after they made models abandon work.
 - **Prompt caching does nothing here.** Groq's documentation offers it; measured on this account, identical calls show no cached tokens.
@@ -54,12 +55,11 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Still open, most useful first
 
-1. **Programmatic tool calling** (`execute_code`). A script calls tools and only its printed output reaches the model. `queries` and `question` took most of the saving; what is left is loops over files and results.
-2. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
-3. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, and it is parked with the skills design.
-4. **MCP client.** IGOR serves MCP but cannot use other servers.
-5. **Chained scheduled jobs and pre-run scripts.**
-6. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+1. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
+2. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, and it is parked with the skills design.
+3. **MCP client.** IGOR serves MCP but cannot use other servers.
+4. **Chained scheduled jobs and pre-run scripts.**
+5. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 

@@ -46,9 +46,11 @@ def _path(p: str) -> Path:
     return Path(p) if p.startswith("/") else config.BASE_DIR / p
 
 
-def command(argv: list[str]) -> list[str]:
+def command(argv: list[str], hide_memory: bool = False) -> list[str]:
     """argv wrapped in bubblewrap with the mounts and limits above. Paths that do not
-    exist are skipped: bubblewrap cannot mount over a file that is not there."""
+    exist are skipped: bubblewrap cannot mount over a file that is not there.
+    hide_memory empties the whole memory folder, for a script that reaches tools only
+    through the rules of script_tool's caller."""
     base = str(config.BASE_DIR)
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp"]
@@ -64,6 +66,8 @@ def command(argv: list[str]) -> list[str]:
         p = _path(rel)
         if p.is_dir():
             args += ["--tmpfs", str(p)]
+    if hide_memory and config.MEMORY_DIR.is_dir():
+        args += ["--tmpfs", str(config.MEMORY_DIR)]
     args += ["--unshare-net", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
              "--die-with-parent", "--new-session", "--clearenv",
              "--setenv", "PATH", f"{base}/venv/bin:/usr/local/bin:/usr/bin:/bin",
@@ -89,7 +93,7 @@ def _probe() -> str:
     return ""
 
 
-def prepare(argv: list[str]) -> list[str]:
+def prepare(argv: list[str], hide_memory: bool = False) -> list[str]:
     """The sandboxed argv, or Unavailable. A success is remembered; a failure is
     probed again next time, so one bad moment does not disable the tools until a
     restart."""
@@ -103,7 +107,7 @@ def prepare(argv: list[str]) -> list[str]:
                 f"({why}). Nothing ran, and commands are never run outside it. Tell the user; "
                 f"it needs fixing on the server.")
         _ready = True
-    return command(argv)
+    return command(argv, hide_memory)
 
 
 def startup_check() -> str:

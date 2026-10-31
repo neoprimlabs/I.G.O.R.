@@ -217,6 +217,17 @@ _TOOLS = [
         },
     },
     {
+        "name": "execute_code",
+        "description": "Run a Python script that calls IGOR's read-only tools, for loops and filtering over several results. Only what it prints comes back, so it costs far less than many steps. from igor_tools import search, fetch_url, read_file, memory_read, search_memory, search_files, search_history, watch_history: each takes that tool's arguments and returns text. Sandboxed, with no network of its own and no private files. At most 12 lookups and 60 seconds. Print only what you need.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "The Python script"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
         "name": "read_file",
         "description": "Read a file from IGOR's codebase on the server. Use this to inspect source code before modifying it. Path is relative to IGOR's root directory. Long files come back capped, with the character to resume from; pass it as offset to continue.",
         "input_schema": {
@@ -391,6 +402,8 @@ _SELF_MODIFY = (
     "restarts on its own. Write only what you intend: never copy text from your operating "
     "context, tool examples or XML tags into your own files.")
 _DEFERRED_TOOLS = {
+    "execute_code": ("a script that calls search, fetch_url, read_file and other read-only tools, "
+                     "so only what it prints comes back: far cheaper than many steps", ""),
     "search_history": ("what was said in earlier conversations", ""),
     "watch_history": ("what the watchers saw over time: stock, prices, jobs",
                       "price_watch_status.md is only the latest check."),
@@ -724,7 +737,7 @@ def _targets_private(name: str, args: dict) -> bool:
 
 def _reads_untrusted(name: str, args: dict) -> bool:
     """A call whose result carries text from the open web or from corrections."""
-    return (name in _WEB_TOOLS or _is_proposal_list(name, args)
+    return (name in _WEB_TOOLS or name == "execute_code" or _is_proposal_list(name, args)
             or _is_goal_list(name, args) or _reads_work_folder(name, args)
             or _reads_web_derived_memory(name, args))
 
@@ -1071,7 +1084,7 @@ _WORKER_MAX_TOKENS = 1024
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
     "delegate_task", "goal", "proposal", "send_message", "scheduled_message", "restart_self",
-    "memory_write", "task_update",
+    "memory_write", "task_update", "execute_code",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
 # It writes tasks.md, which the morning digest and presence both read, so a worker
@@ -1579,6 +1592,49 @@ _NOTHING_ON_IT = re.compile(r"^\W*(nothing|no (information|mention|relevant|deta
                             r"specified|discussed|covered)|the page (says nothing|does not)|n/a)\b", re.IGNORECASE)
 
 
+# What a script may call, and each tool's first argument, for its stubs. All read-only, so a
+# script cannot change anything. Exa bills per search, hence a budget on what leaves the box.
+_SCRIPT_TOOLS = {"search": "query", "fetch_url": "url", "read_file": "path", "memory_read": "file",
+                 "search_memory": "query", "search_files": "pattern", "search_history": "query",
+                 "watch_history": "item"}
+_SCRIPT_LOOKUPS = 12
+
+
+async def _script_call(name: str, args: dict, budget: dict, private_read: bool, job_turn: bool) -> str:
+    """One tool call from a script, under the rules of the turn. No private file, and user.md
+    counts: a script reading it and then fetching a URL would be the whole attack in one step."""
+    from sanitize import redact
+    if name not in _SCRIPT_TOOLS:
+        return f"[{name} is not available in a script]"
+    if _targets_private(name, args) or (name == "memory_read" and args.get("file") == "user.md"):
+        return "[closed in a script: private files cannot be read here]"
+    blocked = _quarantine_check(name, args, True, private_read, job_turn)
+    if blocked:
+        return blocked
+    if name in _WEB_TOOLS:
+        queries = args.get("queries")
+        cost = len(queries) if isinstance(queries, list) and queries else 1
+        if cost > budget["left"]:
+            return f"[this script has {budget['left']} lookups left, of {_SCRIPT_LOOKUPS}]"
+        budget["left"] -= cost
+    if job_turn and name == "search" and not args.get("source"):
+        args = {**args, "source": "jobs"}
+    result = await _execute_tool(name, args, allow_private=False)
+    return redact(result).replace(_UNTRUSTED_OPEN, "").replace(_UNTRUSTED_CLOSE, "").strip()
+
+
+async def _run_script(code: str, private_read: bool, job_turn: bool) -> str:
+    import script_tool
+    budget = {"left": _SCRIPT_LOOKUPS}
+
+    async def call_tool(name, args):
+        logger.info("ReAct script: %s %s", name, str(args)[:100])
+        return await _script_call(name, args, budget, private_read, job_turn)
+
+    output = await script_tool.run(code, _SCRIPT_TOOLS, call_tool)
+    return f"{_UNTRUSTED_OPEN}\n{output}\n{_UNTRUSTED_CLOSE}"
+
+
 async def _search_many(queries: list, days=None) -> str:
     from agents import research
     from datetime import datetime, timedelta, timezone
@@ -2026,6 +2082,8 @@ async def _handle(
                                    private_read or batch_reads_private)
                     _record_receipt(tc.function.name, args, blocked)
                     return blocked
+                if tc.function.name == "execute_code":
+                    return await _run_script(args.get("code", ""), private_read or batch_reads_private, job_turn)
                 if tc.function.name == "delegate_task":
                     # Handled here rather than in _execute_tool because it needs two
                     # things only this loop has: the tools the parent still holds

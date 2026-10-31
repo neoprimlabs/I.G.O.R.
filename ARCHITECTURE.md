@@ -23,10 +23,10 @@ via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes and images the user sends are read.
 
-**React's 20 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
+**React's 21 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`. No others. Twelve load on
+`send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`. No others. Thirteen load on
 request through `load_tools` (Hermes' Tool Search).
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
@@ -40,7 +40,7 @@ until Groq's stated reset, and the reply says so.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 20 |
+| React | `TASK`, router failure | 120b | all 21 |
 | Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -181,7 +181,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 20 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 21 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -238,7 +238,7 @@ System prompt rebuilt each call: `clock.time_line()` and the next seven dates, t
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
 `memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
-twelve (it returns their rules too; a direct call loads the tool and retries). Workers
+thirteen (it returns their rules too; a direct call loads the tool and retries). Workers
 and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
@@ -259,8 +259,6 @@ change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 
 **Price watch, in full.** Rejected listings are marked seen; a failed judge fails
 open and sends unfiltered (an unreadable 200 OK would otherwise swallow a real drop).
-`monitor._watcher_status` shows each watch, its target, its last real run (STALE
-past 6h) and the cheapest match, labelled unchecked.
 
 **Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
 `available` boolean and a price in cents: keyless, no model call. `aoostar.com`
@@ -293,13 +291,15 @@ each covered by `tests/test_delegation.py`:
   direct read. `delegate_task` is itself in `_QUARANTINED_AFTER_WEB`.
 - **One worker at a time** (`_delegation_gate`), on 20b, not react's 120b: fanning
   out 429s the hot path while the user waits. Depth is capped at 1
-  so workers cannot delegate, and at 3 delegations per turn. Workers never get
-  `send_message`, `scheduled_message`, `restart_self`, `memory_write`,
-  `task_update` or `delegate_task`; `tests/test_delegation.py` asserts the whole set.
+  so workers cannot delegate, and at 3 delegations per turn. Workers never hold a
+  tool in `_WORKER_FORBIDDEN`.
+
+`execute_code` (`script_tool.py`, Hermes' tool of that name) runs a script in the sandbox with
+memory hidden. It calls 8 read-only tools over stdin and stdout, under the turn's rules, 12
+lookups and 60s at most; only what it prints returns, as untrusted. No private files or user.md.
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
-with an optional `context` of up to 6 surrounding lines, in Python. It skips private files through `_is_private` and `.git`, `__pycache__`
-and the venv. Read-only, so it is in neither quarantine set.
+with up to 6 lines of `context`. It skips private files, `.git` and the venv.
 
 Up to 8 iterations:
 

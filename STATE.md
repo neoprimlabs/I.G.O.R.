@@ -185,9 +185,11 @@ no tool can write `prompt_*.md`, which memory_write's code and write_file could.
 were on target but lost the "vendor claim" marks the evidence check needs. Feature by feature
 against Hermes: `docs/HERMES_PARITY.md`. Still to see in real use: the next digest (no repeat
 stories), job and gig messages (posting's own words), the paper's labels after a revision, and
-one multi-item request end to end on 120b, which the 10-30 tests left near its cap. Next: the walkthrough with the user, a demo script run
-until it holds, and no new features before an interview. Later: a recorded
-demo and the README cost table refreshed once times accumulate.
+one multi-item request end to end on 120b, which the 10-30 tests left near its cap.
+`execute_code` built 10-30 (Hermes' tool of that name): a script calls 8 read-only tools and only
+what it prints returns; see ARCHITECTURE. **No feature freeze:** the user ended it for good on
+10-30, "I don't want to stop progress and wait for Helfen". Next: the open list in
+`docs/HERMES_PARITY.md`. If an interview is scheduled, then a walkthrough and a demo script.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
 for production multi-agent work, memory and shared context, and safeguards. Research behind
 the list: reviewers favour one deep project with evals, safety work, measured cost.

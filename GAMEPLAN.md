@@ -14,8 +14,8 @@ session, including smaller models. Follow it literally. Do not improvise beyond 
 - Read CLAUDE.md before starting any session. It contains the platform gotchas
   that caused a week of debugging.
 - A step marked PARKED waits on the user; skip it and take the next. STATE.md's
-  Next action can override this order: from 2026-10-22, no new features before an
-  interview, only fixes to what breaks in use.
+  Next action can override this order. There is no feature freeze: the user ended it for
+  good on 2026-10-30, and nothing is held back for a job application.
 
 ## Hard rules for the executing model
 

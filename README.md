@@ -12,7 +12,7 @@ nearly every design decision below.
 ## What it does
 
 - **Chat and tasks.** A fast, tool-less model answers conversation. Anything that needs
-  action goes to a ReAct agent with 20 tools: web search and fetch, memory, files,
+  action goes to a ReAct agent with 21 tools: web search and fetch, memory, files,
   a sandboxed shell, scheduling, standing goals and delegation to sub-agents.
 - **Watchers.** Prices, restocks, job postings, freelance gigs, and any page the user
   names on a heartbeat. Code checks for changes and only a real change reaches a model,
@@ -36,7 +36,7 @@ flowchart LR
     O -->|"commands, in code"| K["rollback, heartbeat, approvals, proposals"]
     O -->|"one-word routing call"| R{"Router: qwen3.8-27b"}
     R -->|CHAT| D["Direct: gpt-oss-120b, no tools"]
-    R -->|TASK| A["ReAct: gpt-oss-120b, 20 tools"]
+    R -->|TASK| A["ReAct: gpt-oss-120b, 21 tools"]
     R -->|SELF| S["SelfDescribe: answers from ARCHITECTURE.md"]
     R -->|MONITOR| M["Monitor: status, gpt-oss-120b"]
     A --> B["Shell and Python in a bubblewrap sandbox"]

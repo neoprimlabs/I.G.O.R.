@@ -149,7 +149,7 @@ def test_forbidden_tools_are_stripped() -> None:
     _check("the forbidden set is exactly what is intended",
            react._WORKER_FORBIDDEN == frozenset({
                "delegate_task", "goal", "proposal", "send_message", "scheduled_message",
-               "restart_self", "memory_write", "task_update"}),
+               "restart_self", "memory_write", "task_update", "execute_code"}),
            str(sorted(react._WORKER_FORBIDDEN)))
 
 
