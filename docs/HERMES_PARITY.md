@@ -39,6 +39,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 - **A document in the message closes the tools that change things**, so "save the key points of this" takes a second message. Hermes has no equivalent rule.
 - **No mid-task budget warnings.** Hermes removed these after they made models abandon work.
 - **Prompt caching does nothing here.** Groq's documentation offers it; measured on this account, identical calls show no cached tokens.
+- **No image or video generation.** Left out by the user's choice; both would also need a paid provider.
 
 ## Parked by the user
 
@@ -50,7 +51,6 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 - **Browser automation and computer use.** Chromium does not fit in 956 MB.
 - **Local models.** There is no GPU.
-- **Image generation.** It needs a paid provider.
 
 ## Still open, most useful first
 
