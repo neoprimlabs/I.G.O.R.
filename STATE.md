@@ -187,7 +187,9 @@ against Hermes: `docs/HERMES_PARITY.md`. Still to see in real use: the next dige
 stories), job and gig messages (posting's own words), the paper's labels after a revision, and
 one multi-item request end to end on 120b, which the 10-30 tests left near its cap.
 `execute_code` built 10-30 (Hermes' tool of that name): a script calls 8 read-only tools and only
-what it prints returns; see ARCHITECTURE. **No feature freeze:** the user ended it for good on
+what it prints returns; see ARCHITECTURE. Attacked in the real sandbox: no .env, no memory, no
+keys, no network, no writes. On 20b the model's first step on two suitable jobs was a plain
+tool, with or without a prompt line for it, so that line was not added; retest on 120b. **No feature freeze:** the user ended it for good on
 10-30, "I don't want to stop progress and wait for Helfen". Next: the open list in
 `docs/HERMES_PARITY.md`. If an interview is scheduled, then a walkthrough and a demo script.
 First target: an AI Agent Systems Engineer role (e-commerce operations) that asks
