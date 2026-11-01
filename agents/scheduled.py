@@ -291,14 +291,16 @@ def _known_ids(entries: list[dict]) -> set:
     return {e["id"] for e in entries} | set(_outputs())
 
 
-def _job_words(entry: dict) -> str:
+def _job_words(entry: dict, ids: bool = True) -> str:
+    """What else a message does. ids is for the model's list: the user reads the rest, often
+    aloud, and live an id went out under a reply."""
     words = []
     if entry.get("script_only"):
         words.append(f"sends what {entry['script']} prints, with no model")
     elif entry.get("script"):
         words.append(f"runs {entry['script']} first")
     if entry.get("context_from"):
-        words.append("reads the latest from " + ", ".join(entry["context_from"]))
+        words.append("reads the latest from " + (", ".join(entry["context_from"]) if ids else "another scheduled message"))
     if entry.get("keep_only"):
         words.append("kept, not sent")
     return "; ".join(words)
@@ -377,11 +379,11 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
     reply = f"Okay, {_human(due, now)}" + (f", then {_REPEAT_WORDS[repeat]}." if repeat else ".")
     if job:
-        reply += f" It {_job_words(entry)}."
+        reply += f" It {_job_words(entry, ids=False)}."
     # On its own line: the first line is shown to the user under the reply. The next call has to
     # name this entry, and nothing else tells the model its id.
     if job.get("keep_only"):
-        reply += f"\nFor you, not the user: give context_from this id on the message that reads it: {entry['id']}"
+        reply += f"\nFor you, so do not repeat it to the user: give context_from this id on the message that reads it: {entry['id']}"
     # 2026-10-14: "I said 1am" added a second entry and left the misread 10am one in
     # place, and both sent. The model never saw it - nothing showed what was pending.
     if others:
@@ -639,7 +641,7 @@ def status() -> str:
         state = " (failed to send)" if e.get("failed") else ""
         state += f" (repeats {e['repeat']})" if e.get("repeat") else ""
         state += " (paused)" if e.get("paused") else ""
-        state += f" ({_job_words(e)})" if _job_words(e) else ""
+        state += f" ({_job_words(e, ids=False)})" if _job_words(e) else ""
         lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or e.get('script') or '')[:80]}")
     return "Messages scheduled for the user:\n" + "\n".join(lines)
 

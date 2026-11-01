@@ -684,8 +684,8 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   every commit. A failed push alerts the webhook once a day and retries hourly.
   Verified: 42 files pushed, all .md, none private; a broken remote logged
   "Repository not found" and sent the (test) alert; restored clean. Not built: the
-  PC-side check of the newest remote commit's age (a stopped timer is the one case
-  nothing catches). Original plan below.
+  PC-side check of the newest remote commit's age. A stopped timer, the one case nothing
+  caught, is reported since 2026-11-01 by the hourly `host_watch.py` (STATE). Original plan below.
   Added 2026-08-03 after the 3am task ran and the question came up.
 
   **Problem.** `scripts/backup_memory.ps1` is a Windows Scheduled Task. No PC, no

@@ -395,6 +395,10 @@ def test_setting_up() -> None:
     _check("a kept message gives the id its reader needs", up in reply, reply)
     scheduled.add(in_minutes=15, brief="summarise", context_from=[up], now=NOW)
     _check("and a reader can name it", _stored()[1]["context_from"] == [up], str(_stored()))
+    reply = scheduled.add(in_minutes=25, brief="another", context_from=[up], now=NOW)
+    _check("the reply the user sees holds no id", up not in reply.split("\n")[0] and "another scheduled message" in reply, reply)
+    _check("nor does what Monitor says", up not in scheduled.status(), scheduled.status())
+    _check("while the model's list still has it", f"reads the latest from {up}" in scheduled.list_pending(), scheduled.list_pending())
     reply = scheduled.add(in_minutes=5, brief="x", context_from=["a", "b", "c", "d"], now=NOW)
     _check("at most three sources", "at most 3" in reply, reply)
 
