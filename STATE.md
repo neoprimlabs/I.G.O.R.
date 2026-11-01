@@ -223,7 +223,9 @@ words. That rule is tested offline only. Not yet seen: a real night, or an appro
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
 **Clock change, 11-01:** the digest, job and gig lists and the Monday draft were fixed in UTC on a UTC
 host, so they came an hour early when the clocks went back, and the user caught it, not Claude Code.
-They now go by the user's clock, and `schedule_config.md` says `time: 09:00 local` (backup beside it).
+They now go by the user's clock. The user then moved the morning later by an hour for a later working
+day: digest 10:00 (`schedule_config.md`, `time: 10:00 local`, backup beside it), the weekday idea 11:00,
+check-ins quiet until 11:00, jobs 11:30, gigs 11:45, the Monday draft 12:00.
 First real proof night, 11-01: 4 ideas, 12 searches, 50592 tokens, and 20b read 184925 with no cap hit.
 It ranked regulatory alerts first as independent on "combined revenues of $2.9B", an industry total, so
 totals and sums over $20M no longer count, and the 6 rows the new rules would drop were taken out of the

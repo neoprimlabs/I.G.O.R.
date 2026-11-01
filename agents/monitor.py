@@ -114,10 +114,10 @@ def _get_digest_schedule() -> tuple:
     """Read morning_digest time from schedule_config.md. Returns (hour, minute, timezone)."""
     path = config.MEMORY_DIR / "schedule_config.md"
     if not path.exists():
-        return 9, 0, clock.USER_TZ
+        return 10, 0, clock.USER_TZ
     content = path.read_text(encoding="utf-8")
     parsed = _parse_digest_schedule(content)
-    return (*parsed, _digest_zone(content)) if parsed else (9, 0, clock.USER_TZ)
+    return (*parsed, _digest_zone(content)) if parsed else (10, 0, clock.USER_TZ)
 
 
 def _get_watchlist() -> list[str]:
@@ -239,11 +239,11 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
 
     # After the digest has landed. Fetching costs no tokens - it is HTTP against
     # public feeds - so this is close to free.
-    _scheduler.add_job(_job_watch, "cron", hour=10, minute=30, timezone=clock.USER_TZ, id="job_watch")
+    _scheduler.add_job(_job_watch, "cron", hour=11, minute=30, timezone=clock.USER_TZ, id="job_watch")
 
     # Fifteen minutes after the job watch, so the two never land together. One
     # screening call a day on 20b, the summary bucket, idle at this hour.
-    _scheduler.add_job(_gig_watch, "cron", hour=10, minute=45, timezone=clock.USER_TZ, id="gig_watch")
+    _scheduler.add_job(_gig_watch, "cron", hour=11, minute=45, timezone=clock.USER_TZ, id="gig_watch")
 
     # Deals vanish within hours, so this runs often. One HTTP call per watched item
     # and no model call at all, which is why every two hours is affordable.
@@ -291,9 +291,9 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
 
     # Clear of the digest, and it runs on the chat model's bucket rather than the
     # digest's, so the two cannot contend.
-    _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=11, minute=0, timezone=clock.USER_TZ,
+    _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=12, minute=0, timezone=clock.USER_TZ,
                        id="advocacy_draft")
-    logger.info("Advocacy draft scheduled Mondays at 11:00 local (%s)", _ADVOCACY["topic"])
+    logger.info("Advocacy draft scheduled Mondays at 12:00 local (%s)", _ADVOCACY["topic"])
 
     # Minute 20, clear of the :00 and :30 jobs. max_instances=1 is APScheduler's default,
     # stated because work.log_session is a read-modify-write with no lock: two ticks

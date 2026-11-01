@@ -23,7 +23,7 @@ BEFORE_FALL = datetime(2026, 10, 26, 3, 0, tzinfo=timezone.utc)
 AFTER_FALL = datetime(2026, 11, 2, 3, 0, tzinfo=timezone.utc)
 BEFORE_SPRING = datetime(2027, 3, 8, 3, 0, tzinfo=timezone.utc)
 AFTER_SPRING = datetime(2027, 3, 15, 3, 0, tzinfo=timezone.utc)
-EXPECTED = {"morning_digest": (9, 0), "job_watch": (10, 30), "gig_watch": (10, 45), "advocacy_draft": (11, 0)}
+EXPECTED = {"morning_digest": (10, 0), "job_watch": (11, 30), "gig_watch": (11, 45), "advocacy_draft": (12, 0)}
 
 
 def _check(name: str, condition: bool, detail: str = "") -> None:
@@ -67,7 +67,7 @@ def _on_clock(job, now: datetime) -> tuple[int, int]:
 
 
 def test_every_list_keeps_its_time() -> None:
-    jobs = _jobs("# Schedule Config\n\n## morning_digest\ntime: 09:00 local\n")
+    jobs = _jobs("# Schedule Config\n\n## morning_digest\ntime: 10:00 local\n")
     for name, expected in EXPECTED.items():
         _check(f"{name} is registered", name in jobs, str(sorted(jobs)))
         for label, now in (("before the clocks go back", BEFORE_FALL), ("after they go back", AFTER_FALL),
@@ -75,8 +75,8 @@ def test_every_list_keeps_its_time() -> None:
             _check(f"{name} {label}", _on_clock(jobs[name], now) == expected, str(_on_clock(jobs[name], now)))
     digest = jobs["morning_digest"]
     _check("and that really moves in UTC, or nothing was tested",
-           _next(digest, BEFORE_FALL).astimezone(timezone.utc).hour == 13
-           and _next(digest, AFTER_FALL).astimezone(timezone.utc).hour == 14,
+           _next(digest, BEFORE_FALL).astimezone(timezone.utc).hour == 14
+           and _next(digest, AFTER_FALL).astimezone(timezone.utc).hour == 15,
            str((_next(digest, BEFORE_FALL).astimezone(timezone.utc), _next(digest, AFTER_FALL).astimezone(timezone.utc))))
     _check("the draft still goes on Mondays", _next(jobs["advocacy_draft"], AFTER_FALL).astimezone(clock.USER_TZ).weekday() == 0)
 
@@ -87,8 +87,8 @@ def test_reading_the_file() -> None:
     _check("no zone at all is too", _on_clock(_jobs("## morning_digest\ntime: 08:15\n")["morning_digest"], AFTER_FALL) == (8, 15))
     utc = _jobs("## morning_digest\ntime: 13:00 UTC\n")["morning_digest"]
     _check("a file that says UTC is taken at its word", _next(utc, AFTER_FALL).astimezone(timezone.utc).hour == 13)
-    _check("no file means 9 on the user's clock", _on_clock(_jobs()["morning_digest"], AFTER_FALL) == (9, 0))
-    _check("a file that does not parse does too", _on_clock(_jobs("## morning_digest\ntime: 8am\n")["morning_digest"], AFTER_FALL) == (9, 0))
+    _check("no file means 10 on the user's clock", _on_clock(_jobs()["morning_digest"], AFTER_FALL) == (10, 0))
+    _check("a file that does not parse does too", _on_clock(_jobs("## morning_digest\ntime: 8am\n")["morning_digest"], AFTER_FALL) == (10, 0))
     _check("the check ConfigEdit uses reads the new form",
            monitor._parse_digest_schedule("## morning_digest\ntime: 09:00 local\n") == (9, 0))
     _check("and still refuses nonsense", monitor._parse_digest_schedule("## morning_digest\ntime: 8am\n") is None)

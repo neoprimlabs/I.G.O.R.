@@ -46,8 +46,8 @@ until Groq's stated reset, and the reply says so.
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
-**Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (09:00
-local), job watch (10:30), gig watch (10:45), price watch (2-hourly), stock watch
+**Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (10:00
+local), job watch (11:30), gig watch (11:45), price watch (2-hourly), stock watch
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
 
@@ -347,7 +347,7 @@ delivery spends daily tokens on 120b. Each run sees the series' last three
 messages, marked sent, never built. An IGOR
 series gets its subject from code, by date.
 
-Presence writes on 120b. Gates in code before any model call: silent 03:00-10:00 local, 4h
+Presence writes on 120b. Gates in code before any model call: silent 03:00-11:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits until 2h after the user last spoke. It sees
 the user's own messages from 3 days, `user.md` and its last 5 check-ins, no tasks.

@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 # Quiet hours in local time. The user set these: they are regularly up past 3am, so
 # a conventional evening cutoff would silence it exactly when they are around.
 _QUIET_START = 3
-_QUIET_END = 10
+# An hour clear of the 10:00 digest, which the user moved on 2026-11-01 for a later working day.
+_QUIET_END = 11
 
 _MIN_GAP = timedelta(hours=4)
 _MAX_PER_DAY = 2

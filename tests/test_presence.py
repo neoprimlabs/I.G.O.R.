@@ -79,8 +79,8 @@ async def test_gates_run_before_the_model() -> None:
 
     quiet_cases = [
         ("3am local is inside the quiet window", _utc(2026, 9, 16, 7, 0)),
-        ("just before 10am local is still quiet", _utc(2026, 9, 16, 13, 59)),
-        ("9:30am in November is quiet too, EST not EDT", _utc(2026, 11, 16, 14, 30)),
+        ("just before 11am local is still quiet", _utc(2026, 9, 16, 14, 59)),
+        ("10:30am in November is quiet too, EST not EDT", _utc(2026, 11, 16, 15, 30)),
     ]
     for name, when in quiet_cases:
         _fresh(_state(day=when.strftime("%Y-%m-%d")))
@@ -90,8 +90,8 @@ async def test_gates_run_before_the_model() -> None:
 
     _fresh(_state())
     model = _Model()
-    out = await presence.consider("lull", now=_utc(2026, 9, 16, 14, 0), ask=model)
-    _check("10am local exactly is allowed", out is not None and len(model.asked) == 1,
+    out = await presence.consider("lull", now=_utc(2026, 9, 16, 15, 0), ask=model)
+    _check("11am local exactly is allowed", out is not None and len(model.asked) == 1,
            f"{out!r} asked={len(model.asked)}")
 
     _fresh(_state(), on=False)
