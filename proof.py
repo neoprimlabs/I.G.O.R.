@@ -69,9 +69,9 @@ _QUOTE_CAP = 300
 _CLOSE = 0.5
 _SLACK = 20
 _MIN_EARNED = 1000
-# The first real night ranked regulatory alerts first on "combined revenues of $2.9B" across 435
-# companies, $200M and $95.4M. That is an industry and its largest firms, and says nothing of what an
-# agent and one person could earn.
+# The first real night ranked regulatory alerts first on "combined revenues of $2.9B", $200M and
+# $95.4M. That is an industry and its largest firms, and says nothing of what an agent and one person
+# could earn.
 _MAX_EARNED = 20_000_000
 _MIN_WORDS = 5
 _KEEP_EARNED = 4

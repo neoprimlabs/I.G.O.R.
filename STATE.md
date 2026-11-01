@@ -222,9 +222,9 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
 First real proof night, 11-01: 4 ideas, 12 searches, 50592 tokens, and 20b read 184925 with no cap hit.
-It ranked regulatory alerts first as independent on "combined revenues of $2.9B" across 435 companies, so
-totals and sums over $20M no longer count, and the 3 rows those rules would drop were taken out of the
-ledger by hand (backup beside it). Ideas not yet searched now say unchecked, and a failure must name the idea.
+It ranked regulatory alerts first as independent on "combined revenues of $2.9B", an industry total, so
+totals and sums over $20M no longer count, and the 6 rows the new rules would drop were taken out of the
+ledger by hand (backups beside it and the paper). Ideas not yet searched now say unchecked, and a failure must name the idea.
 The digest's only story was a `/projects/` index of work going back months: such pages are now listings.
 First real memory pass, 00:20 11-01: 3 preferences on job searches, all quoting the user's own words, two of
 them near duplicates, waiting for the user with an older code proposal.
