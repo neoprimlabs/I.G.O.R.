@@ -127,6 +127,12 @@ def test_labels() -> None:
     _check("the earner's word alone is self-reported", label(_full_entry(evidence=[_ev(source="seller")])) == "self-reported")
     _check("a third party reporting failure is against", label(_full_entry(evidence=[_ev("failed")])) == "against")
     _check("both are mixed", label(_full_entry(evidence=[_ev(), _ev("failed")])) == "mixed")
+    _check("payment data on a nearby product is only that",
+           label(_full_entry(evidence=[_ev(source="verified")])) == "similar product")
+    _check("and beats the earner's word", label(_full_entry(evidence=[_ev(source="verified"), _ev(source="seller")])) == "similar product")
+    _check("a study of many still decides against it",
+           label(_full_entry(evidence=[_ev(source="verified"), _ev("failed")])) == "mixed")
+    _check("independent proof outranks it", proof.KINDS.index("independent") < proof.KINDS.index("similar product") < proof.KINDS.index("self-reported"))
     _check("one business closing, even in the news, does not sink an idea",
            label(_full_entry(evidence=[{**_ev("failed"), "many": False}])) == "no income shown")
     _check("one founder's failure story does not sink an idea",
@@ -198,7 +204,9 @@ def test_who_says_it() -> None:
     _check("a host the paper cites for its prices cannot be its proof",
            source("https://kettlealerts.example/data", sellers=frozenset(["kettlealerts.example"])) == "seller")
     _check("payment-verified revenue stands whatever the model says",
-           source("https://trustmrr.com/startup/x", model_says="seller") == "third party")
+           source("https://trustmrr.com/startup/x", model_says="seller") == "verified")
+    _check("and is never called third party, whatever the model says",
+           source("https://trustmrr.com/startup/x", model_says="third party") == "verified")
     _check("unless the model never said it does the idea, which earns no promotion",
            source("https://trustmrr.com/startup/x", model_says="seller", business="") == "seller")
     _check("a news host stays as judged", source("https://news.example/a") == "third party")
@@ -212,9 +220,22 @@ def test_tools_and_ideas() -> None:
 
     _check("a tool sold to people trying the idea is not proof of it", kept("Birdhouse plan e-books", "tools") is None)
     _check("where selling software is the idea, it is proof, whatever the model answered",
-           kept("Kettle API wrappers", "tools")["from"] == "third party")
-    _check("the same for a service", kept("Kettle alert services", "tools")["from"] == "third party")
-    _check("a business doing the idea is promoted on verified data", kept("Birdhouse plan e-books", "idea")["from"] == "third party")
+           kept("Kettle API wrappers", "tools")["from"] == "verified")
+    _check("the same for a service", kept("Kettle alert services", "tools")["from"] == "verified")
+    _check("a business doing the idea is promoted on verified data", kept("Birdhouse plan e-books", "idea")["from"] == "verified")
+    named = proof._kept({"n": 1, "what": "earned", "business": "idea", "scope": "one", "who": "the earner", "quote": "revenue of $40,000 last year"},
+                        [_page(url="https://trustmrr.com/startup/x", title="AnyKettle - $3,000 last 30 days | TrustMRR")], frozenset(), "2026-10-17", "Kettle API wrappers")
+    _check("and the product is named, so a reader can judge it", named["product"] == "AnyKettle", str(named))
+    entry = _full_entry(evidence=[named])
+    _check("in the section", "(earned, verified, AnyKettle)" in proof.section({"a": entry}), proof.section({"a": entry}))
+    _check("a failure on that site earns no standing",
+           proof._kept({"n": 1, "what": "failed", "business": "idea", "scope": "many", "who": "researchers", "quote": "revenue of $40,000 last year"},
+                       [_page(url="https://trustmrr.com/startup/x")], frozenset(), "2026-10-17", "Kettle API wrappers")["from"] == "seller")
+    def said_market(url):
+        row = {"n": 1, "what": "earned", "business": "idea", "scope": "one", "who": "marketplace data", "quote": "revenue of $40,000 last year"}
+        return proof._kept(row, [_page(url=url)], frozenset(), "2026-10-17", "Kettle API wrappers")["from"]
+    _check("a real marketplace has marketplace data", said_market("https://acquire.com/listing/x") == "third party")
+    _check("an article site does not", said_market("https://sidehustles.example/how-much") == "seller")
     _check("the same answer elsewhere stays the earner's", kept("Kettle API wrappers", "idea", url="https://news.example/a")["from"] == "seller")
 
 
@@ -262,6 +283,7 @@ def test_a_session_tests_the_next_idea() -> None:
     stub = _Stub(replies=[_row(), "NONE", _row(what="failed", quote="Most kettle shops closed within 2 years")])
     out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
     _check("it says what it found", "proof checked: Kettle price alerts - mixed" in out, out)
+    _check("a label the shortlist sorts on", "mixed" in proof.KINDS and "similar product" in overnight._EVIDENCE_KINDS)
     _check("no paper write, no widening", not stub.writes and not stub.plans)
     queries = [q for q, _ in stub.searches]
     _check("three searches, all on that idea", len(queries) == 3 and all("Kettle price alerts" in q for q in queries), str(queries))

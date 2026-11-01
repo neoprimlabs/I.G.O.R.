@@ -26,13 +26,19 @@ _FILE = "proof.json"
 
 # Strongest first, the order a shortlist is sorted into. Unchecked is what is left when a check
 # failed: not knowing is not the same as finding no income. Against goes below not knowing.
-KINDS = ("independent", "mixed", "self-reported", "no income shown", "unchecked", "against")
+KINDS = ("independent", "mixed", "similar product", "self-reported", "no income shown", "unchecked", "against")
 _THIRD = "third party"
+_VERIFIED = "verified"
 _SELLER = "seller"
 
-# TrustMRR reads revenue from the payment provider, so its figures need nobody's word. Does It Pay
-# and ManyFails looked as good, but both are assembled by AI pipelines, so they get no such standing.
+# TrustMRR reads revenue from the payment provider, so its figures need nobody's word, but its nearest
+# match can be another business: for curated data subscriptions, a list of tool ideas to build
+# (searched 2026-11-01), and matching words could not tell them apart. So it shows a similar product
+# earned that, a label of its own, never independent proof of the idea. Does It Pay and ManyFails
+# looked as good, but both are assembled by AI pipelines, so they get no such standing.
 _VERIFIED_HOSTS = ("trustmrr.com",)
+# Only a real marketplace has marketplace data: 20b gave that answer for a side-hustle article site.
+_MARKET_HOSTS = ("acquire.com", "flippa.com", "empireflippers.com", "upwork.com", "fiverr.com", "gumroad.com", "etsy.com")
 # Measured 2026-10-31. "how much money people actually make, earnings data" returned government wage
 # tables for a regulatory idea, because Exa ranks on the words; these stayed on the idea.
 _FOCUS = "money actually received: revenue, income or sales figures, or how many people earn little or closed"
@@ -71,9 +77,10 @@ _NAMES_CAP = 400
 
 _LEGEND = ("Each quote is copied from the page linked, and code checked it is there. Independent: someone "
            "with nothing to sell reports money received, which shows someone earned that, not that most people "
-           "do. Self-reported: only the earner or a seller says so. "
-           "Against: someone with nothing to sell reports that most people earn little or close. Mixed: both of "
-           "those. No income shown: searched and found neither.")
+           "do. Similar product: payment data shows a product near this idea earned that, and it may be a "
+           "different business. Self-reported: only the earner or a seller says so. Against: someone with "
+           "nothing to sell reports, with a figure, that most people earn little or close. Mixed: earnings "
+           "and that. No income shown: searched and found neither.")
 
 _JUDGE_SYSTEM = """You check whether anyone really earns money from one idea, using excerpts from web pages.
 
@@ -175,14 +182,17 @@ def _entry(ledger: dict, name: str) -> dict:
 def label(entry: dict) -> str:
     rows = entry.get("evidence") or []
     earned = any(r["what"] == "earned" and r["from"] == _THIRD for r in rows)
+    similar = any(r["what"] == "earned" and r["from"] == _VERIFIED for r in rows)
     # Many, because live 2026-11-01 one publisher's collapse would have sunk a whole idea.
     failed = any(r["what"] == "failed" and r["from"] == _THIRD and r.get("many") for r in rows)
-    if earned and failed:
+    if (earned or similar) and failed:
         return "mixed"
     if earned:
         return "independent"
     if failed:
         return "against"
+    if similar:
+        return "similar product"
     if any(r["what"] == "earned" for r in rows):
         return "self-reported"
     return "no income shown" if entry.get("read") else "unchecked"
@@ -294,7 +304,8 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
     except (TypeError, ValueError):
         return None
     what = str(row.get("what", "")).strip().lower()
-    source = _THIRD if str(row.get("who", "")).strip().lower() in _WHO_THIRD else _SELLER
+    who = str(row.get("who", "")).strip().lower()
+    source = _THIRD if who in _WHO_THIRD else _SELLER
     quote = " ".join(str(row.get("quote", "")).split())
     if not 1 <= n <= len(results) or what not in ("earned", "failed"):
         return None
@@ -316,21 +327,28 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
     if what == "earned" and business == "tools" and not software:
         return None
     host = _host(page.get("url", ""))
-    if what == "earned" and (business == "idea" or software) and _on(host, _VERIFIED_HOSTS):
-        source = _THIRD
+    product = ""
+    if _on(host, _VERIFIED_HOSTS):
+        if what == "earned" and (business == "idea" or software):
+            source = _VERIFIED
+            product = re.split(r"\s+[-|]\s+", str(page.get("title", "")))[0][:40]
+        else:
+            source = _SELLER
     # A host the paper already cites is there for its prices. Live 2026-10-31 the paper's one
     # "independent" idea rested on a site that sells its database of those figures for $19.
-    elif _on(host, _SELF_HOSTS) or host in sellers or _SELF_TITLE_RE.search(str(page.get("title", ""))):
+    elif (_on(host, _SELF_HOSTS) or host in sellers or _SELF_TITLE_RE.search(str(page.get("title", "")))
+          or (who == "marketplace data" and not _on(host, _MARKET_HOSTS))):
         source = _SELLER
     # "Against" is a strong word, so it takes a figure on this idea. Live 2026-11-01 it was first given
     # to API wrappers for "93% of startups ultimately shut down", from a firm selling shutdowns.
     many = (str(row.get("scope", "")).strip().lower() == "many" and bool(re.search(r"\d", quote))
             and _speaks_of(idea, f"{page.get('title', '')} {quote}"))
-    return {"url": page.get("url", ""), "quote": clean(quote), "what": what, "from": source, "many": many, "at": today}
+    return {"url": page.get("url", ""), "quote": clean(quote), "what": what, "from": source, "many": many,
+            "product": clean(product), "at": today}
 
 
 def _strength(row: dict) -> tuple:
-    return (row["from"] != _THIRD, row["what"] != "earned", not row.get("many"))
+    return ((_THIRD, _VERIFIED, _SELLER).index(row["from"]), row["what"] != "earned", not row.get("many"))
 
 
 def _request(name: str, results: list, ask: str) -> str:
@@ -399,7 +417,8 @@ def section(ledger: dict) -> str:
     for e in sorted(entries, key=lambda e: KINDS.index(label(e))):
         count = e["searches"]
         lines.append(f"- **{e['name']}**: {label(e)}, after {count} search{'es' if count != 1 else ''}")
-        lines.extend(f'  - "{r["quote"]}" ({r["what"]}, {r["from"]}) <{r["url"]}>' for r in _shown(e))
+        lines.extend(f'  - "{r["quote"]}" ({r["what"]}, {r["from"]}'
+                     + (f', {r["product"]}' if r.get("product") else "") + f') <{r["url"]}>' for r in _shown(e))
     return "\n".join(lines) + "\n\n"
 
 

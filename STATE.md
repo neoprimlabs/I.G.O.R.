@@ -205,8 +205,10 @@ and called e-book generators the idea, so the check runs on medium and answers f
 one or many, who says it). E-book publishing then came out against, on a 2025 survey reported by Does
 It Pay (about 80% of authors with 1-3 books under $100 a month), with the generators dropped. The
 last fixes are tested offline only: selling software is the idea for software ideas, and "against"
-takes a figure naming the idea. 20b's relevance judgement stays weak, so a quote can be real and
-beside the point; the page shows the quote and link. Not yet seen: a real night on the real paper.
+takes a figure naming the idea. TrustMRR counts only as "similar product", named in the line, never
+independent: a search-only check of all seven ideas showed its nearest match is often another
+business, and most of those products have earned under $50000 in all. 20b's relevance judgement
+stays weak, so a quote can be real and beside the point. Not yet seen: a real night on the real paper.
 20b read 179034 of its unmeasured daily cap at 00:45 UTC 11-01, mostly these runs, so a night that
 stops on `daily cap 20b` would finally measure it and resumes the next night. Read `work/g3/paper.md`
 after the nights of 11-01 to 11-03: if nothing independent turns up, tell the user the ideas look
