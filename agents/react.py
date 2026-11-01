@@ -313,16 +313,20 @@ _TOOLS = [
     },
     {
         "name": "scheduled_message",
-        "description": "Send the user a Discord message at a later time, once or repeating. add: schedule one. update: change the time, brief or repeat of a pending one by id. pause / resume: stop and restart one without losing it. list: show pending. cancel: remove one by id.",
+        "description": "Send the user a Discord message at a later time, once or repeating. add: schedule one. update: change the time, brief or repeat of a pending one by id. pause / resume: stop and restart one without losing it. list: show pending, and scripts. cancel: remove one by id.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "update", "pause", "resume", "list", "cancel"]},
                 "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If the user dictated exact words, put them in double quotes"},
-                "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM"},
+                "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM, or HH:MM for the next time the clock reads that"},
                 "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
-                "repeat": {"type": "string", "enum": ["daily", "weekdays", "weekly", "none"], "description": "add, update: send again at the same local time. none stops repeating"},
+                "repeat": {"type": "string", "enum": ["hourly", "daily", "weekdays", "weekly", "none"], "description": "add, update: send again at the same local time. none stops repeating. hourly needs a script"},
+                "script": {"type": "string", "description": "add, update: a script from list, run first. If it prints nothing, nothing is written or sent. With no brief, what it prints is the message. none removes it"},
+                "script_only": {"type": "boolean", "description": "add, update: no model, just what the script prints"},
+                "context_from": {"type": "array", "items": {"type": "string"}, "description": "add, update: ids of up to 3 other messages whose latest output this one reads"},
+                "keep_only": {"type": "boolean", "description": "add, update: keep the result for context_from instead of sending it"},
                 "id": {"type": "string", "description": "update, pause, resume, cancel: id from list"},
             },
             "required": ["action"],
@@ -709,7 +713,8 @@ _SECRET_NAMES = frozenset({"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "creden
                            # Which MCP servers exist decides where data can go: the user's choice alone.
                            "mcp_servers.json", "mcp_tools.json"})
 _SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
-_SECRET_FOLDERS = frozenset({".ssh", ".git", ".gnupg"})
+# cron_scripts: a script runs with the network, so IGOR must not be able to write one (prerun.py).
+_SECRET_FOLDERS = frozenset({".ssh", ".git", ".gnupg", "cron_scripts"})
 
 
 def _is_secret_file(resolved) -> bool:

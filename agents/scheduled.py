@@ -10,6 +10,13 @@ runs a job when it fires. React can only give a brief (run_tool); content remain
 for callers in code. If writing fails the brief is sent as plain text, because a
 message that arrives plainly beats one that vanishes.
 
+As Hermes' cron jobs, an entry can run a script first (prerun.py), which can end the
+run before any model call; send what the script prints with no model at all
+(script_only, Hermes' no_agent); read the latest output of other entries
+(context_from); and keep its result without sending it (keep_only, Hermes' deliver
+local), so one entry can gather for another. Hermes does not wait for an upstream job
+in the same tick; here an entry that reads others goes last.
+
 A polled file rather than one APScheduler job per message, because APScheduler
 3.11.3 silently drops a date job more than one second late (measured on the server,
 2026-09-12). A message due during a deploy would vanish. Here an overdue message is
@@ -23,12 +30,14 @@ import json
 import logging
 import os
 import random
+import re
 import secrets
 from datetime import datetime, time, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
 import clock
 import config
+import prerun
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +46,7 @@ _MAX_AHEAD = timedelta(days=30)
 _MAX_ATTEMPTS = 10
 _LATE_AFTER = timedelta(minutes=5)
 _AT_FORMAT = "%Y-%m-%d %H:%M"
+_BARE_TIME = re.compile(r"^\d{1,2}:\d{2}$")
 
 # Local hour ranges the user can name. The code picks the minute, never the model:
 # asked for "some random times", it picked one number once and called it random.
@@ -50,14 +60,19 @@ _WINDOWS = {
 }
 _EARLIEST_AHEAD = timedelta(minutes=5)
 _SAME_SLOT = timedelta(minutes=5)
-_REPEATS = ("daily", "weekdays", "weekly")
-_REPEAT_WORDS = {"daily": "every day", "weekdays": "every weekday", "weekly": "every week"}
+_REPEATS = ("hourly", "daily", "weekdays", "weekly")
+_REPEAT_WORDS = {"hourly": "every hour", "daily": "every day", "weekdays": "every weekday",
+                 "weekly": "every week"}
 # Continuity, as Hermes' cron: each run of a repeating message is shown what the
 # series already said. Live 2026-10-16, a weekday "practical idea" series got one
 # specific idea as its brief, so every weekday would have repeated it. Hermes passes
 # the latest output; three, because Thursday repeating Tuesday is the same failure.
 _KEEP_RECENT = 3
 _RECENT_CHARS = 600
+_JOB_FIELDS = ("script", "script_only", "context_from", "keep_only")
+_MAX_SOURCES = 3
+_OUTPUT_CHARS = 1500
+_KEEP_OUTPUT = timedelta(days=30)
 
 
 class _Unreadable(Exception):
@@ -138,7 +153,16 @@ def _due(at: Optional[str], in_minutes: Optional[int], window: Optional[str],
     or None and what is wrong with it."""
     if at is not None:
         try:
-            due = datetime.strptime(at.strip(), _AT_FORMAT).replace(tzinfo=clock.USER_TZ)
+            # 2026-11-01, live: "every day at 8:50am" came as at "08:50", and the refusal cost a
+            # whole model call to learn a date nobody had asked for.
+            if _BARE_TIME.match(at.strip()):
+                local = now.astimezone(clock.USER_TZ)
+                due = datetime.combine(local.date(), datetime.strptime(at.strip(), "%H:%M").time(),
+                                       tzinfo=clock.USER_TZ)
+                if due <= now:
+                    due = datetime.combine(local.date() + timedelta(days=1), due.time(), tzinfo=clock.USER_TZ)
+            else:
+                due = datetime.strptime(at.strip(), _AT_FORMAT).replace(tzinfo=clock.USER_TZ)
         except ValueError:
             return None, f"could not read {at!r}. Use local time as YYYY-MM-DD HH:MM."
     elif window is not None:
@@ -166,7 +190,7 @@ def _repeat(value: Optional[str]) -> tuple[Optional[str], str]:
     if value in ("", "none", "once", "off"):
         return "", ""
     if value not in _REPEATS:
-        return None, "repeat must be daily, weekdays or weekly, or none to stop repeating."
+        return None, "repeat must be hourly, daily, weekdays or weekly, or none to stop repeating."
     return value, ""
 
 
@@ -174,6 +198,9 @@ def _next_occurrence(due: datetime, repeat: str, now: datetime) -> datetime:
     """The next local-clock occurrence after now. Stepping the local calendar, not
     adding 24h in UTC, keeps 9:00 at 9:00 across a daylight-saving change, and
     skipping past now means a restart sends one late message, not a backlog."""
+    if repeat == "hourly":
+        missed = (now - due) // timedelta(hours=1) + 1
+        return (due + missed * timedelta(hours=1)).replace(microsecond=0)
     local = due.astimezone(clock.USER_TZ)
     wall, day = local.time(), local.date()
     step = timedelta(days=7 if repeat == "weekly" else 1)
@@ -193,12 +220,103 @@ def _onto_weekday(due: datetime) -> datetime:
     return local.astimezone(timezone.utc)
 
 
+def _outputs_path():
+    return config.MEMORY_DIR / "scheduled_outputs.json"
+
+
+def _outputs() -> dict:
+    """What each entry last produced, for context_from. An entry that sent once is gone from
+    scheduled.json by then, so this is its own file. A missing or bad file is no outputs."""
+    try:
+        data = json.loads(_outputs_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items()
+            if isinstance(v, dict) and isinstance(v.get("at"), str) and isinstance(v.get("text"), str)}
+
+
+def _remember(entry_id: str, text: str, now: datetime) -> None:
+    """Never raises: the message has already gone."""
+    try:
+        kept = {k: v for k, v in _outputs().items()
+                if now - datetime.fromisoformat(v["at"]) < _KEEP_OUTPUT}
+        kept[entry_id] = {"at": now.isoformat(), "text": text[:_OUTPUT_CHARS]}
+        path = _outputs_path()
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(kept, indent=1), encoding="utf-8")
+        os.replace(tmp, path)
+    except (OSError, ValueError) as e:
+        logger.error("Could not keep the output of %s - %s: %s", entry_id, type(e).__name__, e)
+
+
+def _material(script: Optional[str], printed: str, sources: Optional[list]) -> str:
+    """What a run has to work with, dated so a stale upstream reads as stale. An upstream with
+    nothing yet is said outright, or the model fills the gap by itself."""
+    parts = [f"What {script} printed just now:\n{printed}"] if printed else []
+    outputs = _outputs() if sources else {}
+    for source in sources or []:
+        got = outputs.get(source)
+        parts.append(f"The latest from scheduled message {source}, {_local(got['at'])}:\n{got['text']}"
+                     if got else f"Scheduled message {source} has no output yet.")
+    return "\n\n".join(parts)
+
+
+def _job_problem(entry: dict, known: set) -> str:
+    """What is wrong with these job settings together, or ""."""
+    script = entry.get("script")
+    if script:
+        why = prerun.problem(script)
+        if why:
+            return why
+    if entry.get("script_only") and not script:
+        return "script_only needs a script."
+    if not entry.get("script_only") and not entry.get("brief") and not entry.get("content"):
+        return "give a brief, or script_only to send what the script prints."
+    if entry.get("repeat") == "hourly" and not script:
+        return "only a message with a script can repeat hourly: any other run spends the daily budget every hour."
+    sources = entry.get("context_from") or []
+    if sources and entry.get("script_only"):
+        return "a script_only message has no model to read context_from."
+    if len(sources) > _MAX_SOURCES:
+        return f"context_from takes at most {_MAX_SOURCES} ids."
+    unknown = [s for s in sources if s not in known or s == entry.get("id")]
+    if unknown:
+        return f"context_from names {', '.join(unknown)}, which is not another scheduled message. List them to find it."
+    return ""
+
+
+def _known_ids(entries: list[dict]) -> set:
+    return {e["id"] for e in entries} | set(_outputs())
+
+
+def _job_words(entry: dict) -> str:
+    words = []
+    if entry.get("script_only"):
+        words.append(f"sends what {entry['script']} prints, with no model")
+    elif entry.get("script"):
+        words.append(f"runs {entry['script']} first")
+    if entry.get("context_from"):
+        words.append("reads the latest from " + ", ".join(entry["context_from"]))
+    if entry.get("keep_only"):
+        words.append("kept, not sent")
+    return "; ".join(words)
+
+
 def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] = None,
         window: Optional[str] = None, brief: Optional[str] = None,
-        now: Optional[datetime] = None, repeat: Optional[str] = None) -> str:
+        now: Optional[datetime] = None, repeat: Optional[str] = None,
+        script: Optional[str] = None, script_only: Optional[bool] = False,
+        context_from: Optional[list] = None, keep_only: Optional[bool] = False) -> str:
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
     brief = (brief or "").strip()
+    # With no brief there is nothing for a model to write. Refusing this, live, drew a made-up
+    # brief, and with it a model call on a job meant to cost nothing.
+    script_only = script_only or bool(script and not brief and not content)
+    job = {k: v for k, v in (("script", script), ("script_only", bool(script_only)),
+                             ("context_from", context_from), ("keep_only", bool(keep_only))) if v}
     if content and brief:
         # 2026-10-14: asked for "thought provoking material" at 1am, the model sent
         # both, was refused, and retried keeping the words it had pre-written. The
@@ -207,7 +325,7 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
         # alongside are its own, not dictated, so the brief wins.
         logger.info("Scheduled message given both content and brief, keeping the brief")
         content = ""
-    if not content and not brief:
+    if not content and not brief and not job.get("script_only"):
         return ("Not scheduled: give either content (the exact words to send) or brief "
                 "(what the message is about, written when it sends).")
     if sum(x is not None for x in (at, in_minutes, window)) != 1:
@@ -227,15 +345,18 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
     except _Unreadable as e:
         logger.error("scheduled.json is unreadable, refusing to add - %s", e)
         return "Not scheduled: the scheduled message store is unreadable. Nothing was changed."
+    problem = _job_problem({**job, "brief": brief, "content": content, "repeat": repeat}, _known_ids(entries))
+    if problem:
+        return f"Not scheduled: {problem}"
     # 2026-10-16, live: told to "draft something new at the scheduled time", React
     # added a second 1am entry beside the first, though the add result listed it and
     # said to cancel. Two messages minutes apart are never what was meant. Merging
     # rather than replacing, because "pills at 9" and "call mom at 9" are two real
     # requests and replacing would drop one.
-    if brief and not repeat:
+    if brief and not repeat and not job:
         for e in entries:
             if (e.get("brief") and not e.get("content") and not e.get("failed")
-                    and not e.get("repeat")
+                    and not e.get("repeat") and not any(e.get(k) for k in _JOB_FIELDS)
                     and abs(datetime.fromisoformat(e["due"]) - due) <= _SAME_SLOT):
                 e["brief"] = (f"{brief} (This updates or adds to an earlier request for the "
                               f"same time: {e['brief']})")
@@ -249,12 +370,18 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
         return f"Not scheduled: {_MAX_PENDING} messages are already pending. Cancel one first."
 
     entry = {"id": secrets.token_hex(3), "due": due.isoformat(), "content": content,
-             "brief": brief, "created": now.isoformat(), "attempts": 0, "repeat": repeat}
+             "brief": brief, "created": now.isoformat(), "attempts": 0, "repeat": repeat, **job}
     others = list(entries)
     entries.append(entry)
     _save(entries)
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
     reply = f"Okay, {_human(due, now)}" + (f", then {_REPEAT_WORDS[repeat]}." if repeat else ".")
+    if job:
+        reply += f" It {_job_words(entry)}."
+    # On its own line: the first line is shown to the user under the reply. The next call has to
+    # name this entry, and nothing else tells the model its id.
+    if job.get("keep_only"):
+        reply += f"\nFor you, not the user: give context_from this id on the message that reads it: {entry['id']}"
     # 2026-10-14: "I said 1am" added a second entry and left the misread 10am one in
     # place, and both sent. The model never saw it - nothing showed what was pending.
     if others:
@@ -271,7 +398,8 @@ def _lines(entries: list[dict]) -> str:
         state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
         state += f"  repeats {e['repeat']}" if e.get("repeat") else ""
         state += "  PAUSED" if e.get("paused") else ""
-        summary = (e.get("content") or e.get("brief") or "")[:80]
+        state += f"  {_job_words(e)}" if _job_words(e) else ""
+        summary = (e.get("content") or e.get("brief") or e.get("script") or "")[:80]
         lines.append(f"{e['id']}  {_local(e['due'])}{state}  {summary}")
     return "\n".join(lines)
 
@@ -281,9 +409,11 @@ def list_pending() -> str:
         entries = _load()
     except _Unreadable:
         return "The scheduled message store is unreadable."
+    scripts = prerun.available()
+    extra = f"\nScripts a message can run first: {', '.join(scripts)}" if scripts else ""
     if not entries:
-        return "No scheduled messages."
-    return _lines(entries)
+        return "No scheduled messages." + extra
+    return _lines(entries) + extra
 
 
 def cancel(entry_id: str) -> str:
@@ -302,8 +432,10 @@ def cancel(entry_id: str) -> str:
 
 def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = None,
            window: Optional[str] = None, brief: Optional[str] = None,
-           now: Optional[datetime] = None, repeat: Optional[str] = None) -> str:
-    """Change a pending message in place: its time, its brief, or both.
+           now: Optional[datetime] = None, repeat: Optional[str] = None,
+           script: Optional[str] = None, script_only: Optional[bool] = None,
+           context_from: Optional[list] = None, keep_only: Optional[bool] = None) -> str:
+    """Change a pending message in place: its time, its brief, its job settings, or a mix.
 
     A correction used to be cancel-then-add, two calls, and React did the add and
     skipped the cancel often enough that both messages sent (2026-10-14, and again
@@ -319,7 +451,9 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     repeat, problem = _repeat(repeat)
     if problem:
         return f"Not updated: {problem}"
-    if not times and not brief and repeat is None:
+    job = {k: v for k, v in (("script", script), ("script_only", script_only),
+                             ("context_from", context_from), ("keep_only", keep_only)) if v is not None}
+    if not times and not brief and repeat is None and not job:
         return "Not updated: give a new time, a new brief, a repeat, or a mix."
     due = None
     if times:
@@ -334,6 +468,16 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     entry = next((e for e in entries if e["id"] == entry_id), None)
     if entry is None:
         return f"Not updated: no scheduled message with id {entry_id!r}. List them to find it."
+    after = {**entry, **job, **({"brief": brief, "content": ""} if brief else {}),
+             **({"repeat": repeat} if repeat is not None else {})}
+    problem = _job_problem(after, _known_ids(entries))
+    if problem:
+        return f"Not updated: {problem}"
+    for field, value in job.items():
+        if value:
+            entry[field] = value
+        else:
+            entry.pop(field, None)
     if due is not None:
         entry["due"] = due.isoformat()
         entry["attempts"] = 0
@@ -391,32 +535,47 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
         return 0
 
     delivered = 0
-    for entry in due:
+    for entry in sorted(due, key=lambda e: bool(e.get("context_from"))):
         text = entry.get("content") or ""
         brief = entry.get("brief") or ""
-        if brief and not text:
+        script, printed, quiet, broke = entry.get("script"), "", False, False
+        if script:
+            result, why = await prerun.run(script)
+            if result is None:
+                # One alert for a run of failures: an hourly job would otherwise say so every hour.
+                broke, quiet = True, bool(entry.get("script_failures"))
+                text = f"The scheduled script {script} failed: {why}"
+            elif not prerun.wakes(result):
+                quiet = True
+            elif entry.get("script_only"):
+                text = result
+            else:
+                printed = result
+        if brief and not text and not quiet:
             # Composition is a model call and can fail. A check-in that arrives in
             # plain words beats one that vanishes, so the brief is the fallback.
             writer = compose
             if writer is None:
                 from agents.compose import write as writer
+            extra = {"recent": entry.get("recent") or []} if entry.get("repeat") else {}
+            material = _material(script, printed, entry.get("context_from"))
+            if material:
+                extra["material"] = material
             try:
-                if entry.get("repeat"):
-                    written = await writer(brief, now, recent=entry.get("recent") or [])
-                else:
-                    written = await writer(brief, now)
+                written = await writer(brief, now, **extra)
             except Exception as e:
                 logger.error("Composing %s failed - %s: %s", entry["id"], type(e).__name__, e)
                 written = None
-            text = (written or "").strip() or brief
+            text = (written or "").strip() or "\n\n".join(x for x in (brief, printed) if x)
         body = text
         # Hermes' cron: a job with nothing to report says so and nothing is sent. A failed
         # run never gets here with the mark, so it still reaches the user.
-        silent = bool(brief) and not entry.get("content") and _SILENT in text
+        silent = quiet or (not broke and bool(brief) and not entry.get("content") and _SILENT in text)
+        keep = bool(entry.get("keep_only")) and not broke
         if now - datetime.fromisoformat(entry["due"]) > _LATE_AFTER:
             text = f"(Scheduled for {_local(entry['due'])}, delivered late.)\n{text}"
         try:
-            ok = silent or bool(await send_fn(text))
+            ok = silent or keep or bool(await send_fn(text))
         except Exception as e:
             logger.error("Scheduled message %s send raised - %s: %s", entry["id"], type(e).__name__, e)
             ok = False
@@ -430,19 +589,27 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
             return delivered
 
         if ok:
-            delivered += not silent
+            delivered += not silent and not keep
+            produced = not silent and not broke
+            if produced:
+                _remember(entry["id"], body, now)
             kept = next((x for x in entries if x["id"] == entry["id"]), None)
+            if kept is not None and broke:
+                kept["script_failures"] = kept.get("script_failures", 0) + 1
+            elif kept is not None:
+                kept.pop("script_failures", None)
             if kept is not None and kept.get("repeat"):
                 kept["due"] = _next_occurrence(datetime.fromisoformat(kept["due"]),
                                                kept["repeat"], now).isoformat()
                 kept["attempts"] = 0
-                if not silent:
+                if produced:
                     kept["recent"] = ([body[:_RECENT_CHARS]] + (kept.get("recent") or []))[:_KEEP_RECENT]
                 logger.info("Scheduled message %s %s, next %s", entry["id"],
-                            "stayed silent" if silent else "delivered", kept["due"])
+                            "stayed silent" if silent else "kept" if keep else "delivered", kept["due"])
             else:
                 entries = [x for x in entries if x["id"] != entry["id"]]
-                logger.info("Scheduled message %s %s", entry["id"], "stayed silent" if silent else "delivered")
+                logger.info("Scheduled message %s %s", entry["id"],
+                            "stayed silent" if silent else "kept" if keep else "delivered")
         else:
             for x in entries:
                 if x["id"] != entry["id"]:
@@ -472,8 +639,22 @@ def status() -> str:
         state = " (failed to send)" if e.get("failed") else ""
         state += f" (repeats {e['repeat']})" if e.get("repeat") else ""
         state += " (paused)" if e.get("paused") else ""
-        lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or '')[:80]}")
+        state += f" ({_job_words(e)})" if _job_words(e) else ""
+        lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or e.get('script') or '')[:80]}")
     return "Messages scheduled for the user:\n" + "\n".join(lines)
+
+
+def _flag(value) -> Optional[bool]:
+    return None if value in ("", None) else value is True or str(value).strip().lower() == "true"
+
+
+def _ids(value) -> Optional[list]:
+    """A list, or one id, or several in a string; none clears them; absent stays None."""
+    if value in ("", None, []):
+        return None
+    parts = value if isinstance(value, list) else re.split(r"[,\s]+", str(value))
+    ids = [str(p).strip() for p in parts if str(p).strip()]
+    return [] if ids == ["none"] else ids
 
 
 def run_tool(inputs: dict) -> str:
@@ -493,12 +674,20 @@ def run_tool(inputs: dict) -> str:
             in_minutes = None
         elif isinstance(in_minutes, str) and in_minutes.strip().isdigit():
             in_minutes = int(in_minutes.strip())
+        # "Start now", as a repeating script is usually asked for: live it cost a refusal and a call.
+        if in_minutes == 0:
+            in_minutes = 1
         brief = inputs.get("brief") or inputs.get("content") or None
         repeat = inputs.get("repeat") or None
+        script = inputs.get("script") or None
+        if isinstance(script, str) and script.strip().lower() == "none":
+            script = ""
+        job = {"script": script, "script_only": _flag(inputs.get("script_only")),
+               "context_from": _ids(inputs.get("context_from")), "keep_only": _flag(inputs.get("keep_only"))}
         if action == "update":
             return update(inputs.get("id", ""), at=at, in_minutes=in_minutes,
-                          window=window, brief=brief, repeat=repeat)
-        return add(at=at, in_minutes=in_minutes, window=window, brief=brief, repeat=repeat)
+                          window=window, brief=brief, repeat=repeat, **job)
+        return add(at=at, in_minutes=in_minutes, window=window, brief=brief, repeat=repeat, **job)
     if action == "list":
         return list_pending()
     if action == "cancel":

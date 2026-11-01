@@ -24,6 +24,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 import config
 
@@ -46,11 +47,13 @@ def _path(p: str) -> Path:
     return Path(p) if p.startswith("/") else config.BASE_DIR / p
 
 
-def command(argv: list[str], hide_memory: bool = False) -> list[str]:
+def command(argv: list[str], hide_memory: bool = False, network: bool = False,
+            mounts: tuple = (), env: Optional[dict] = None) -> list[str]:
     """argv wrapped in bubblewrap with the mounts and limits above. Paths that do not
     exist are skipped: bubblewrap cannot mount over a file that is not there.
     hide_memory empties the whole memory folder, for a script that reaches tools only
-    through the rules of script_tool's caller."""
+    through the rules of script_tool's caller. network and mounts are for prerun.py's
+    scripts alone, which only the user or Claude Code can write."""
     base = str(config.BASE_DIR)
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp"]
@@ -68,14 +71,20 @@ def command(argv: list[str], hide_memory: bool = False) -> list[str]:
             args += ["--tmpfs", str(p)]
     if hide_memory and config.MEMORY_DIR.is_dir():
         args += ["--tmpfs", str(config.MEMORY_DIR)]
-    args += ["--unshare-net", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+    for flag, host, inside in mounts:
+        args += [flag, str(host), inside]
+    if not network:
+        args += ["--unshare-net"]
+    args += ["--unshare-pid", "--unshare-ipc", "--unshare-uts",
              "--die-with-parent", "--new-session", "--clearenv",
              "--setenv", "PATH", f"{base}/venv/bin:/usr/local/bin:/usr/bin:/bin",
              "--setenv", "HOME", base,
              "--setenv", "LANG", "C.UTF-8",
              "--setenv", "XDG_CACHE_HOME", "/tmp/.cache",
-             "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
-             "--chdir", base,
+             "--setenv", "PYTHONDONTWRITEBYTECODE", "1"]
+    for name, value in (env or {}).items():
+        args += ["--setenv", name, value]
+    args += ["--chdir", base,
              "--", "prlimit", *_LIMITS, "--", *argv]
     return args
 
@@ -93,7 +102,8 @@ def _probe() -> str:
     return ""
 
 
-def prepare(argv: list[str], hide_memory: bool = False) -> list[str]:
+def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
+            mounts: tuple = (), env: Optional[dict] = None) -> list[str]:
     """The sandboxed argv, or Unavailable. A success is remembered; a failure is
     probed again next time, so one bad moment does not disable the tools until a
     restart."""
@@ -107,7 +117,7 @@ def prepare(argv: list[str], hide_memory: bool = False) -> list[str]:
                 f"({why}). Nothing ran, and commands are never run outside it. Tell the user; "
                 f"it needs fixing on the server.")
         _ready = True
-    return command(argv, hide_memory)
+    return command(argv, hide_memory, network, mounts, env)
 
 
 def startup_check() -> str:

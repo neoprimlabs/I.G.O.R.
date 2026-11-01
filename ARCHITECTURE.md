@@ -7,7 +7,7 @@ reachable with `offset`. Describe nothing unread.
 
 A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
 `VM.Standard.E2.1.Micro` (956 MB), systemd. Groq free tier
-via the `openai` SDK, Exa for search, markdown plus SQLite for storage.
+via the `openai` SDK, Exa for search, markdown plus SQLite.
 
 ## What does NOT exist
 
@@ -55,7 +55,8 @@ scheduled messages and the page heartbeat (60s each) and the overnight tick (hou
 log to `history.db`.
 
 **Scheduled messages**: `scheduled_message` keeps timed messages in
-`memory/scheduled.json`. **Presence** is separate: one check-in
+`memory/scheduled.json`; one can run a script first or read another's output.
+**Presence** is separate: one check-in
 a day behind code gates, off unless `memory/presence_config.md` says `state: on`.
 
 **Overnight loop**: hourly 00:00-06:59 local, a fixed pipeline (20b researches, 120b
@@ -78,8 +79,8 @@ reply that ran out of steps or offers to go on is judged by 20b. On `continue`, 
 3 more rounds of 4 steps, each reply sent as it lands; stops at 45000 tokens or under
 60000 left today. A round keeps the turn's web and private lockouts; any user message stops it.
 
-**Cost**: Groq's free tier caps tokens per model per day; 120b's daily token budget
-(200000) is shared by Direct and React. `usage.py` counts what IGOR spends.
+**Cost**: Groq caps tokens per model per day; 120b's daily token budget (200000) is
+shared by Direct and React. `usage.py` counts spend.
 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
@@ -99,14 +100,8 @@ and the whole file inside ten 3700-character `read_file` windows.
 
 ## Stack and host
 
-- **Language:** Python 3.10
-- **Interface:** discord.py
-- **Models:** Groq free tier through the `openai` SDK, per-agent models
-- **Scheduling:** APScheduler
-- **Search:** exa-py
-- **Persistence:** markdown files plus SQLite, no database server
-- **Host:** Oracle Cloud `VM.Standard.E2.1.Micro`, **x86_64**, Ubuntu 22.04,
-  1 OCPU / 956 MB RAM plus a 2 GB swapfile, `/opt/igor`, systemd
+Python 3.10, discord.py, APScheduler, exa-py, per-agent Groq models. Host: **x86_64**,
+Ubuntu 22.04, 1 OCPU, 956 MB plus a 2 GB swapfile, `/opt/igor`, systemd.
 
 ---
 
@@ -187,9 +182,6 @@ A Discord DM travels this path every time:
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
 | Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` | none |
 
-`agents/research.py` is an Exa search wrapper (`_run_search`, `_format_results`),
-called by React and Monitor.
-
 ### llm.complete - the shared text-completion wrapper
 
 `llm.py` holds the only copy of "how a Groq text completion fails". Two failures
@@ -216,10 +208,9 @@ Two call sites stay out, on purpose:
 - **React's forced final answer** and **the router** - doubling could push React's
   trimmed prompt past the bucket; the router reads one word and fails fast.
 
-Exceptions propagate. Callers handle rate limits differently on purpose: the
-orchestrator notifies and sleeps on a per-minute limit but answers at once on the
-daily cap, quoting the wait from Groq's 429 body (`_rate_limit_reply`), the evaluator fails open, Monitor drops the digest
-section, the research loop stops and reports what it has.
+Exceptions propagate. On a rate limit the orchestrator notifies and sleeps, or on the daily cap
+answers at once with Groq's wait (`_rate_limit_reply`); the evaluator fails open, Monitor drops the
+section, the research loop reports what it has.
 
 ### Direct
 
@@ -346,6 +337,15 @@ delivery spends daily tokens on 120b. Each run sees the series' last three
 messages, marked sent, never built. An IGOR
 series gets its subject from code, by date.
 
+**Scripts and chains** (`prerun.py`, Hermes' cron `script`, `no_agent`, `context_from`): a message
+can name a script in `memory/private/cron_scripts/`, sealed from every tool, so only the user or
+Claude Code adds one. It runs first in the sandbox, but with the network and its own folder
+(`IGOR_STATE`), 60s, and can read ordinary memory. Printing nothing or `{"wakeAgent": false}`
+means no model call and no message; failures alert once a streak. `script_only`, or no brief, sends
+what it prints with no model; only a script can repeat `hourly`. `context_from` reads up to 3 other
+messages' latest output (`scheduled_outputs.json`); `keep_only` keeps a result unsent. A writer
+sees all this as outside text.
+
 Presence writes on 120b. Gates in code before any model call: silent 03:00-11:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits until 2h after the user last spoke. It sees
@@ -372,8 +372,7 @@ Edits exactly three files:
 filename, validates digest section names against the set the digest actually
 reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
 
-**If its output matches the current file, it writes nothing and says so**: a write
-agent a question can reach needs a guard that does not depend on routing.
+**If its output matches the current file, it writes nothing and says so.**
 
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
 whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
@@ -614,8 +613,6 @@ raising, so the deploy gate rolls back. It verifies:
 **What executes today.** `igor.service` runs `main.py`. User `igor` has no sudoers
 entry, so only root-owned scripts restart IGOR. What protects the system:
 
-- `main._smoke_test()` - config sanity plus importing every agent module; exits 1
-  rather than raising, so a broken commit refuses to start
 - systemd `Restart=always` - a bad deploy is a visible crash loop
 - `heartbeat.sh`, 2-minute timer: Discord silent past 300s restarts IGOR and alerts, once per half hour, never during a deploy
 - `prestart.sh`, systemd `ExecStartPre`, root: a start runs only the tree the last
@@ -658,8 +655,7 @@ other start sets it aside. Below the host (terminated once, July 2026), the PC's
 
 1. **The router can misroute at the margins** (35 of 35 live, 2026-10-22). Guards
    cover the harmful cases; Monitor and SelfDescribe hand off what is not theirs.
-2. **Still on Oracle Always Free.** An entitlement change can terminate the
-   instance again, as it did in July 2026.
+2. **Oracle Always Free** can terminate the instance, as in July 2026.
 
 ---
 
@@ -670,4 +666,4 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 - **Dev and Comms as separate specialists.** Absorbed into React.
 - **Any UI beyond Discord.** Spec Phase 2.
 - **Spoken replies.** Speech waits for IGOR's own app.
-- **Multi-user anything.** Memory files are global, `context.db` has no user column.
+- **Multi-user anything.**

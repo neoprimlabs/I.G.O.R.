@@ -19,7 +19,9 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | `redact_secrets` | `sanitize.redact` | |
 | Protected paths | `_is_secret_file` | |
 | Cron `[SILENT]` | `scheduled_message` | |
-| Cron | `scheduled_message`, `compose.write` | Read-only tools. No pre-run scripts or chained jobs. |
+| Cron | `scheduled_message`, `compose.write` | Read-only tools. Repeats hourly at most, and hourly only with a script; Hermes takes any interval. |
+| Cron `script`, `no_agent`, wake gate | `prerun.py` | Only the user or Claude Code can add a script: the folder is sealed from every tool. In the sandbox with the network, no keys and no private files. 60 seconds, not an hour. A failure alerts once a streak, not every run. |
+| Cron `context_from`, `deliver: local` | `context_from`, `keep_only` | The latest output, dated, up to 3 sources. An entry that reads others goes last in a tick, where Hermes does not wait. |
 | `/heartbeat` | `heartbeats.py` | Code compares pages and only a change reaches a model; a full turn per tick would spend the day. |
 | `memory` tool, add, patch, remove, batched | `memory_entries.py` | |
 | USER.md, MEMORY.md | `user.md`, `preferences.md` | `user.md` reaches Direct and job searches, not every React turn: see below. |
@@ -59,8 +61,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Still open, most useful first
 
-1. **Chained scheduled jobs and pre-run scripts.**
-2. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+1. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 

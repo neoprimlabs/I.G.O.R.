@@ -283,7 +283,7 @@ _RUN_TOGETHER_TIME = re.compile(r"\b(1[0-2]|0?[1-9])([0-5]\d)(\s?)([ap]\.?m\.?)(
 _SCHEDULING = re.compile(
     r"\b(remind|message|text|ping|send) me\b.*\b(at|around|by|in|on|every|tomorrow|tonight|this "
     r"(morning|afternoon|evening)|later|daily|weekly|weekdays?)\b"
-    r"|\bevery (day|weekday|week|morning|evening|night|monday|tuesday|wednesday|thursday|"
+    r"|\bevery (hour|day|weekday|week|morning|evening|night|monday|tuesday|wednesday|thursday|"
     r"friday|saturday|sunday)\b"
     r"|\b(make|move|push|change) it (to )?(\d|noon|midnight)"
     r"|\b(pause|resume|unpause|cancel|stop) (that|it|the|this|my)\b.*\b(message|reminder|one|"
