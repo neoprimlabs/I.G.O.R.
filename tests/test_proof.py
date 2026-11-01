@@ -141,6 +141,8 @@ def test_only_a_real_quote_counts() -> None:
     _check("a quote on the page is kept", judged(_row())["from"] == "third party")
     _check("spacing and case are forgiven", judged(_row(quote="REVENUE of   $40,000 last year")) is not None)
     _check("a quote the model made up is dropped", judged(_row(quote="revenue of $90,000 last year")) is None)
+    _check("one in the page's title counts, since the model is shown it",
+           judged(_row(quote="$14,934 last 30 days"), _page(title="Certifyr - $14,934 last 30 days | TrustMRR")) is not None)
     _check("past the excerpt it read does not count",
            judged(_row(quote="revenue of $40,000 last year"),
                   _page(body="x" * proof._BODY_CAP + " revenue of $40,000 last year")) is None)
@@ -227,7 +229,7 @@ def test_a_session_tests_the_next_idea() -> None:
            text.index("## Proof checked") < text.index("## Kettle alerts") and text.index("Some ideas") < text.index("## Proof checked"), text)
     _check("it explains its labels", "Independent: someone with nothing to sell" in text)
     _check("and that one earner is not everyone", "not that most people do" in text)
-    _check("and shows the words and the page", '"revenue of $40,000 last year" (third party) <https://news.example/a>' in text, text)
+    _check("and shows the words and the page", '"revenue of $40,000 last year" (earned, third party) <https://news.example/a>' in text, text)
 
     import work
     entry = work._load()[-1]
@@ -307,6 +309,8 @@ def test_failures_do_not_become_findings() -> None:
     _check("each search says what it was looking for",
            "payment-verified" in stub.judged[0][0] and "really earn" in stub.judged[1][0] and "failures" in stub.judged[2][0],
            stub.judged[2][0][:200])
+    _check("and a failure search asks Exa about failure, not money",
+           "closed or failed" in stub.searches[2][1]["highlights"] and "money actually" in stub.searches[0][1]["highlights"])
     tmp.cleanup()
 
     overnight, folder, tmp = _setup()
@@ -401,6 +405,19 @@ def test_section_text() -> None:
               "c": {"name": "Not searched", "searches": 0, "read": 0, "evidence": []}}
     text = proof.section(ledger)
     _check("at most three quotes an idea", text.count('"q') == 3, text)
+    many = _full_entry(evidence=[_ev(quote=f"win {i} revenue") for i in range(4)] + [_ev("failed", "seller", quote="we closed")])
+    shown = proof._shown(many)
+    _check("a failure is shown beside the wins, even a founder's own",
+           len(shown) == 3 and shown[-1]["quote"] == "we closed", str(shown))
+    ledger2: dict = {}
+    wins = "\n".join(_row(quote=f"revenue of ${i},000 here") for i in range(2, 9))
+    loss = _row(what="failed", source="seller", quote="we closed the doors")
+    page = _page(body=" ".join(f"revenue of ${i},000 here." for i in range(2, 9)) + " Sadly we closed the doors.")
+    stub = _Stub(replies=[wins + "\n" + loss], results=[page])
+    asyncio.run(proof.step("Kettle price alerts", ledger2, stub.search, stub.complete))
+    rows = proof._find(ledger2, "Kettle price alerts")["evidence"]
+    _check("wins cannot crowd a failure out of the ledger",
+           len(rows) == proof._KEEP_EARNED + 1 and rows[-1]["what"] == "failed", str(rows))
     _check("an idea with nothing says so", "**Birdhouses**: no income shown, after 3 searches" in text, text)
     _check("one never searched is not listed", "Not searched" not in text, text)
     _check("strongest first", text.index("Kettle") < text.index("Birdhouses"), text)
