@@ -367,7 +367,7 @@ async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
     form, domains, focus, ask = _FORMS[entry.get("searches", 0)]
     try:
         results = await search(form.format(name), max_results=_RESULTS, max_chars=_BODY_CAP, highlights=focus,
-                               include_domains=domains, raise_errors=True)
+                               include_domains=domains, raise_errors=True, keyless=False)
     except Exception as e:
         logger.error("Proof search failed - %s: %s", type(e).__name__, e)
         return "search failed"

@@ -141,13 +141,41 @@ def test_a_second_backend_when_exa_fails() -> None:
     results = run(types.SimpleNamespace(DDGS=_DDGS), raise_errors=True, focus="notion price")
     _check("a fallback that works is not a failure", results and results[0]["body"] == "Plus is $10.", str(results))
 
+    research._KEYLESS_RETRY_WAIT = 0
+    tries = []
+
+    class _Flaky:
+        def __init__(self, timeout=None):
+            pass
+
+        def text(self, query, max_results=5):
+            tries.append(query)
+            if len(tries) == 1:
+                raise RuntimeError("No results found.")
+            return [{"title": "Pricing", "href": "https://e.example/p", "body": "Plus is $10."}]
+
+    results = run(types.SimpleNamespace(DDGS=_Flaky))
+    _check("a first try that finds nothing is tried once more", len(tries) == 2 and len(results) == 1, str(tries))
+
     class _AlsoBroken:
         def __init__(self, timeout=None):
             pass
 
         def text(self, query, max_results=5):
+            tries.append(query)
             raise RuntimeError("ratelimited")
+    tries.clear()
     _check("if it fails too, nothing breaks", run(types.SimpleNamespace(DDGS=_AlsoBroken)) == [])
+    _check("and it stops at two tries", len(tries) == 2, str(tries))
+
+    tries.clear()
+    _check("a caller that refuses the backup gets none", run(types.SimpleNamespace(DDGS=_AlsoBroken), keyless=False) == [] and not tries, str(tries))
+    try:
+        run(types.SimpleNamespace(DDGS=_DDGS), keyless=False, raise_errors=True)
+        raised = False
+    except RuntimeError:
+        raised = True
+    _check("and hears that Exa failed, even with the backup working", raised)
 
 
 def test_other_callers_are_unchanged() -> None:

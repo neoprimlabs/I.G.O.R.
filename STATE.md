@@ -178,7 +178,8 @@ keys were not rotated; `_is_secret_file` now seals those paths from every tool. 
 returned raw HTML cut to 4000 characters; it now returns the page's text in windows, can
 answer one question about a page, and goes through Exa when blocked (Hermes' web_extract).
 A failed search now says so instead of reading as no results. DDGS backs Exa in
-`research._keyless_search`, dormant: installing the package needs the user's yes. A document or image in the
+`research._keyless_search`: the user installed 9.16.1 on 11-01, the first real run. It found nothing on 3 of
+11 first tries, so it retries once, and proof checks refuse it. A document or image in the
 message now closes the tools that change things, as reading an inbox file already did; and
 no tool can write `prompt_*.md`, which memory_write's code and write_file could. A scheduled brief can stay silent
 (Hermes' cron `[SILENT]`). Overnight research keeps raw results: replayed, focused answers
@@ -220,6 +221,8 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+First real pass, 00:20 11-01: 3 preferences on job searches, all quoting the user's own words, two of
+them near duplicates, waiting for the user with an older code proposal.
 **Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
 tool calls or on "save that as a skill", each one approved by the user's own message, then named
 in React's prompt and read with `read_file`. Curator: stale at 14 days, archive at 30, nothing

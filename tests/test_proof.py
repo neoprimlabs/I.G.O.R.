@@ -291,6 +291,7 @@ def test_a_session_tests_the_next_idea() -> None:
     _check("the others on the open web", stub.searches[1][1]["include_domains"] is None)
     _check("read as excerpts", all(k["highlights"] for _, k in stub.searches))
     _check("a failed search would be heard about", all(k["raise_errors"] for _, k in stub.searches))
+    _check("and a thin backup is never taken for a real look", all(k["keyless"] is False for _, k in stub.searches))
     text = (folder / "paper.md").read_text(encoding="utf-8")
     _check("the label comes from the ledger", "Kettle price alerts** - priced at $29 (evidence: mixed)" in text, text)
     _check("an idea not yet tested keeps its label", "(evidence: no income shown)" in text, text)

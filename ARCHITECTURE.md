@@ -325,8 +325,8 @@ automatically. Each result is Exa's answer to the query from that page, not its 
 500 characters, which were mostly navigation. These models make one tool call a step, so
 `queries` takes up to 8 lookups in one call. `fetch_url` returns a page's text a window at
 a time, or with `question` what it says on one thing; a page it cannot read goes through
-Exa. A failed search says so, rather than reading as no results; DDGS backs Exa once the
-`ddgs` package is installed, which it is not yet.
+Exa. A failed search says so, rather than reading as no results; DDGS backs Exa, with one
+retry, except for proof checks.
 
 ### Scheduled messages and presence
 

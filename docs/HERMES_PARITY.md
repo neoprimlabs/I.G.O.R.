@@ -12,6 +12,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Tool Search | `load_tools` | One bridge tool, not three: a bridge step costs a whole model call here. |
 | `tool_search(queries)` batching | `search(queries)` | The model makes one tool call a step, so eight lookups fit in one call. |
 | `web_extract` | `fetch_url` | Page text in windows, or one question answered from the page. |
+| DDGS search backend | `research._keyless_search` | A backup for when Exa fails, not a choice of provider. Short undated snippets, and proof checks refuse it. It found nothing on 3 of 11 first tries, so it retries once. |
 | `grounded-citations` ledger | `proof.py` | Overnight income ideas only: code checks each quote is on the page, and the ledger outlives the paper's revisions. Reads Exa's excerpts rather than whole pages, for the budget. |
 | Gateway `/stop` `/retry` `/undo` `/usage` `/status` `/help` | `commands.py` | Plain words, with or without the slash. |
 | `busy_input_mode: queue` | One turn at a time | Queue, not Hermes' default interrupt: two turns at once share one rate limit. `stop` covers the rest. |
@@ -57,12 +58,10 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Still open, most useful first
 
-1. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
-2. **MCP client.** IGOR serves MCP but cannot use other servers.
-3. **Chained scheduled jobs and pre-run scripts.**
-4. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+1. **MCP client.** IGOR serves MCP but cannot use other servers.
+2. **Chained scheduled jobs and pre-run scripts.**
+3. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 
-- **Installing `ddgs` on the server.** See the list above: DDGS answers when Exa cannot.
 - **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.

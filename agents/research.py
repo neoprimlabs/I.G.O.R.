@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 import config
 
@@ -8,6 +9,7 @@ logger = logging.getLogger(__name__)
 _FOCUS_PROMPT = ("What does this page say that answers: {query}? Only what the page states, with "
                  "numbers exactly as written, in at most two sentences. If it says nothing on this, "
                  "say so in three words.")
+_KEYLESS_RETRY_WAIT = 2
 
 
 async def _run_search(
@@ -21,6 +23,7 @@ async def _run_search(
     raise_errors: bool = False,
     highlights: str | None = None,
     include_domains: list[str] | None = None,
+    keyless: bool = True,
 ) -> list[dict]:
     """Search Exa and return title, url, published date and body text.
 
@@ -40,6 +43,9 @@ async def _run_search(
 
     highlights asks for the page's own words on that question, cut to max_chars. A summary is
     Exa's model talking, so a quote from one cannot be checked against the page; these can.
+
+    keyless=False refuses the DDGS backup, for a caller that must not take its short undated
+    snippets, which also ignore include_domains, as a real look.
     """
     def _sync(focus: str | None = focus) -> list[dict]:
         from exa_py import Exa
@@ -98,7 +104,7 @@ async def _run_search(
             return await loop.run_in_executor(None, _sync, None)
     except Exception as e:
         logger.error("Exa search error - %s: %s", type(e).__name__, e)
-        fallback = await _keyless_search(query, max_results)
+        fallback = await _keyless_search(query, max_results) if keyless else []
         if fallback:
             return fallback
         if raise_errors:
@@ -108,14 +114,19 @@ async def _run_search(
 
 async def _keyless_search(query: str, max_results: int) -> list[dict]:
     """Hermes' DDGS backend, for when Exa cannot answer: digest, overnight research and React
-    all stop without it, and its credits can run out. Needs no key. Dormant until the ddgs
-    package is installed in the venv, as Cerebras waits for its key. Results carry a snippet
+    all stop without it, and its credits can run out. Needs no key. Results carry a snippet
     and no date, so they are thinner; that beats none."""
     def _sync() -> list[dict]:
         from ddgs import DDGS
+        # Live 2026-11-01 3 of 11 first tries said "No results found", two on a query that had just
+        # worked. The one retried after a pause came back.
+        try:
+            rows = DDGS(timeout=15).text(query, max_results=max_results)
+        except Exception:
+            time.sleep(_KEYLESS_RETRY_WAIT)
+            rows = DDGS(timeout=15).text(query, max_results=max_results)
         return [{"title": r.get("title") or "No title", "url": r.get("href") or "",
-                 "body": r.get("body") or "", "published": ""}
-                for r in DDGS(timeout=15).text(query, max_results=max_results)]
+                 "body": r.get("body") or "", "published": ""} for r in rows]
 
     try:
         loop = asyncio.get_running_loop()
