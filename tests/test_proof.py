@@ -55,8 +55,8 @@ def _page(url="https://news.example/a", body="Shops reported revenue of $40,000 
     return {"title": title, "url": url, "body": body, "published": ""}
 
 
-def _row(n=1, what="earned", source="third party", quote="revenue of $40,000 last year"):
-    return json.dumps({"n": n, "what": what, "from": source, "quote": quote})
+def _row(n=1, what="earned", source="third party", quote="revenue of $40,000 last year", business="idea"):
+    return json.dumps({"n": n, "what": what, "business": business, "from": source, "quote": quote})
 
 
 class _Stub:
@@ -161,13 +161,15 @@ def test_only_a_real_quote_counts() -> None:
     _check("thousands written short still count", money("My business makes $12K/month") is not None)
     _check("and millions", money("sales reached $4.1M in year one") is not None)
 
+    _check("money from selling tools to people trying the idea is not proof of the idea",
+           judged(_row(business="tools")) is None)
     failed = _row(what="failed", quote="having never made a single penny")
     _check("failure needs no figure", judged(failed, _page(body="It closed, having never made a single penny.")) is not None)
 
 
 def test_who_says_it() -> None:
-    def source(url, model_says="third party", title="A report", sellers=frozenset(), what="earned"):
-        row = proof.parse_judgement(_row(what=what, source=model_says))[0]
+    def source(url, model_says="third party", title="A report", sellers=frozenset(), what="earned", business="idea"):
+        row = proof.parse_judgement(_row(what=what, source=model_says, business=business))[0]
         kept = proof._kept(row, [_page(url=url, title=title)], sellers, "2026-10-17")
         return kept["from"]
 
@@ -179,6 +181,8 @@ def test_who_says_it() -> None:
            source("https://kettlealerts.example/data", sellers=frozenset(["kettlealerts.example"])) == "seller")
     _check("payment-verified revenue stands whatever the model says",
            source("https://trustmrr.com/startup/x", model_says="seller") == "third party")
+    _check("unless the model never said it does the idea, which earns no promotion",
+           source("https://trustmrr.com/startup/x", model_says="seller", business="") == "seller")
     _check("a news host stays as judged", source("https://news.example/a") == "third party")
     _check("and a seller's story stays a seller's", source("https://news.example/a", model_says="seller") == "seller")
 
