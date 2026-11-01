@@ -221,6 +221,12 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+**The gate refused a deploy over the host watch, 11-01.** Its state folder was called `host_watch.py`, and Gate 1
+compiled everything named `*.py` under `/opt/igor`, so from its first run every deploy would have failed. IGOR
+stayed up on the previous commit and the user got the webhook alert. The folder no longer has that name, and Gate 1
+now skips `memory/` (deploy.sh, backup `deploy.sh.bak-20261101` beside it), because nothing there is imported and a
+typo in a scheduled script must not block a deploy. Checked on a fixture tree that the gate still fails broken code
+outside `memory/`. `prestart.sh` was already safe: `memory/` is gitignored, so it never looks there.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

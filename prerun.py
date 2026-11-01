@@ -92,7 +92,8 @@ async def run(name: str) -> tuple[Optional[str], str]:
         return None, why
     suffix = Path(name).suffix
     inside = f"/tmp/job{suffix}"
-    state = _folder() / ".state" / name
+    # Not named like a script: the deploy gate once tried to compile a folder called host_watch.py.
+    state = _folder() / ".state" / name.replace(".", "_")
     process = None
     try:
         state.mkdir(parents=True, exist_ok=True)

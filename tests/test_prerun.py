@@ -170,11 +170,14 @@ async def test_running() -> None:
         out, why = await ran("print('disk is fine')")
         _check("what it prints comes back", out == "disk is fine" and why == "", f"{out!r} {why!r}")
         _check("it runs with the network", direct.kw["network"] is True)
-        _check("it gets a state folder that lasts", (folder / ".state" / "job.py").is_dir()
+        _check("it gets a state folder that lasts", (folder / ".state" / "job_py").is_dir()
                and direct.kw["env"]["IGOR_STATE"] == prerun._STATE_INSIDE)
         _check("the state folder mounts writable, the script not",
-               ("--bind", folder / ".state" / "job.py", prerun._STATE_INSIDE) in direct.kw["mounts"]
+               ("--bind", folder / ".state" / "job_py", prerun._STATE_INSIDE) in direct.kw["mounts"]
                and ("--ro-bind", folder / "job.py", "/tmp/job.py") in direct.kw["mounts"])
+        # Live 2026-11-01: a folder called host_watch.py failed the deploy gate's compile check.
+        _check("nothing a script leaves behind is a folder named like a script",
+               not [p for p in folder.rglob("*.py") if p.is_dir()], str(list(folder.rglob("*.py"))))
 
         out, why = await ran("import sys\nprint('partial')\nsys.stderr.write('boom happened')\nsys.exit(3)")
         _check("a non-zero exit is a failure", out is None and "exit code 3" in why, f"{out!r} {why!r}")

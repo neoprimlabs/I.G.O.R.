@@ -630,7 +630,7 @@ them never takes IGOR down:
 
 | Gate | Catches | On failure |
 |---|---|---|
-| syntax | compiles every `.py` in memory | reset to previous commit, no restart |
+| syntax | compiles every `.py` outside `memory/` | reset to previous commit, no restart |
 | imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
 | tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
