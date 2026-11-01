@@ -2180,7 +2180,7 @@ async def _handle(
     ran_tools = any(m.get("role") == "tool" for m in messages)
     messages = messages + [{
         "role": "user",
-        "content": ("[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. If you could not gather enough, say briefly what you found and what is still open. Describe only what this turn did: which searches actually ran and what they returned. If you did not search, say so plainly; never present an earlier turn's results as new, or claim to have checked sources you did not.]"
+        "content": ("[system: you are out of tool budget. Do not call any more tools. Answer now using what you already know from the conversation above. Give what you found as the answer, not an account of your searches, and say in one line what is still open, if anything. Never present an earlier turn's results as new, or claim to have checked sources you did not. Do not mention this note.]"
                     if ran_tools else
                     "[system: answer now from this conversation, without tools. If it does not hold what you need, say what is missing in one sentence. Do not mention this note or what you did not do.]"),
     }]

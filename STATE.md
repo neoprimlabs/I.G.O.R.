@@ -221,6 +221,12 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+**Follow-through ran end to end for the first time, 11-01**, in the throwaway copy, first turn held to 3
+steps. The loop worked and the ceiling stopped it, at 60448 of 120b. Shown only the latest reply, the judge sent a
+round back to redo products the first reply had covered, with different prices for others; it now reads every
+reply. Forced final answers narrated their searches because the note told them to, and gpt-oss source marks
+reached the user; both fixed. The same day six products priced in one `search(queries)` call for 11761 tokens.
+Not seen since these fixes: another whole run. The judge alone was replayed on those real replies.
 **Clock change, 11-01:** the digest, job and gig lists and the Monday draft were fixed in UTC on a UTC
 host, so they came an hour early when the clocks went back, and the user caught it, not Claude Code.
 They now go by the user's clock. The user then moved the morning later by an hour for a later working

@@ -65,5 +65,10 @@ _PUNCT_MAP = str.maketrans({
 })
 
 
+# gpt-oss marks a source as 【source 2026-10-15】 or 【3†L1】, which means nothing to the user. One
+# holding a URL stays: the overnight paper turns those into links, and its checks read them.
+_CITATION_MARK = re.compile(r"\s*【(?!\s*https?:)[^】]*】")
+
+
 def clean(content: str) -> str:
-    return _EM_DASH_RE.sub(" - ", redact(content)).translate(_PUNCT_MAP)
+    return _EM_DASH_RE.sub(" - ", _CITATION_MARK.sub("", redact(content))).translate(_PUNCT_MAP)

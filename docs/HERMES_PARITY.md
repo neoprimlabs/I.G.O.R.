@@ -8,7 +8,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 | Hermes | IGOR | Difference, if any |
 |---|---|---|
-| `/goal` | `followthrough.py` | IGOR decides when to continue instead of a command. Three rounds of 4 steps, 45000 tokens at most, against Hermes' 20 turns. A failed judge stops; Hermes' continues. |
+| `/goal` | `followthrough.py` | IGOR decides when to continue instead of a command. Three rounds of 4 steps, 45000 tokens at most, against Hermes' 20 turns. A failed judge stops; Hermes' continues. The judge reads every reply so far: IGOR's rounds reach it one message each. |
 | Tool Search | `load_tools` | One bridge tool, not three: a bridge step costs a whole model call here. |
 | `tool_search(queries)` batching | `search(queries)` | The model makes one tool call a step, so eight lookups fit in one call. |
 | `web_extract` | `fetch_url` | Page text in windows, or one question answered from the page. |
