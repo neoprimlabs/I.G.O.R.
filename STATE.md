@@ -238,6 +238,11 @@ verbatim with no model call; a writer working from a script's output. Not yet se
 chain from plain words (the run hit its 4-step limit on the refusals above), or one on the real route since
 those fixes. Every piece of it is tested offline. **Measure: a React call with full history is about 6600
 tokens, so one refusal costs that much. Make the tool accept what a model plausibly sends.**
+Running for real: `host_watch.py`, entry 206f24, hourly with no model, silent unless the disk reaches 85% or
+memory and swap together fall under 300 MB on two checks, once until it clears; its alert path was forced and
+checked in the real sandbox. The script exists only on the server and in the PC's memory backup. This session's
+tests left 120b at about 196000 of 200000 at 21:00 UTC 11-01, about 155000 of it isolated runs, so chat may fall
+back to 20b that night.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead
