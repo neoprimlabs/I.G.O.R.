@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-10-30**
+Last updated: **2026-11-01**
 
 ---
 
@@ -195,8 +195,22 @@ line on the job post and the already-sent list, so a check-in now sees neither, 
 IGOR's own posts is asked again, and a second one means silence. "Asks for" broke at inline tags
 ("Strong proficiency in;"), fixed. `week-of-` pages count as roundups. The evidence check called
 two "how I made $X" posts independent beside a site cited for something else; it now answers for
-the source stating the figure, and on the 10-31 paper all seven ideas lack independent proof, so
-the overnight planner is told to look for that.
+the source stating the figure, and on the 10-31 paper all seven ideas lacked independent proof.
+**Proof sessions built 11-01** (`proof.py`, ARCHITECTURE), after the user asked why the paper was
+taking so long. Commits show twelve days on its mechanics before anything looked at its evidence;
+it read 500 characters a result and only ever widened. Now each shortlisted idea gets three fixed
+searches before research widens, and code writes the verdicts. Live on the real paper in the
+throwaway copy, five runs, about 100000 of 20b: on low reasoning 20b answered "seller" to everything
+and called e-book generators the idea, so the check runs on medium and answers facts (tools or idea,
+one or many, who says it). E-book publishing then came out against, on a 2025 survey reported by Does
+It Pay (about 80% of authors with 1-3 books under $100 a month), with the generators dropped. The
+last fixes are tested offline only: selling software is the idea for software ideas, and "against"
+takes a figure naming the idea. 20b's relevance judgement stays weak, so a quote can be real and
+beside the point; the page shows the quote and link. Not yet seen: a real night on the real paper.
+20b read 179034 of its unmeasured daily cap at 00:45 UTC 11-01, mostly these runs, so a night that
+stops on `daily cap 20b` would finally measure it and resumes the next night. Read `work/g3/paper.md`
+after the nights of 11-01 to 11-03: if nothing independent turns up, tell the user the ideas look
+unprovable from public sources rather than tune further.
 **Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
 tool calls or on "save that as a skill", each one approved by the user's own message, then named
 in React's prompt and read with `read_file`. Curator: stale at 14 days, archive at 30, nothing

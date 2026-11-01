@@ -431,8 +431,8 @@ PLAN also sees. A failed write waits a night.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
 research widens: 3 fixed searches through Exa's excerpts (TrustMRR, earnings data,
-failures). 20b says what each shows; code keeps a quote only if it is in the excerpt and
-is money received of $1000+ or a failure, and overrides the source for personal posts,
+failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
+intact, and is money received of $1000+ or a failure, and overrides the source for personal posts,
 hosts the paper cites and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` and the labels (independent, mixed, self-reported, no income shown,
 unchecked, against).
