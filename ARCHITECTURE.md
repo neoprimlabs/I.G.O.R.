@@ -46,8 +46,8 @@ until Groq's stated reset, and the reply says so.
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
 
-**Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (13:00
-UTC), job watch (14:30), gig watch (14:45), price watch (2-hourly), stock watch
+**Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (09:00
+local), job watch (10:30), gig watch (10:45), price watch (2-hourly), stock watch
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
 

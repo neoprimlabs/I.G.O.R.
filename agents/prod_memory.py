@@ -32,7 +32,7 @@ You may edit exactly these three files:
 
 2. watchlist.md - a plain list of things the monitor keeps an eye on. Free text, one item per line, each starting with "- ".
 
-3. schedule_config.md - when scheduled jobs run. Times are UTC, in the format "time: HH:MM UTC".
+3. schedule_config.md - when scheduled jobs run. Times are on the user's own clock, in the format "time: HH:MM local".
 
 Rules:
 - Change only what the user asked for. Preserve every other line exactly as it is, including headers, comments and unrelated sections.
@@ -249,7 +249,7 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Op
             logger.warning("ConfigEdit rejected an unparseable schedule")
             return (
                 "I did not apply that. schedule_config.md needs a line like "
-                "`time: 08:00 UTC` under `## morning_digest`, in 24-hour HH:MM. "
+                "`time: 08:00 local` under `## morning_digest`, in 24-hour HH:MM. "
                 "What that would have written does not parse, so the digest would "
                 "have kept running at its old time without telling you."
             )

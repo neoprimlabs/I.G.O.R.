@@ -10,6 +10,7 @@ from typing import Awaitable, Callable, Optional
 import openai
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+import clock
 import config
 import llm
 import sanitize
@@ -76,7 +77,7 @@ def _get_system_prompt() -> str:
 
 
 def _parse_digest_schedule(content: str) -> Optional[tuple[int, int]]:
-    """Extract (hour, minute) UTC from schedule_config.md content, or None.
+    """Extract (hour, minute) from schedule_config.md content, or None.
 
     Split out from _get_digest_schedule so ConfigEdit can check a proposed file
     against the real parser before writing it. Validating against a second copy of
@@ -103,12 +104,20 @@ def _parse_digest_schedule(content: str) -> Optional[tuple[int, int]]:
     return None
 
 
-def _get_digest_schedule() -> tuple[int, int]:
-    """Read morning_digest time from schedule_config.md. Returns (hour, minute) UTC."""
+def _digest_zone(content: str):
+    """UTC only if the file says so, otherwise the user's clock."""
+    utc = any(line.strip().lower().startswith("time:") and "utc" in line.lower() for line in content.splitlines())
+    return timezone.utc if utc else clock.USER_TZ
+
+
+def _get_digest_schedule() -> tuple:
+    """Read morning_digest time from schedule_config.md. Returns (hour, minute, timezone)."""
     path = config.MEMORY_DIR / "schedule_config.md"
     if not path.exists():
-        return 13, 0
-    return _parse_digest_schedule(path.read_text(encoding="utf-8")) or (13, 0)
+        return 9, 0, clock.USER_TZ
+    content = path.read_text(encoding="utf-8")
+    parsed = _parse_digest_schedule(content)
+    return (*parsed, _digest_zone(content)) if parsed else (9, 0, clock.USER_TZ)
 
 
 def _get_watchlist() -> list[str]:
@@ -207,9 +216,12 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # Five minutes late beats not at all for every job here.
     _scheduler = AsyncIOScheduler(job_defaults={"misfire_grace_time": 300})
 
-    digest_hour, digest_minute = _get_digest_schedule()
-    _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, id="morning_digest")
-    logger.info("Morning digest scheduled at %02d:%02d UTC", digest_hour, digest_minute)
+    # What the user reads goes by their clock. Fixed in UTC, on a host set to UTC, the digest, job and
+    # gig lists and the Monday draft all came an hour early when the clocks went back on 2026-11-01.
+    digest_hour, digest_minute, digest_zone = _get_digest_schedule()
+    _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, timezone=digest_zone,
+                       id="morning_digest")
+    logger.info("Morning digest scheduled at %02d:%02d %s", digest_hour, digest_minute, digest_zone)
 
     # Daily, not weekly, and once on every start. Groq removed the whole Llama
     # family on 2026-08-17 and the weekly check meant four configured roles were
@@ -225,13 +237,13 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
         id="model_update_startup",
     )
 
-    # 14:30 UTC is 10:30 local, after the digest has landed. Fetching costs no
-    # tokens - it is HTTP against public feeds - so this is close to free.
-    _scheduler.add_job(_job_watch, "cron", hour=14, minute=30, id="job_watch")
+    # After the digest has landed. Fetching costs no tokens - it is HTTP against
+    # public feeds - so this is close to free.
+    _scheduler.add_job(_job_watch, "cron", hour=10, minute=30, timezone=clock.USER_TZ, id="job_watch")
 
     # Fifteen minutes after the job watch, so the two never land together. One
     # screening call a day on 20b, the summary bucket, idle at this hour.
-    _scheduler.add_job(_gig_watch, "cron", hour=14, minute=45, id="gig_watch")
+    _scheduler.add_job(_gig_watch, "cron", hour=10, minute=45, timezone=clock.USER_TZ, id="gig_watch")
 
     # Deals vanish within hours, so this runs often. One HTTP call per watched item
     # and no model call at all, which is why every two hours is affordable.
@@ -277,10 +289,11 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # ticks return before any model call, and while it is switched off all of them do.
     _scheduler.add_job(_presence_tick, "interval", minutes=10, id="presence")
 
-    # 15:00 UTC keeps it clear of the 13:00 digest, and it runs on the chat model's
-    # 12000 bucket rather than the digest's 6000, so the two cannot contend.
-    _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=15, minute=0, id="advocacy_draft")
-    logger.info("Advocacy draft scheduled Mondays at 15:00 UTC (%s)", _ADVOCACY["topic"])
+    # Clear of the digest, and it runs on the chat model's bucket rather than the
+    # digest's, so the two cannot contend.
+    _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=11, minute=0, timezone=clock.USER_TZ,
+                       id="advocacy_draft")
+    logger.info("Advocacy draft scheduled Mondays at 11:00 local (%s)", _ADVOCACY["topic"])
 
     # Minute 20, clear of the :00 and :30 jobs. max_instances=1 is APScheduler's default,
     # stated because work.log_session is a read-modify-write with no lock: two ticks

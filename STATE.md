@@ -221,6 +221,9 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+**Clock change, 11-01:** the digest, job and gig lists and the Monday draft were fixed in UTC on a UTC
+host, so they came an hour early when the clocks went back, and the user caught it, not Claude Code.
+They now go by the user's clock, and `schedule_config.md` says `time: 09:00 local` (backup beside it).
 First real proof night, 11-01: 4 ideas, 12 searches, 50592 tokens, and 20b read 184925 with no cap hit.
 It ranked regulatory alerts first as independent on "combined revenues of $2.9B", an industry total, so
 totals and sums over $20M no longer count, and the 6 rows the new rules would drop were taken out of the
