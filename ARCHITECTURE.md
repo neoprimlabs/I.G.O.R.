@@ -84,8 +84,7 @@ reply that ran out of steps or offers to go on is judged by 20b. On `continue`, 
 **Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
 offline tests, restarts, waits for Discord and rolls back on failure.
 
-**MCP**: `mcp_server.py` serves six read-only tools to the user's other agents, over SSH on stdio. No port,
-no writes, no private files.
+**MCP**: `mcp_server.py` serves six read-only tools over SSH on stdio. `mcp_client.py` uses servers the user lists.
 
 <!-- END SELF SUMMARY -->
 
@@ -399,6 +398,11 @@ routes to React with an instruction to read the file and not search.
 
 This is also the Dual LLM pattern: the context that sees web content holds no tools.
 
+### MCP client
+
+`memory/private/mcp_servers.json`, which no tool can reach, lists servers: read-only tools only, deferred, one
+connection a call, results treated as web text. None is configured yet.
+
 ### Overnight loop
 
 Standing goals worked while the user is away.
@@ -544,9 +548,6 @@ adds every response's token count to `memory/token_ledger.json` hourly, per mode
 and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
 against the cap.
 
-`max_tokens` counts against TPM at request time, so prompt plus reservation must stay
-under the model's limit.
-
 Every model here reasons, so `max_tokens` covers hidden reasoning plus output;
 under about 1024 returns empty content with a 200 OK.
 
@@ -668,6 +669,5 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** Absorbed into React.
 - **Any UI beyond Discord.** Spec Phase 2.
-- **Spoken replies.** Voice notes are transcribed; speech waits for IGOR's own app,
-  the user's choice.
+- **Spoken replies.** Speech waits for IGOR's own app.
 - **Multi-user anything.** Memory files are global, `context.db` has no user column.

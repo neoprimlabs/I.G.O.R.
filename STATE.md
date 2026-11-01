@@ -221,6 +221,11 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+**MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
+imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
+through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead
+server failed in under a second. Not yet seen: a real remote server, or a model choosing and calling one of its
+tools, which needs a server the user wants. No OAuth, so a service that requires sign-in cannot connect.
 **Follow-through ran end to end for the first time, 11-01**, in the throwaway copy, first turn held to 3
 steps. The loop worked and the ceiling stopped it, at 60448 of 120b. Shown only the latest reply, the judge sent a
 round back to redo products the first reply had covered, with different prices for others; it now reads every

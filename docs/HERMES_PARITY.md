@@ -37,6 +37,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. |
 | URL safety | `url_safety.py` | |
 | MCP server | `mcp_server.py` | Read-only, over SSH. |
+| MCP client, `mcp_servers` | `mcp_client.py` | Read-only tools only, where Hermes can ask before a write. Keys through headers, with no OAuth sign-in, so services that require it cannot connect. No resources, prompts or sampling. One connection a call rather than one held open, for memory. No Node on the host, so no npx servers. Results count as web text. Nothing is configured yet. |
 
 ## Different on purpose
 
@@ -58,9 +59,8 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Still open, most useful first
 
-1. **MCP client.** IGOR serves MCP but cannot use other servers.
-2. **Chained scheduled jobs and pre-run scripts.**
-3. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+1. **Chained scheduled jobs and pre-run scripts.**
+2. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 

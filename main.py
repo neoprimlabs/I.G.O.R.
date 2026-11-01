@@ -106,7 +106,7 @@ def _smoke_test() -> None:
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
                    "agents.inbound", "approvals", "clock", "sandbox", "checkpoints",
-                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "proof", "memory_review", "skills"):
+                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "mcp_client", "proof", "memory_review", "skills"):
         try:
             __import__(module)
         except Exception as e:
@@ -145,10 +145,20 @@ def _smoke_test() -> None:
     log.info("Startup checks passed: %d models, 4 routing fast paths, credentials present", len(config.MODELS))
 
 
+async def _connect_mcp() -> None:
+    import mcp_client
+    from agents import react
+    await mcp_client.discover()
+    count = react.register_mcp()
+    if count:
+        logging.getLogger(__name__).info("MCP: %d outside tools available", count)
+
+
 def main() -> None:
     _setup_logging()
     _ensure_memory_files()
     _smoke_test()
+    asyncio.run(_connect_mcp())
     asyncio.run(run_bot())
 
 
