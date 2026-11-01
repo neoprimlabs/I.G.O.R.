@@ -1330,6 +1330,31 @@ def _unwritable(resolved) -> bool:
     return any(part in _UNWRITABLE_PARTS for part in parts)
 
 
+def _syntax_error(text: str) -> str:
+    import ast
+    try:
+        ast.parse(text)
+        return ""
+    except SyntaxError as e:
+        return f"line {e.lineno}, {e.msg}"
+    except ValueError as e:
+        return str(e)
+
+
+def _syntax_note(path: str, before: Optional[str], after: str) -> str:
+    """Hermes checks a file as it is written and reports only what the edit broke. Its Python
+    stays saved, as there: the model can fix it in the same turn, far cheaper than a deploy gate
+    finding it later. These tools write only .py and .md, so Python is all there is to check."""
+    if not path.endswith(".py"):
+        return ""
+    problem = _syntax_error(after)
+    if not problem:
+        return ""
+    if before is not None and _syntax_error(before):
+        return f" It was already broken before this edit and still is: {problem}."
+    return f" This edit broke its syntax, which the deploy gate will refuse: {problem}. Fix it now."
+
+
 async def _patch_server_file(path: str, old_string: str, new_string: str) -> str:
     from pathlib import Path
     problem = _path_problem(path)
@@ -1357,7 +1382,7 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
         resolved.write_text(new_content, encoding="utf-8")
         checkpoints.after_write(resolved)
         logger.info("ReAct patch_file: %s", path)
-        return f"Patched: {path}. Restart required for changes to take effect."
+        return f"Patched: {path}.{_syntax_note(path, content, new_content)} Restart required for changes to take effect."
     except Exception as e:
         return f"[patch error: {type(e).__name__}: {e}]"
 
@@ -1378,10 +1403,11 @@ async def _write_server_file(path: str, content: str) -> str:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         import checkpoints
         checkpoints.before_write(resolved)
+        before = resolved.read_text(encoding="utf-8", errors="replace") if resolved.exists() else None
         resolved.write_text(content, encoding="utf-8")
         checkpoints.after_write(resolved)
         logger.info("ReAct write_file: %s (%d bytes)", path, len(content))
-        return f"Written: {path} ({len(content)} bytes). Restart required for changes to take effect."
+        return f"Written: {path} ({len(content)} bytes).{_syntax_note(path, before, content)} Restart required for changes to take effect."
     except Exception as e:
         return f"[write error: {type(e).__name__}: {e}]"
 

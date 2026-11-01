@@ -36,7 +36,8 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Background memory review, `memory.write_approval` on | `memory_review.py` | Always on approval, never a model's call; Hermes defaults to saving freely. Once a night on 20b rather than after each turn, for the budget. A fact must quote the user's own first-person words, checked in code. |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
-| Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. |
+| Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. PowerPoint, EPUB and OpenDocument with the standard library, where Hermes installs a converter, so no old `.doc` or `.ppt`, RTF or SQLite. A file that unpacks past 100 MB is refused. |
+| Syntax checks on `write_file` and `patch` | `_syntax_note` | Python only: IGOR's file tools write nothing but `.py` and `.md`. Kept and reported, and only what the edit broke, as Hermes does for Python. |
 | URL safety | `url_safety.py` | |
 | MCP server | `mcp_server.py` | Read-only, over SSH. |
 | MCP client, `mcp_servers` | `mcp_client.py` | Read-only tools only, where Hermes can ask before a write. Keys through headers, with no OAuth sign-in, so services that require it cannot connect. No resources, prompts or sampling. One connection a call rather than one held open, for memory. No Node on the host, so no npx servers. Results count as web text. Nothing is configured yet. |
@@ -47,6 +48,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 - **A document in the message closes the tools that change things**, so "save the key points of this" takes a second message. Hermes has no equivalent rule.
 - **No mid-task budget warnings.** Hermes removed these after they made models abandon work.
 - **Prompt caching does nothing here.** Groq's documentation offers it; measured on this account, identical calls show no cached tokens.
+- **No @ references.** Hermes' documentation calls them primarily a CLI feature and says its gateway passes them through unexpanded, so its Discord has none either. Its source hints a gateway path may exist, unresolved. React reads a file or a link with a tool.
 - **No image or video generation.** Left out by the user's choice; both would also need a paid provider.
 
 ## Parked by the user

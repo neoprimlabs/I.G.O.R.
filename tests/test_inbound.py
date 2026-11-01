@@ -291,6 +291,137 @@ def test_spreadsheets_and_notebooks() -> None:
     _check("a workbook attachment lands in the message", "Acme Ltd" in parts[0] and "Excel workbook" in parts[0], parts[0][:200])
 
 
+def _pptx(only_pictures=False) -> bytes:
+    """A deck as PowerPoint writes it, with the second-named slide shown first, notes on one and
+    a slide that holds only a picture."""
+    p = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+    a = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+    r = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    rel = 'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"'
+
+    def slide(*lines):
+        body = "".join(f"<a:p><a:r><a:t>{line}</a:t></a:r></a:p>" for line in lines)
+        return f"<p:sld {p} {a}><p:txBody>{body}</p:txBody></p:sld>"
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("ppt/presentation.xml", f'<p:presentation {p} {r}><p:sldIdLst><p:sldId r:id="rId2"/>'
+                                           '<p:sldId r:id="rId1"/><p:sldId r:id="rId3"/></p:sldIdLst></p:presentation>')
+        z.writestr("ppt/_rels/presentation.xml.rels",
+                   f'<Relationships {rel}><Relationship Id="rId1" Target="slides/slide1.xml"/>'
+                   '<Relationship Id="rId2" Target="/ppt/slides/slide2.xml"/>'
+                   '<Relationship Id="rId3" Target="slides/slide3.xml"/></Relationships>')
+        z.writestr("ppt/slides/slide1.xml", slide() if only_pictures else slide("Named first, shown second", "Kettle sales up"))
+        z.writestr("ppt/slides/slide2.xml", slide() if only_pictures else slide("Named second, shown first"))
+        z.writestr("ppt/slides/slide3.xml", slide())
+        z.writestr("ppt/slides/_rels/slide1.xml.rels",
+                   f'<Relationships {rel}><Relationship Type="http://x/relationships/notesSlide" '
+                   'Target="../notesSlides/notesSlide1.xml"/></Relationships>')
+        z.writestr("ppt/notesSlides/notesSlide1.xml", slide("Say the kettle part slowly", "2"))
+    return buf.getvalue()
+
+
+def _epub(locked=False) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("META-INF/container.xml",
+                   '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+                   '<rootfile full-path="OEBPS/book.opf"/></rootfiles></container>')
+        z.writestr("OEBPS/book.opf",
+                   '<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+                   '<metadata><dc:title>Kettles Through Time</dc:title></metadata>'
+                   '<manifest><item id="a" href="text/one%20a.xhtml"/><item id="b" href="text/two.xhtml"/>'
+                   '<item id="f" href="font.otf"/></manifest>'
+                   '<spine><itemref idref="b"/><itemref idref="a"/></spine></package>')
+        z.writestr("OEBPS/text/one a.xhtml", "<html><head><title>x</title><style>p{}</style></head>"
+                                             "<body><p>The second chapter &amp; more</p></body></html>")
+        z.writestr("OEBPS/text/two.xhtml", "<html><body><h1>Chapter one</h1><p>Steel came first.</p></body></html>")
+        z.writestr("OEBPS/font.otf", b"not text")
+        uri = "OEBPS/text/two.xhtml" if locked else "OEBPS/font.otf"
+        z.writestr("META-INF/encryption.xml",
+                   '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+                   'xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:CipherData>'
+                   f'<enc:CipherReference URI="{uri}"/></enc:CipherData></enc:EncryptedData></encryption>')
+    return buf.getvalue()
+
+
+def _odf(body: str) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("content.xml", '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+                                  'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" '
+                                  'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+                                  f'<office:body>{body}</office:body></office:document-content>')
+    return buf.getvalue()
+
+
+def test_slides_books_and_opendocument() -> None:
+    from agents import inbound
+    _check("the new kinds are recognised",
+           [inbound._kind(n, None) for n in ("a.pptx", "b.epub", "c.odt", "d.ods", "e.odp")]
+           == ["pptx", "epub", "odf", "odf", "odf"])
+    _check("the old binary formats are still turned away, not read as noise",
+           inbound._kind("old.ppt", None) == "other" and inbound._kind("old.doc", None) == "other")
+
+    text, facts = inbound._pptx_text(_pptx())
+    _check("slides come in the deck's order, not by file name",
+           text.index("Named second, shown first") < text.index("Named first, shown second"), text)
+    _check("each is numbered as shown", text.startswith("[slide 1]\nNamed second"), text)
+    _check("speaker notes come with their slide", "[notes] Say the kettle part slowly" in text, text)
+    _check("without the page number the notes also carry", "[notes] Say the kettle part slowly\n2" not in text, text)
+    _check("the facts count slides and say what was not read",
+           facts == "a PowerPoint deck, 3 slides, 1 with no text on the slide, and pictures are not read", facts)
+    # Found on python-pptx's own sample deck: blank slides, words only in the notes, and nothing came back.
+    text, facts = inbound._pptx_text(_pptx(only_pictures=True))
+    _check("a deck of pictures still gives its speaker notes", "Say the kettle part slowly" in text, repr(text))
+    _check("a broken deck says so", inbound._pptx_text(b"not a zip")[1].startswith("could not be read"))
+    parts, _ = _run([_Att("q3.pptx", None, _pptx())])
+    _check("a deck attachment lands in the message, as outside text",
+           "Kettle sales up" in parts[0] and "UNTRUSTED" in parts[0], parts[0][:200])
+
+    text, facts = inbound._epub_text(_epub())
+    _check("a book reads in its spine's order", text.index("Chapter one") < text.index("The second chapter"), text)
+    _check("escapes are undone, a chapter's name is decoded, and styles are left out",
+           "The second chapter & more" in text and "p{}" not in text, text)
+    _check("the facts give the title", facts == "an EPUB book, Kettles Through Time, 2 sections", facts)
+    _check("a font listed as encrypted is not a locked book", "Steel came first" in text)
+    text, facts = inbound._epub_text(_epub(locked=True))
+    _check("a locked chapter is said outright, not read as noise", text == "" and "copy-protected" in facts, facts)
+    _check("a broken book says so", inbound._epub_text(b"not a zip")[1].startswith("could not be read"))
+    parts, _ = _run([_Att("book.epub", "application/epub+zip", _epub(locked=True))])
+    _check("and the user is told", "copy-protected" in parts[0], parts[0][:200])
+
+    text, facts = inbound._odf_text(_odf('<office:text><text:h>Plan</text:h><text:p>Buy a <text:span>kettle</text:span></text:p>'
+                                         '</office:text>'))
+    _check("OpenDocument text reads in order", text == "Plan\nBuy a kettle" and facts == "an OpenDocument file", text)
+    text, facts = inbound._odf_text(_odf('<office:spreadsheet><table:table><table:table-row><table:table-cell><text:p>Item</text:p>'
+                                         '</table:table-cell><table:table-cell><text:p>Price</text:p></table:table-cell>'
+                                         '</table:table-row><table:table-row><table:table-cell/></table:table-row>'
+                                         '</table:table></office:spreadsheet>'))
+    _check("a spreadsheet keeps its columns, and empty rows drop", text == "Item\tPrice" and "spreadsheet" in facts, repr(text))
+    text, _ = inbound._odf_text(_odf('<office:spreadsheet><table:table><table:table-row><table:table-cell><text:p>Price</text:p>'
+                                     '<text:p>in dollars</text:p></table:table-cell></table:table-row></table:table></office:spreadsheet>'))
+    _check("two lines in a cell stay two words", text == "Price in dollars", repr(text))
+    _check("a broken file says so", inbound._odf_text(b"not a zip")[1].startswith("could not be read"))
+
+
+def test_zip_bomb() -> None:
+    from agents import inbound
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("word/document.xml", b"<w:p>" + b"a" * (inbound._MAX_UNPACKED + 1))
+        z.writestr("xl/workbook.xml", b"<x/>")
+        z.writestr("ppt/presentation.xml", b"<x/>")
+        z.writestr("content.xml", b"<x/>")
+        z.writestr("META-INF/container.xml", b"<x/>")
+    bomb = buf.getvalue()
+    _check("the fixture is small enough to arrive", len(bomb) < inbound._MAX_DOC_BYTES, str(len(bomb)))
+    for name, read in (("Word", inbound._docx_text), ("Excel", inbound._xlsx_text), ("PowerPoint", inbound._pptx_text),
+                       ("EPUB", inbound._epub_text), ("OpenDocument", inbound._odf_text)):
+        text, facts = read(bomb)
+        _check(f"{name}: one that unpacks too large is refused", text == "" and facts.startswith("could not be read"), facts)
+
+
 def test_inbox_is_pruned() -> None:
     from agents import inbound
     inbox = config.MEMORY_DIR / "inbox"

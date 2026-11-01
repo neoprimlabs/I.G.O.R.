@@ -221,6 +221,15 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
+**Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
+`write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
+it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
+100 MB is refused, for Word and Excel too. Read against real public files (a Gutenberg EPUB, python-pptx's decks,
+odfpy's samples), which found what hand-built fixtures could not: a deck of blank slides with speaker notes gave
+nothing, and two-paragraph spreadsheet cells ran together. Both fixed. Not yet seen: one sent through Discord.
+@ references were dropped from the gap list: Hermes' documentation says its gateway does not expand them.
+Measured: a chat call is about 1500 tokens of prompt, 400 of notes and 2400 or more of window. Nothing is one big
+waste; trimming would save about 10% against rules that were each earned, so it was left.
 **Scheduled scripts and chains built 11-01** (`prerun.py`, ARCHITECTURE), Hermes' cron `script`, `no_agent`,
 wake gate and `context_from`, the next open parity item. A script is added by hand: `scp` it up, then
 `sudo -u igor install -D -m 640 <file> /opt/igor/memory/private/cron_scripts/<name>`. Attacked in the real sandbox

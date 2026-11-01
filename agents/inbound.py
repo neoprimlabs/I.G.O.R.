@@ -24,6 +24,7 @@ import html
 import io
 import logging
 import os
+import posixpath
 import re
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,7 @@ _MAX_VOICE_BYTES = 25 * _MB    # Groq's free-tier transcription limit
 _MAX_IMAGE_BYTES = 20 * _MB    # Groq's limit for an image passed by URL
 _MAX_BASE64_BYTES = 4 * _MB
 _MAX_DOC_BYTES = 10 * _MB      # Hermes refuses 50 MB; this box has 1 GB
+_MAX_UNPACKED = 100 * _MB
 _MAX_IMAGES = 3
 _MAX_VOICE_NOTES = 2
 _MAX_PDF_PAGES = 200
@@ -99,6 +101,12 @@ def _kind(filename: str, content_type: Optional[str]) -> str:
         return "xlsx"
     if name.endswith(".ipynb"):
         return "ipynb"
+    if name.endswith(".pptx"):
+        return "pptx"
+    if name.endswith(".epub"):
+        return "epub"
+    if name.endswith((".odt", ".ods", ".odp")):
+        return "odf"
     if ct.startswith("text/") or name.endswith(_TEXT_EXT):
         return "text"
     return "other"
@@ -136,9 +144,20 @@ def _pdf_text(data: bytes) -> tuple[str, str]:
     return text, ", ".join(facts)
 
 
+def _open_zip(data: bytes) -> zipfile.ZipFile:
+    """A 10 MB attachment can unpack to gigabytes, and this host has 956 MB. zipfile stops at the
+    size each entry declares, so the sum of those is what can be read."""
+    z = zipfile.ZipFile(io.BytesIO(data))
+    unpacked = sum(i.file_size for i in z.infolist())
+    if unpacked > _MAX_UNPACKED:
+        z.close()
+        raise ValueError(f"it unpacks to {_size(unpacked)}")
+    return z
+
+
 def _docx_text(data: bytes) -> tuple[str, str]:
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
+        with _open_zip(data) as z:
             xml = z.read("word/document.xml").decode("utf-8", errors="replace")
     except Exception as e:
         logger.warning("DOCX could not be read - %s: %s", type(e).__name__, e)
@@ -158,7 +177,7 @@ def _xlsx_text(data: bytes) -> tuple[str, str]:
     reads Excel. Shared strings are looked up; formulas show their last value."""
     import xml.etree.ElementTree as ET
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
+        with _open_zip(data) as z:
             names = set(z.namelist())
             shared = []
             if "xl/sharedStrings.xml" in names:
@@ -200,6 +219,120 @@ def _xlsx_text(data: bytes) -> tuple[str, str]:
     return "\n\n".join(sheets).strip(), facts
 
 
+_DRAWING = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_PPTX_NS = {"p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+            "r": _XLSX_NS["r"], "rel": _XLSX_NS["rel"]}
+
+
+def _drawing_lines(xml: bytes) -> list[str]:
+    import xml.etree.ElementTree as ET
+    paragraphs = ("".join(t.text or "" for t in p.iter(f"{_DRAWING}t")).strip()
+                  for p in ET.fromstring(xml).iter(f"{_DRAWING}p"))
+    return [p for p in paragraphs if p]
+
+
+def _slide_notes(z: zipfile.ZipFile, slide: str, names: set) -> str:
+    """The speaker notes, without the slide number their page also carries."""
+    import xml.etree.ElementTree as ET
+    folder, leaf = posixpath.split(slide)
+    rels = f"{folder}/_rels/{leaf}.rels"
+    if rels not in names:
+        return ""
+    for rel in ET.fromstring(z.read(rels)).findall("rel:Relationship", _PPTX_NS):
+        if (rel.get("Type") or "").endswith("/notesSlide"):
+            path = posixpath.normpath(posixpath.join(folder, rel.get("Target") or ""))
+            if path in names:
+                return "\n".join(line for line in _drawing_lines(z.read(path)) if not line.isdigit())
+    return ""
+
+
+def _pptx_text(data: bytes) -> tuple[str, str]:
+    """Slides in the deck's own order with their notes, with the standard library, as Excel above.
+    The file names do not give the order: a slide that was moved keeps its name. Pictures on a
+    slide are not read, so the facts say when a slide had no text."""
+    import xml.etree.ElementTree as ET
+    try:
+        with _open_zip(data) as z:
+            names = set(z.namelist())
+            deck = ET.fromstring(z.read("ppt/presentation.xml"))
+            rels = ET.fromstring(z.read("ppt/_rels/presentation.xml.rels"))
+            targets = {r.get("Id"): r.get("Target") or "" for r in rels.findall("rel:Relationship", _PPTX_NS)}
+            slides, blank, any_words = [], 0, False
+            order = deck.findall("p:sldIdLst/p:sldId", _PPTX_NS)
+            for n, slide in enumerate(order, 1):
+                target = targets.get(slide.get(f"{{{_PPTX_NS['r']}}}id"), "")
+                path = target.lstrip("/") if target.startswith("/") else posixpath.normpath(f"ppt/{target}")
+                if path not in names:
+                    continue
+                lines = _drawing_lines(z.read(path))
+                blank += not lines
+                notes = _slide_notes(z, path, names)
+                any_words = any_words or bool(lines or notes)
+                slides.append("\n".join([f"[slide {n}]", *lines, *([f"[notes] {notes}"] if notes else [])]))
+    except Exception as e:
+        logger.warning("PPTX could not be read - %s: %s", type(e).__name__, e)
+        return "", "could not be read as a PowerPoint deck"
+    facts = f"a PowerPoint deck, {len(order)} slide{'s' if len(order) != 1 else ''}"
+    if blank:
+        facts += f", {blank} with no text on the slide, and pictures are not read"
+    return "\n\n".join(slides) if any_words else "", facts
+
+
+def _epub_text(data: bytes) -> tuple[str, str]:
+    """The book in its reading order. An entry listed in encryption.xml is copy-protected, and read
+    as text it is only noise; fonts are often listed there too, so only the chapters count."""
+    import xml.etree.ElementTree as ET
+    from heartbeats import visible_text
+    from urllib.parse import unquote
+
+    def named(root, name):
+        return [e for e in root.iter() if e.tag.rsplit("}", 1)[-1] == name]
+
+    try:
+        with _open_zip(data) as z:
+            names = set(z.namelist())
+            where = named(ET.fromstring(z.read("META-INF/container.xml")), "rootfile")[0].get("full-path")
+            package = ET.fromstring(z.read(where))
+            manifest = {i.get("id"): i.get("href") or "" for i in named(package, "item")}
+            chapters = [posixpath.normpath(posixpath.join(posixpath.dirname(where), unquote(manifest[r.get("idref")])))
+                        for r in named(package, "itemref") if r.get("idref") in manifest]
+            if "META-INF/encryption.xml" in names:
+                locked = {unquote(e.get("URI") or "") for e in named(ET.fromstring(z.read("META-INF/encryption.xml")),
+                                                                     "CipherReference")}
+                if locked & set(chapters):
+                    return "", "copy-protected, so it could not be read"
+            parts = [visible_text(z.read(c).decode("utf-8", errors="replace")) for c in chapters if c in names]
+            title = next((t.text for t in named(package, "title") if t.text), "")
+    except Exception as e:
+        logger.warning("EPUB could not be read - %s: %s", type(e).__name__, e)
+        return "", "could not be read as an EPUB book"
+    return "\n\n".join(p for p in parts if p), f"an EPUB book{f', {title}' if title else ''}, {len(parts)} sections"
+
+
+_ODF_TEXT = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+_ODF_TABLE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
+_ODF_OFFICE = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
+
+
+def _odf_text(data: bytes) -> tuple[str, str]:
+    """OpenDocument's .odt, .ods and .odp are one format: paragraphs in content.xml, and a
+    spreadsheet's rows tab-separated so its columns still line up."""
+    import xml.etree.ElementTree as ET
+    try:
+        with _open_zip(data) as z:
+            root = ET.fromstring(z.read("content.xml"))
+    except Exception as e:
+        logger.warning("OpenDocument file could not be read - %s: %s", type(e).__name__, e)
+        return "", "could not be read as an OpenDocument file"
+    if root.find(f"{_ODF_OFFICE}body/{_ODF_OFFICE}spreadsheet") is not None:
+        rows = ("\t".join(" ".join("".join(p.itertext()).strip() for p in cell.iter(f"{_ODF_TEXT}p")) for cell in row)
+                for row in root.iter(f"{_ODF_TABLE}table-row"))
+        return "\n".join(r for r in rows if r.strip()), "an OpenDocument spreadsheet"
+    lines = ("".join(e.itertext()).strip() for e in root.iter()
+             if e.tag in (f"{_ODF_TEXT}p", f"{_ODF_TEXT}h"))
+    return "\n".join(line for line in lines if line), "an OpenDocument file"
+
+
 def _ipynb_text(data: bytes) -> tuple[str, str]:
     """Cells in order with their outputs, as Hermes reads notebooks; an output over
     2000 characters is cut, since it is usually a log or a data dump."""
@@ -236,6 +369,12 @@ def _extract(kind: str, data: bytes) -> tuple[str, str]:
         return _xlsx_text(data)
     if kind == "ipynb":
         return _ipynb_text(data)
+    if kind == "pptx":
+        return _pptx_text(data)
+    if kind == "epub":
+        return _epub_text(data)
+    if kind == "odf":
+        return _odf_text(data)
     return _plain_text(data)
 
 
@@ -383,7 +522,7 @@ async def read(attachments, transcribe=None, describe=None,
     for a, kind in docs:
         if kind == "other":
             parts.append(f"[An attachment, {a.filename}, was not read: IGOR reads voice notes, images, "
-                         f"PDFs, Word .docx, Excel .xlsx, Jupyter notebooks and plain text]")
+                         f"PDFs, Word .docx, Excel .xlsx, PowerPoint .pptx, EPUB, OpenDocument, Jupyter notebooks and plain text]")
             continue
         if (a.size or 0) > _MAX_DOC_BYTES:
             parts.append(f"[A document, {a.filename}, is {_size(a.size)}, over the 10 MB that can be read]")

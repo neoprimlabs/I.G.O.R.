@@ -113,7 +113,7 @@ A Discord DM travels this path every time:
    anything that is not a DM, caches the channel for proactive sends. The user's
    attachments go through `agents/inbound.py` first: voice notes become text
    (Whisper), up to 3 images are described by qwen inside untrusted markers, and
-   PDFs, Word, Excel, notebooks and text are saved to `memory/inbox/` (untrusted)
+   PDFs, Word, Excel, PowerPoint, EPUB, OpenDocument, notebooks and text are saved to `memory/inbox/` (untrusted)
    with the text in the message; a long one goes to React with a 20b summary instead.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
@@ -189,9 +189,6 @@ arrive as a 200 OK and are invisible to the caller: empty content, and non-empty
 content with `finish_reason` `length`, which reads as a complete answer but was cut
 mid-sentence. Both retry once at double budget (cap 4096), then return whatever came
 back. A caller already at the cap makes one request, not two.
-
-Routed through it: `orchestrator.call_claude` (so Direct, ConfigEdit and the critic
-are covered), Monitor's three synthesis calls, Evaluator, and ResearchLoop's `_call`.
 
 It also owns `llm.model_params`, which attaches the per-model request parameters
 that fail as a 200 OK when omitted, keyed by model so no call site has to remember:
@@ -291,6 +288,8 @@ lookups and 60s at most; only what it prints returns, as untrusted. No private f
 
 `search_files` greps IGOR's own source for a regex and returns `path:line: text`,
 with up to 6 lines of `context`. It skips private files, `.git` and the venv.
+
+`write_file` and `patch_file` parse a `.py` as they save it and say if the edit broke it (Hermes).
 
 Up to 8 iterations:
 
