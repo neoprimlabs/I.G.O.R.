@@ -43,6 +43,7 @@ class _Exa:
             raise RuntimeError("summary is unavailable")
         return SimpleNamespace(results=[SimpleNamespace(
             title="Pricing", url="https://e.example/pricing", published_date="2026-10-01T00:00:00Z",
+            highlights=["Plus is $10 a month.", "It has 40 seats."] if "highlights" in kwargs else None,
             summary="Plus is $10 per member per month." if "summary" in kwargs else None,
             text="Skip to content. Toggle navigation." if "text" in kwargs else None)])
 
@@ -82,6 +83,18 @@ def test_focus() -> None:
         _Exa.fail_focus = False
     _check("if focus fails it falls back to raw text", len(_Exa.calls) == 2 and "text" in _Exa.calls[1][1]
            and results[0]["body"].startswith("Skip to content"), str(_Exa.calls))
+
+
+def test_highlights() -> None:
+    """2026-10-31: proof of income sits deep in a page, and a quote has to be checkable against it."""
+    results = _search(highlights="what does it cost", include_domains=["e.example"], max_chars=30)
+    asked = _Exa.calls[0][1]
+    _check("the page's own words come back", results[0]["body"].startswith("Plus is $10 a month. ... It"), str(results))
+    _check("held to the size asked for", len(results[0]["body"]) == 30, str(results))
+    _check("Exa is asked about that question", asked["highlights"]["query"] == "what does it cost", str(asked))
+    _check("on the sites named", asked["include_domains"] == ["e.example"], str(asked))
+    _check("and no summary is paid for", "summary" not in asked, str(asked))
+    _check("a plain search asks for neither", not {"highlights", "include_domains"} & set((_search(), _Exa.calls[0][1])[1]))
 
 
 def test_a_second_backend_when_exa_fails() -> None:

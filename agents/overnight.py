@@ -19,6 +19,7 @@ import openai
 import config
 import goals
 import llm
+import proof
 import proposals
 import skills
 import work
@@ -175,9 +176,7 @@ _ITEM_RE = re.compile(r"^(?:\d+[.)]|[-*])\s+")
 _NUMBER_RE = re.compile(r"^(\d+)([.)])\s+")
 _LABEL_RE = re.compile(r"\s*\(evidence:([^)]*)\)", re.IGNORECASE)
 _GRADE_RE = re.compile(r"\s*\((?:independent|self-reported)\)", re.IGNORECASE)
-# Strongest first, the order the shortlist is sorted into. Unchecked is what is left when
-# the check failed: not knowing is not the same as finding no income.
-_EVIDENCE_KINDS = ("independent", "self-reported", "no income shown", "unchecked")
+_EVIDENCE_KINDS = proof.KINDS
 
 # Two facts, not a grade. Asked for a label on 2026-10-30, 20b repeated the paper's own
 # "independent" for the same four ideas. Code works the label out from the answers.
@@ -333,7 +332,7 @@ def _findings_state(text: str) -> tuple[int, int, int]:
 # starts empty, so without this the planner re-explored the same ground: live
 # 2026-10-17, the night's second paper repeated 4 of the first's 6 topics.
 _COVERED_CHARS = 1500
-_BOILERPLATE_SECTIONS = ("summary", "what i am unsure about", "reviewer note")
+_BOILERPLATE_SECTIONS = ("summary", "what i am unsure about", "reviewer note", proof.HEADING.lower())
 
 
 def _headings(text: str) -> list[str]:
@@ -377,23 +376,26 @@ def _covered_by_papers(folder) -> str:
     return "\n".join(kept)
 
 
-def _ideas_without_proof(folder) -> list[str]:
-    """Shortlist ideas whose label is anything but independent. On 2026-10-31 that was all
-    seven: the paper kept widening with new ideas priced from vendors' own pages, while
-    nothing looked for whether anyone earns from them."""
-    try:
-        text = (folder / _PAPER).read_text(encoding="utf-8")
-    except OSError:
-        return []
+def _shortlist_items(text: str) -> list:
     for part in re.split(r"(?m)^(?=## )", text)[1:]:
         if _is_shortlist(part):
-            names = []
-            for block in _shortlist_split(part)[2]:
-                label = _LABEL_RE.search("".join(block))
-                if label and label.group(1).strip().lower() != "independent":
-                    names.append(re.split(r"\s+-\s+|:\s", _ITEM_RE.sub("", block[0].strip()), maxsplit=1)[0].strip(" *"))
-            return names
+            return _shortlist_split(part)[2]
     return []
+
+
+def _shortlist_names(text: str) -> list[str]:
+    return [re.split(r"\s+-\s+|:\s", _ITEM_RE.sub("", block[0].strip()), maxsplit=1)[0].strip(" *")
+            for block in _shortlist_items(text)]
+
+
+def _current_labels(text: str) -> dict:
+    """{item number: label} as the shortlist stands, so checking one idea leaves the rest alone."""
+    labels = {}
+    for i, block in enumerate(_shortlist_items(text), 1):
+        found = _LABEL_RE.search("".join(block))
+        if found and found.group(1).strip().lower() in _EVIDENCE_KINDS:
+            labels[i] = found.group(1).strip().lower()
+    return labels
 
 
 def _unique(folder, stem: str, night: str):
@@ -405,6 +407,42 @@ def _unique(folder, stem: str, night: str):
     return path
 
 
+_PROOF_NOTE = "proof checked: "
+
+
+async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
+                         searches_left: int, token_room: int) -> str:
+    """One idea's remaining searches, then the paper's labels and proof section in place, with no
+    further model call. The ledger is saved after each search, so a 429 loses at most that one."""
+    state["next_action"] = goal["next_action"]
+    folder = work.folder(goal["id"])
+    paper_path = folder / _PAPER
+    paper = proof.without_section(paper_path.read_text(encoding="utf-8"))
+    ledger = proof.load(folder)
+    sellers = proof.hosts(_links(paper))
+    start = work.overnight_tokens()
+    stopped = ""
+    for _ in range(min(proof.left(idea, ledger), searches_left)):
+        if token_room - (work.overnight_tokens() - start) < proof.RESERVE:
+            stopped = "waits for budget"
+            break
+        state["searches"] += 1
+        outcome = await proof.step(idea, ledger, search, complete, sellers)
+        proof.save(folder, ledger)
+        if outcome != "read":
+            stopped = outcome
+            break
+    labels = _current_labels(paper)
+    labels.update(proof.labels_for(_shortlist_names(paper), ledger))
+    paper_path.write_text(_for_file(proof.with_section(normalize_shortlist(paper, labels), ledger)) + "\n",
+                          encoding="utf-8")
+    rel = str(paper_path.relative_to(config.MEMORY_DIR))
+    state["files"].append(rel)
+    state["finished"].append(rel)
+    verdict = proof.labels_for([idea], ledger).get(1, "unchecked")
+    return f"{_PROOF_NOTE}{idea} - {verdict}" + (f" ({stopped})" if stopped else "")
+
+
 async def _research_session(goal: dict, state: dict, search, complete, night: str,
                             searches_left: int, token_room: int) -> str:
     from agents import evaluator, research, research_loop
@@ -412,6 +450,12 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
 
     folder = work.folder(goal["id"])
     folder.mkdir(parents=True, exist_ok=True)
+    paper_path = folder / _PAPER
+    # Test what is on the list before looking for more: 15 versions of only widening proved nothing.
+    if proof.applies(goal["statement"]) and paper_path.exists():
+        idea = proof.next_idea(_shortlist_names(paper_path.read_text(encoding="utf-8")), proof.load(folder))
+        if idea:
+            return await _proof_session(goal, idea, state, search, complete, searches_left, token_room)
     findings_path = folder / "findings.md"
     existing = findings_path.read_text(encoding="utf-8") if findings_path.exists() else ""
     number, _, _ = _findings_state(existing)
@@ -424,12 +468,6 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     covered = _covered_by_papers(folder)
     covered_section = (f"\nEarlier papers already covered these; find a different angle:\n{covered}\n"
                        if covered else "")
-    unproven = _ideas_without_proof(folder)
-    if unproven:
-        covered_section += ("\nNo source with nothing to sell shows anyone earning from these ideas in the paper: "
-                            + "; ".join(unproven) + ". Finding out is the most useful angle: search for one of "
-                            "them as a news report, study or marketplace data naming real revenue, or for "
-                            "people who tried it and failed. A vendor's own site proves nothing.\n")
     added = 0
     marker_written = False
     search_error = ""
@@ -501,13 +539,18 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     elif triggered and room < _WRITE_RESERVE:
         summary += ", paper write waits for budget"
     elif triggered:
-        paper_path = folder / _PAPER
-        current = paper_path.read_text(encoding="utf-8")[:_PAPER_MAX_CHARS] if paper_path.exists() else ""
+        ledger = proof.load(folder)
+        current = (proof.without_section(paper_path.read_text(encoding="utf-8"))[:_PAPER_MAX_CHARS]
+                   if paper_path.exists() else "")
         if current:
             body = text[-_REVISE_INPUT_CHARS:]
             system = _REVISE_SYSTEM
             write_user = (f"Goal: {goal['statement']}\n\nCurrent paper:\n{current}\n\n"
                           f"New findings:\n{body}")
+            checked = proof.names(ledger)
+            if checked:
+                write_user += ("\n\nThese ideas have been checked for proof of income. Where one stays on "
+                               f"the shortlist, use exactly this name for it: {checked}")
         else:
             body = text[-_WRITE_INPUT_CHARS:]
             system = _WRITE_SYSTEM
@@ -538,7 +581,9 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 break
         if paper:
             if ok:
-                paper = normalize_shortlist(paper, await audit_evidence(paper, complete))
+                labels = await audit_evidence(paper, complete)
+                labels.update(proof.labels_for(_shortlist_names(paper), ledger))
+                paper = normalize_shortlist(paper, labels)
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
                 passed, feedback = await evaluator.evaluate(task, paper, label="Overnight",
@@ -556,7 +601,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                     note = f"paper revised: {_heading_change(current, paper)}"
                 if cut:
                     note += f" (cut to fit: {', '.join(cut)})"
-                paper_path.write_text(_for_file(paper) + "\n", encoding="utf-8")
+                paper_path.write_text(_for_file(proof.with_section(paper, ledger)) + "\n", encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)
                 rel = str(paper_path.relative_to(config.MEMORY_DIR))
@@ -920,6 +965,10 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
             lines.append("Paper updated:" if len(papers) == 1 else "Papers updated:")
             lines.extend(f"- {_paper_title(p)} ({p.name})" + (f" - {notes[p]}" if p in notes else "")
                          for p in papers)
+        checks = [str(e.get("summary"))[len(_PROOF_NOTE):] for e in entries
+                  if str(e.get("summary") or "").startswith(_PROOF_NOTE)]
+        if checks:
+            lines.append("Proof checked: " + "; ".join(checks))
         # Only the latest draft per goal: live 2026-10-18 one goal's three failed
         # attempts were all listed.
         pending_drafts = [names[-1] for names in drafts.values()]

@@ -19,6 +19,8 @@ async def _run_search(
     exclude_domains: list[str] | None = None,
     focus: str | None = None,
     raise_errors: bool = False,
+    highlights: str | None = None,
+    include_domains: list[str] | None = None,
 ) -> list[dict]:
     """Search Exa and return title, url, published date and body text.
 
@@ -35,19 +37,26 @@ async def _run_search(
     because a page's first 500 characters seldom hold the answer. For one query focus
     returned "The cheapest paid plan is Plus at $10 per member per month." in 59
     characters, for $0.003 more and a second longer. Falls back to raw text if it fails.
+
+    highlights asks for the page's own words on that question, cut to max_chars. A summary is
+    Exa's model talking, so a quote from one cannot be checked against the page; these can.
     """
     def _sync(focus: str | None = focus) -> list[dict]:
         from exa_py import Exa
         exa = Exa(api_key=config.EXA_API_KEY)
         # Exa's raw text is the page from byte zero, so navigation, cookie banners
         # and repeated titles consume the budget before any prose. Measured on one
-        # article: 500 chars of chrome, and 1500 chars of chrome. "highlights" was no
-        # better. summary=True is the only option that returned the actual content -
-        # it named Stanford, the Arc Institute and bacteriophage genomes, none of
-        # which appeared in 1500 characters of raw text.
+        # article: 500 chars of chrome, and 1500 chars of chrome. "highlights" with no
+        # query was no better. summary=True returned the actual content - it named
+        # Stanford, the Arc Institute and bacteriophage genomes, none of which appeared
+        # in 1500 characters of raw text. Highlights given a query do reach the point:
+        # live 2026-10-31 they returned the revenue figures from four searches of four.
         if focus:
             kwargs: dict = {"num_results": max_results,
                             "summary": {"query": _FOCUS_PROMPT.format(query=focus[:300])}}
+        elif highlights:
+            kwargs = {"num_results": max_results, "text": {"max_characters": max_chars},
+                      "highlights": {"query": highlights[:300], "num_sentences": 3, "highlights_per_url": 2}}
         elif use_summary:
             kwargs = {"num_results": max_results, "summary": True}
         else:
@@ -56,12 +65,20 @@ async def _run_search(
             kwargs["start_published_date"] = start_published_date
         if exclude_domains:
             kwargs["exclude_domains"] = exclude_domains
+        if include_domains:
+            kwargs["include_domains"] = include_domains
         response = exa.search_and_contents(query, **kwargs)
+
+        def _body(r) -> str:
+            if highlights and getattr(r, "highlights", None):
+                return " ... ".join(r.highlights)[:max_chars]
+            return (getattr(r, "summary", None) or r.text or "") if (use_summary or focus) else (r.text or "")
+
         return [
             {
                 "title": r.title or "No title",
                 "url": r.url,
-                "body": (getattr(r, "summary", None) or r.text or "") if (use_summary or focus) else (r.text or ""),
+                "body": _body(r),
                 # Exa returns this and it was being discarded, so callers had no way
                 # to notice a result was years old. React reported December 2024
                 # releases as "the latest AI tech" in August 2026 because of it.

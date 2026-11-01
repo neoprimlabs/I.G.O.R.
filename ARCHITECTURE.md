@@ -401,13 +401,11 @@ This is also the Dual LLM pattern: the context that sees web content holds no to
 
 ### Overnight loop
 
-Standing goals worked while the user is away, on `gpt-oss-20b` only (never the 120b
-chat bucket).
+Standing goals worked while the user is away.
 
 **Goals** (`goals.py`, `memory/goals.md`): blocks `## g<n> <statement>` with `kind`
 (`research` or `self_improve`), `status` (active or paused), `created`,
-`last_reviewed`, `next_action`. Retired goals move to `goals_archive.md`. A block
-missing a field is skipped with a warning and left as written. React's `goal` tool
+`last_reviewed`, `next_action`. Retired goals move to `goals_archive.md`. React's `goal` tool
 (add, list, pause, resume, retire) is the only writer besides the loop.
 
 **Tick** (`monitor._overnight_tick`, cron at minute 20 of every hour, one instance):
@@ -415,11 +413,10 @@ missing a field is skipped with a warning and left as written. React's `goal` to
 budget, or with no active goal. Otherwise it runs one session for the active goal
 reviewed longest ago, logs it, and saves `next_action`, so a restart loses at most
 one session. A failed session also marks its goal reviewed, so it cannot wedge the
-rotation. It never raises. A session is a fixed pipeline: model calls with no tools,
-web search done by code, files written by code only under `memory/work/` plus each
-goal's progress line in `memory/goals.md`. Nothing it runs can message anyone; its only
-outbound call is the web search. Calls use `config.OVERNIGHT_MODEL`, the paper write
-`OVERNIGHT_WRITE_MODEL` (120b); the budget counts both.
+rotation. A session is a fixed pipeline: model calls with no tools, web search by code,
+files written by code only under `memory/work/` plus `next_action` in `memory/goals.md`.
+Its only outbound call is the web search. The paper write uses `OVERNIGHT_WRITE_MODEL`
+(120b), the rest `OVERNIGHT_MODEL`; the budget counts both.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
@@ -428,10 +425,17 @@ code cuts a long draft's least-sourced sections, never the shortlist or unsure).
 Code checks a "What I am unsure about" heading, 3 distinct links from the
 findings or paper and a revision keeping a third of its links, one retry told why,
 then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
-item (independent, self-reported, no income shown; unchecked if that fails); code
-sorts strongest first, and PLAN is told which ideas still lack independent proof.
+item it can (unchecked if that fails); code sorts strongest first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees. A failed write waits a night.
+
+**Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
+research widens: 3 fixed searches through Exa's excerpts (TrustMRR, earnings data,
+failures). 20b says what each shows; code keeps a quote only if it is in the excerpt and
+is money received of $1000+ or a failure, and overrides the source for personal posts,
+hosts the paper cites and TrustMRR. `proof.json` outlives revisions; code writes
+`## Proof checked` and the labels (independent, mixed, self-reported, no income shown,
+unchecked, against).
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
@@ -462,13 +466,11 @@ calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is del
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
 `Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night (not one that hits
 the Evaluator, which fails open); a daily-cap 429 logs
-`daily cap 20b: <limit>`. 20b's daily cap is unmeasured; that limit belongs in
-`config.DAILY_TOKEN_CAPS`.
+`daily cap 20b: <limit>`. 20b's daily cap is unmeasured.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
-`digest_config.md` adds finished papers (sent as attachments), the latest draft per goal, pending proposals,
-tokens and searches spent, and any early stop (a capped night reports even with no
-files).
+`digest_config.md` adds finished papers (sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
+tokens and searches spent, and any early stop.
 
 ---
 
@@ -574,17 +576,17 @@ chars) in the background, backing off 60/300/900s on failure. `_window` puts it
 first as a system record, at most a fifth of the budget; not for SelfDescribe.
 
 **Memory holds preferences, history and user facts, never architecture.**
-`memory_write`'s description says so. Anything checkable against source belongs in
+Anything checkable against source belongs in
 this file and is read with `read_file`.
 
 ### Agent prompt override pattern
 
 Every agent's `_get_system_prompt()` returns `memory/prompt_<agent>.md` when it
-exists and is not empty, else `_DEFAULT_SYSTEM_PROMPT`. Overrides take effect immediately, no restart. Reset by deleting or emptying the
-file. Prompt files are edited through Claude Code sessions only: no tool can write one.
+exists and is not empty, else `_DEFAULT_SYSTEM_PROMPT`. Overrides take effect immediately, no restart.
+Prompt files are edited through Claude Code sessions only: no tool can write one.
 
-**No `prompt_*.md` files exist on the server.** Every agent runs its built-in
-default, so the prompt in the source is the prompt in play.
+**No `prompt_*.md` files exist on the server**, so the prompt in the source is the
+prompt in play.
 
 ---
 
@@ -597,9 +599,8 @@ raising, so the deploy gate rolls back. It verifies:
 - `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
   at least 1
 - four routing fast paths resolve correctly (all on fast paths, so no API call)
-- **every agent module imports.** `py_compile` checks syntax, not names, and
-  agents are imported lazily, so a missing stdlib import otherwise passes the
-  commit and fails on the first message that routes there
+- **every agent module imports.** Agents are imported lazily, so a missing import
+  would otherwise fail on the first message that routes there
 - the sandbox probe, which logs an ERROR but never refuses to start
 
 ---

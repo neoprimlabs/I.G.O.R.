@@ -12,6 +12,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Tool Search | `load_tools` | One bridge tool, not three: a bridge step costs a whole model call here. |
 | `tool_search(queries)` batching | `search(queries)` | The model makes one tool call a step, so eight lookups fit in one call. |
 | `web_extract` | `fetch_url` | Page text in windows, or one question answered from the page. |
+| `grounded-citations` ledger | `proof.py` | Overnight income ideas only: code checks each quote is on the page, and the ledger outlives the paper's revisions. Reads Exa's excerpts rather than whole pages, for the budget. |
 | Gateway `/stop` `/retry` `/undo` `/usage` `/status` `/help` | `commands.py` | Plain words, with or without the slash. |
 | `busy_input_mode: queue` | One turn at a time | Queue, not Hermes' default interrupt: two turns at once share one rate limit. `stop` covers the rest. |
 | `redact_secrets` | `sanitize.redact` | |
