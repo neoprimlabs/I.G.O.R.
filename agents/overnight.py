@@ -19,6 +19,7 @@ import openai
 import config
 import goals
 import llm
+import memory_review
 import proof
 import proposals
 import skills
@@ -314,7 +315,7 @@ def _real_complete():
         writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM)
         model = config.OVERNIGHT_WRITE_MODEL if writing else config.OVERNIGHT_MODEL
         # On low, 20b answered "seller" to all of it and called e-book generators the idea itself.
-        effort = "medium" if system == proof._JUDGE_SYSTEM else _REASONING_EFFORT
+        effort = "medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM) else _REASONING_EFFORT
         return await llm.complete(
             research_loop._get_client(), model, system, user,
             max_tokens=max_tokens, label="Overnight", reasoning_effort=effort, **extra)
@@ -809,6 +810,14 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     if drafted:
         state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
     note = f"{drafted} skills drafted, " if drafted else ""
+    remembered, spent = await memory_review.review(seen, complete, token_room)
+    token_room -= spent
+    if spent:
+        _write_seen(folder, seen)
+    if remembered:
+        note += f"{remembered} memories proposed, "
+        if not drafted:
+            state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
     corrections = _new_corrections(seen.get("corrections", ""))
     errors, newest_error = _new_errors(seen.get("errors", ""))
     if not corrections and not errors:
@@ -840,7 +849,7 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
             dropped += 1
         else:
             added += 1
-    if added and not drafted:
+    if added and not drafted and not remembered:
         state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
     return (f"{note}{added} proposals written from {len(corrections)} corrections and "
             f"{len(errors)} errors, {dropped} dropped")

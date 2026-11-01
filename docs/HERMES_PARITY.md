@@ -30,6 +30,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Checkpoints, `/rollback` | `checkpoints.py` | Files only; the conversation is not rewound. |
 | File-mutation verifier | Receipts under each reply | |
 | Skills, `skills.write_approval` on, curator | `skills.py` | Always on approval: `approve p7`, never a model's call. Hermes defaults to writing freely. Drafted from a night's review or on request, not by a nudge after each hard task. No supporting files or hub, and no consolidation pass, which Hermes also leaves off. Read with `read_file`, so no extra tool schema. |
+| Background memory review, `memory.write_approval` on | `memory_review.py` | Always on approval, never a model's call; Hermes defaults to saving freely. Once a night on 20b rather than after each turn, for the budget. A fact must quote the user's own first-person words, checked in code. |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. |
@@ -57,10 +58,9 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 ## Still open, most useful first
 
 1. **A second search backend, waiting on one install.** The DDGS fallback is written and tested offline but has never run against the real service, because the package is not on the server. Until it is, search stops if Exa's credits run out, and says so.
-2. **Background memory review.** Hermes reviews each conversation and saves what matters. IGOR saves only when asked. A wrong fact about the user is costly, so this would need the user's approval, the way skills do.
-3. **MCP client.** IGOR serves MCP but cannot use other servers.
-4. **Chained scheduled jobs and pre-run scripts.**
-5. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+2. **MCP client.** IGOR serves MCP but cannot use other servers.
+3. **Chained scheduled jobs and pre-run scripts.**
+4. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 

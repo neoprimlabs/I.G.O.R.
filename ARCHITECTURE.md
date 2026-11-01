@@ -411,8 +411,7 @@ Standing goals worked while the user is away.
 **Tick** (`monitor._overnight_tick`, cron at minute 20 of every hour, one instance):
 `overnight.tick()` returns at once outside 00:00-06:59 local, after a stop, at the
 budget, or with no active goal. Otherwise it runs one session for the active goal
-reviewed longest ago, logs it, and saves `next_action`, so a restart loses at most
-one session. A failed session also marks its goal reviewed, so it cannot wedge the
+reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed, so it cannot wedge the
 rotation. A session is a fixed pipeline: model calls with no tools, web search by code,
 files written by code only under `memory/work/` plus `next_action` in `memory/goals.md`.
 Its only outbound call is the web search. The paper write uses `OVERNIGHT_WRITE_MODEL`
@@ -427,7 +426,7 @@ findings or paper and a revision keeping a third of its links, one retry told wh
 then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
 item it can (unchecked if that fails); code sorts strongest first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
-PLAN also sees. A failed write waits a night.
+PLAN also sees.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
 research widens: 3 fixed searches through Exa's excerpts (TrustMRR, earnings data,
@@ -443,9 +442,14 @@ no income shown, unchecked, against).
 re-propose fixed mistakes. At most 5 JSON proposals, stored in
 `work/self-improvement/proposals.md` (30 pending, 40 decided kept).
 
+**Memory review** (`memory_review.py`, Hermes' background review with `write_approval` on):
+in that session 20b reads the user's own typed messages since the last pass and raises at most
+3 proposals. Code checks each quote is theirs and, for a fact, first-person. Only the user's own
+"approve" adds a `memory` to `user.md`, replacing a named stale line.
+
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
-`preference`, `prompt`, `code`, `skill`. Approving a `preference` appends one dated line to
-`memory/preferences.md`, one of two paths out of the work folder. `with_preferences`
+`preference`, `prompt`, `code`, `skill`, `memory`. Approving a `preference` appends one dated line to
+`memory/preferences.md`, one of three paths out of the work folder. `with_preferences`
 adds those lines to the prompts of Direct and React and to
 the job ranking profile. Approving a `prompt` or `code` proposal only marks it for a
 Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
@@ -464,8 +468,7 @@ calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is del
 
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
-`Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night (not one that hits
-the Evaluator, which fails open); a daily-cap 429 logs
+`Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night; a daily-cap 429 logs
 `daily cap 20b: <limit>`. 20b's daily cap is unmeasured.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
@@ -539,7 +542,7 @@ says so only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the measured ones:
 `gpt-oss-120b` is 200000 (2026-10-16). `usage.record`
 adds every response's token count to `memory/token_ledger.json` hourly, per model
 and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
-against the cap. It is IGOR's own count: spend that bypasses `record` is invisible.
+against the cap.
 
 `max_tokens` counts against TPM at request time, so prompt plus reservation must stay
 under the model's limit.
@@ -572,7 +575,7 @@ a failed push.
 
 **Compression** (`compression.py`, as Hermes): once 4 messages leave the window,
 20b folds them into a running summary (`conversation_summary.json`, under 1800
-chars) in the background, backing off 60/300/900s on failure. `_window` puts it
+chars) in the background. `_window` puts it
 first as a system record, at most a fifth of the budget; not for SelfDescribe.
 
 **Memory holds preferences, history and user facts, never architecture.**
@@ -663,10 +666,8 @@ other start sets it aside. Below the host (terminated once, July 2026), the PC's
 
 Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
-- **Dev and Comms as separate specialists.** The spec describes five; there are
-  five routed destinations but Dev and Comms remain absorbed into React.
-- **Any UI beyond Discord.** No Flutter or web interface. Spec Phase 2.
+- **Dev and Comms as separate specialists.** Absorbed into React.
+- **Any UI beyond Discord.** Spec Phase 2.
 - **Spoken replies.** Voice notes are transcribed; speech waits for IGOR's own app,
   the user's choice.
-- **Multi-user anything.** `AUTHORIZED_USER_ID` is a single int, memory files are
-  global, `context.db` has no user column.
+- **Multi-user anything.** Memory files are global, `context.db` has no user column.

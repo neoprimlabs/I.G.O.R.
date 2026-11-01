@@ -5,9 +5,9 @@ Its text comes from corrections and logs, which are derived from untrusted input
 every field is flattened to one line and nothing here acts on a proposal by itself.
 decide() is the only path that writes outside the work folder: approving a
 `preference` appends one dated line to memory/preferences.md, which Direct, React and
-the job ranking read, and approving a `skill` moves its draft to memory/skills/
-(skills.py). Approving a `prompt` or `code` proposal only marks it for a Claude Code
-session.
+the job ranking read, approving a `skill` moves its draft to memory/skills/
+(skills.py), and approving a `memory` adds its fact to memory/user.md (memory_review.py).
+Approving a `prompt` or `code` proposal only marks it for a Claude Code session.
 """
 
 import logging
@@ -21,9 +21,10 @@ from sanitize import clean
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("preference", "prompt", "code", "skill")
+KINDS = ("preference", "prompt", "code", "skill", "memory")
 # What the night's review of corrections may raise. A skill needs a draft file behind it,
-# which only skills.propose() writes.
+# which only skills.propose() writes; a memory needs the user's words, which only
+# memory_review checks.
 REVIEW_KINDS = ("preference", "prompt", "code")
 PREFERENCES_CAP = 1500
 _MAX_PENDING = 30
@@ -106,7 +107,7 @@ def add(kind: str, problem: str, evidence: str, change: str, test: str,
     kind = (kind or "").strip()
     fields = {"problem": problem, "evidence": evidence, "change": change, "test": test}
     cap = dict(_CAPS)
-    if kind == "preference":
+    if kind in ("preference", "memory"):
         cap["change"] = _PREFERENCE_CHANGE_CAP
     fields = {k: _flat(v, cap[k]) for k, v in fields.items()}
     if kind not in KINDS or not all(fields.values()):
@@ -167,6 +168,15 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
         _save(items)
         logger.info("Approved skill %s", pid)
         return f"Approved {pid}: I can now use the skill {skills._name_of(target['change'])}."
+    if target["kind"] == "memory":
+        import memory_review
+        why, done = memory_review.save(target["change"], target["test"])
+        if why:
+            return f"Not approved: {why}\n{pid} stays pending. Reject it to clear it."
+        target["status"] = "approved"
+        _save(items)
+        logger.info("Approved memory %s", pid)
+        return f"Approved {pid}. {done}"
     if target["kind"] == "preference":
         text = _preference_text()
         if text and not text.endswith("\n"):
@@ -220,11 +230,12 @@ def run_tool(inputs: dict) -> str:
     if action == "list":
         items = pending()
         return _listing(items) if items else "No pending proposals."
-    if action == "approve" and any(p["id"] == str(inputs.get("id") or "").strip().lower() and p["kind"] == "skill"
+    if action == "approve" and any(p["id"] == str(inputs.get("id") or "").strip().lower() and p["kind"] in ("skill", "memory")
                                    for p in pending()):
-        # An approved skill is named in every React prompt, so the yes has to be the user's
-        # own message, which the orchestrator answers in code, and not a model's reading of one.
-        return f'A skill is approved by the user alone. Ask them to reply "approve {inputs.get("id")}".'
+        # An approved skill is named in every React prompt and a memory reaches every chat, so the
+        # yes has to be the user's own message, which the orchestrator answers in code, and not a
+        # model's reading of one.
+        return f'That is approved by the user alone. Ask them to reply "approve {inputs.get("id")}".'
     if action in ("approve", "reject"):
         return decide(inputs.get("id") or "", approve=action == "approve")
     return "Unknown action. Use list, approve or reject."

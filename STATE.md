@@ -213,6 +213,13 @@ stays weak, so a quote can be real and beside the point. Not yet seen: a real ni
 stops on `daily cap 20b` would finally measure it and resumes the next night. Read `work/g3/paper.md`
 after the nights of 11-01 to 11-03: if nothing independent turns up, tell the user the ideas look
 unprovable from public sources rather than tune further.
+**Memory review built 11-01** (`memory_review.py`, Hermes' background review with write approval
+on), the next open parity item: the night's self-improvement session reads the user's own typed
+messages and raises at most 3 proposals. Live once on real messages in the throwaway copy, about
+8600 of 20b: one sound preference, one quote code refused because the user never wrote it, and one
+"fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
+words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
+`user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
 **Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
 tool calls or on "save that as a skill", each one approved by the user's own message, then named
 in React's prompt and read with `read_file`. Curator: stale at 14 days, archive at 30, nothing
