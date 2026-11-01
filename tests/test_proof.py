@@ -184,12 +184,15 @@ def test_who_says_it() -> None:
 def test_reading_replies() -> None:
     parse = proof.parse_judgement
     _check("nothing found", parse("NONE") == [] and parse("none.") == [] and parse("`NONE`") == [])
+    _check("said after some words", parse("No excerpt here qualifies.\nNONE") == [])
     _check("no reply is not nothing found", parse("") is None and parse(None) is None)
     _check("prose is not nothing found", parse("I think this looks promising") is None)
     _check("one object per line", len(parse(_row() + "\n" + _row(n=2))) == 2)
     _check("an array", len(parse("[" + _row() + "," + _row(n=2) + "]")) == 2)
     _check("in a code fence", len(parse("```json\n" + _row() + "\n```")) == 1)
     _check("a broken line is skipped, the good one kept", len(parse('{"n": 1, "what\n' + _row())) == 1)
+    _check("spread over lines", parse('{\n "n": 1,\n "what": "earned"\n}') == [{"n": 1, "what": "earned"}])
+    _check("after a sentence of preamble", len(parse("Here is what I found:\n" + _row())) == 1)
     _check("a stray list is unreadable", parse("[1, 2]") is None)
 
 
@@ -223,6 +226,7 @@ def test_a_session_tests_the_next_idea() -> None:
     _check("a proof section sits after the summary, before the ideas",
            text.index("## Proof checked") < text.index("## Kettle alerts") and text.index("Some ideas") < text.index("## Proof checked"), text)
     _check("it explains its labels", "Independent: someone with nothing to sell" in text)
+    _check("and that one earner is not everyone", "not that most people do" in text)
     _check("and shows the words and the page", '"revenue of $40,000 last year" (third party) <https://news.example/a>' in text, text)
 
     import work
@@ -278,18 +282,31 @@ def test_failures_do_not_become_findings() -> None:
     tmp.cleanup()
 
     overnight, folder, tmp = _setup()
-    stub = _Stub(replies=["", "", "NONE", "NONE"])
-    out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
-    _check("an empty reply stops the session", "model reply unreadable" in out and len(stub.searches) == 1, out)
-    _check("and costs that search nothing", proof.left("Kettle price alerts", proof.load(folder)) == 3)
+    stub = _Stub(replies=["", _row(), "I think this looks promising", "", "NONE"])
     out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
     entry = proof._find(proof.load(folder), "Kettle price alerts")
-    _check("a second one moves past it, so it cannot wedge the night", entry["searches"] == 1, str(entry))
-    _check("without claiming to have read it", entry["read"] == 0 and proof.label(entry) == "unchecked", str(entry))
-    _check("and the flag does not stick", "stalled" not in entry, str(entry))
+    _check("an empty reply is asked again on the same excerpts", len(stub.judged) == 5 and stub.judged[0][0] == stub.judged[1][0], str(len(stub.judged)))
+    _check("with no second search", len(stub.searches) == 3, str(len(stub.searches)))
+    _check("what the retry found counts", entry["evidence"], str(entry))
+    _check("two bad replies count as looked but not read", entry["searches"] == 3 and entry["read"] == 2, str(entry))
+    tmp.cleanup()
+
+    overnight, folder, tmp = _setup()
+    stub = _Stub(replies=[""] * 6)
     out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
     entry = proof._find(proof.load(folder), "Kettle price alerts")
-    _check("then it carries on", entry["searches"] == 3 and entry["read"] == 2, str(entry))
+    _check("a model that never answers cannot wedge the night", proof.left("Kettle price alerts", proof.load(folder)) == 0, str(entry))
+    _check("and nothing is claimed from it", proof.label(entry) == "unchecked" and "unchecked" in out, out)
+    out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
+    _check("the next idea gets its turn", "Birdhouse" in out, out)
+    tmp.cleanup()
+
+    overnight, folder, tmp = _setup()
+    stub = _Stub()
+    asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
+    _check("each search says what it was looking for",
+           "payment-verified" in stub.judged[0][0] and "really earn" in stub.judged[1][0] and "failures" in stub.judged[2][0],
+           stub.judged[2][0][:200])
     tmp.cleanup()
 
     overnight, folder, tmp = _setup()

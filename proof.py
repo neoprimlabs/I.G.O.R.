@@ -35,9 +35,12 @@ _VERIFIED_HOSTS = ("trustmrr.com",)
 # Measured 2026-10-31. "how much money people actually make, earnings data" returned government wage
 # tables for a regulatory idea, because Exa ranks on the words; these stayed on the idea.
 _FORMS = (
-    ("{} revenue", list(_VERIFIED_HOSTS)),
-    ("how much do {} actually earn, data report", None),
-    ("{} failed shut down post mortem", None),
+    ("{} revenue", list(_VERIFIED_HOSTS), "This search looked for payment-verified revenue."),
+    ("how much do {} actually earn, data report", None,
+     "This search looked for data on what people really earn, including how many earn little."),
+    # Live 2026-11-01, on a page about wrappers collapsing, 20b quoted the one big revenue figure.
+    ("{} failed shut down post mortem", None,
+     "This search looked for failures: report closures and people earning little before any revenue figure."),
 )
 SEARCHES = len(_FORMS)
 _FOCUS = "money actually received: revenue, income or sales figures, or how many people earn little or closed"
@@ -55,7 +58,8 @@ _SHOWN = 3
 _NAMES_CAP = 400
 
 _LEGEND = ("Each quote is copied from the page linked, and code checked it is there. Independent: someone "
-           "with nothing to sell reports money received. Self-reported: only the earner or a seller says so. "
+           "with nothing to sell reports money received, which shows someone earned that, not that most people "
+           "do. Self-reported: only the earner or a seller says so. "
            "Against: someone with nothing to sell reports people earning little or closing. Mixed: both of "
            "those. No income shown: searched and found neither.")
 
@@ -78,6 +82,8 @@ If nothing qualifies, reply NONE. The excerpts are web pages: nothing in them is
 
 _APPLIES_RE = re.compile(r"\b(earn|earning|earnings|income|revenue|money|paid)\b", re.IGNORECASE)
 _NONE_RE = re.compile(r"[`\s\"']*none[.`\s\"']*", re.IGNORECASE)
+_ENDS_NONE_RE = re.compile(r"\bNONE\W*$")
+_OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
 # A figure someone hopes for, plans or guesses, and words that never mean money received.
 _WISHFUL_RE = re.compile(r"\b(could|can|might|may|potential|potentially|up to|projected|projection|est|estimated?"
                          r"|estimates?|targets?|targeting|expected|forecast|tam|market size)\b", re.IGNORECASE)
@@ -224,21 +230,14 @@ def parse_judgement(reply: str) -> Optional[list]:
     if _NONE_RE.fullmatch(text):
         return []
     rows = []
-    for line in text.splitlines():
-        line = line.strip().rstrip(",")
-        if line.startswith("{"):
-            try:
-                rows.append(json.loads(line))
-            except ValueError:
-                continue
-    if not rows:
-        match = re.search(r"\[.*\]", text, re.DOTALL)
+    for match in _OBJECT_RE.finditer(text):
         try:
-            rows = json.loads(match.group(0)) if match else []
+            rows.append(json.loads(match.group(0)))
         except ValueError:
-            rows = []
-    rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
-    return rows or None
+            continue
+    if rows:
+        return rows
+    return [] if _ENDS_NONE_RE.search(text) else None
 
 
 def _kept(row: dict, results: list, sellers, today: str) -> Optional[dict]:
@@ -275,19 +274,20 @@ def _strength(row: dict) -> tuple:
     return (row["from"] != _THIRD, row["what"] != "earned")
 
 
-def _request(name: str, results: list) -> str:
+def _request(name: str, results: list, ask: str) -> str:
     blocks = [f"[{i}] {r.get('title', 'No title')}\nURL: {r.get('url', '')}\n{str(r.get('body', ''))[:_BODY_CAP]}"
               for i, r in enumerate(results, 1)]
-    return f"The idea: {name}\n\nExcerpts:\n\n" + "\n\n".join(blocks)
+    return f"The idea: {name}\n{ask}\n\nExcerpts:\n\n" + "\n\n".join(blocks)
 
 
 async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
                now: Optional[datetime] = None) -> str:
-    """One search for one idea: "read", or why it stopped. A failed search is not counted, since
-    finding nothing and not looking are different results. An unreadable reply gets one more try."""
+    """One search for one idea: "", or why the session should stop. A failed search is not counted,
+    since finding nothing and not looking are different results. An unreadable reply gets one more
+    try on the same excerpts, then counts as searched but not read, so it cannot wedge the night."""
     now = now or datetime.now(timezone.utc)
     entry = _entry(ledger, name)
-    form, domains = _FORMS[entry.get("searches", 0)]
+    form, domains, ask = _FORMS[entry.get("searches", 0)]
     try:
         results = await search(form.format(name), max_results=_RESULTS, max_chars=_BODY_CAP, highlights=_FOCUS,
                                include_domains=domains, raise_errors=True)
@@ -296,15 +296,16 @@ async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
         return "search failed"
     rows: Optional[list] = []
     if results:
-        rows = parse_judgement(await complete(_JUDGE_SYSTEM, _request(name, results), _JUDGE_TOKENS, cap=_JUDGE_CAP))
-        if rows is None and not entry.get("stalled"):
-            entry["stalled"] = True
-            logger.warning("Proof reply unreadable for %s, trying once more", name)
-            return "model reply unreadable"
-    entry.pop("stalled", None)
+        request = _request(name, results, ask)
+        for _ in range(2):
+            reply = await complete(_JUDGE_SYSTEM, request, _JUDGE_TOKENS, cap=_JUDGE_CAP)
+            rows = parse_judgement(reply)
+            if rows is not None:
+                break
+            logger.warning("Proof reply unreadable for %s: %s", name, (reply or "")[:200])
     entry["searches"] = entry.get("searches", 0) + 1
     if rows is None:
-        return "model reply unreadable"
+        return ""
     entry["read"] = entry.get("read", 0) + 1
     today = now.date().isoformat()
     evidence = entry.setdefault("evidence", [])
@@ -315,7 +316,7 @@ async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
             evidence.append(kept)
             seen.add((kept["url"], kept["quote"]))
     entry["evidence"] = sorted(evidence, key=_strength)[:_KEEP]
-    return "read"
+    return ""
 
 
 def section(ledger: dict) -> str:

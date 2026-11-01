@@ -427,10 +427,9 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
             stopped = "waits for budget"
             break
         state["searches"] += 1
-        outcome = await proof.step(idea, ledger, search, complete, sellers)
+        stopped = await proof.step(idea, ledger, search, complete, sellers)
         proof.save(folder, ledger)
-        if outcome != "read":
-            stopped = outcome
+        if stopped:
             break
     labels = _current_labels(paper)
     labels.update(proof.labels_for(_shortlist_names(paper), ledger))
