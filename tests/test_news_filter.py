@@ -111,6 +111,7 @@ def test_filter() -> None:
     # 2026-10-28 and 10-29 the digest summarised a listing page as one story.
     listings = [dict(RELEASE, url=u) for u in (
         "https://www.inferama.com/en/news/models", "https://siliconainews.com/topics/ai-models",
+        "https://research.example.com/labs/kettle/projects/", "https://research.example.com/labs/kettle/publications/",
         "https://example.com/category/llm/", "https://example.com/", "https://example.com/blog?page=2")]
     listings += [dict(RELEASE, url=u) for u in (
         "https://aistackcrunch.com/new/",

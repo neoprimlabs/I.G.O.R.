@@ -182,6 +182,10 @@ def test_only_a_real_quote_counts() -> None:
     _check("nor an estimate", money("$202,950 est. revenue this year") is None)
     _check("a figure with no money in it is not proof", money("made 4,200 sales in all") is None)
     _check("a trivial sum is not proof", money("All-time revenue $441") is None)
+    _check("an industry's total is not anyone's income", money("They have combined revenues of $9M") is None)
+    _check("nor a sum that size, whoever earned it", money("Annual revenue reached $200M last year") is None)
+    _check("the largest firms are not one person's business", money("FY2025 revenue: $95.4 million.") is None)
+    _check("a large one-person sum still counts", money("The shop made $4.1M in revenue over three years") is not None)
     _check("thousands written short still count", money("My business makes $12K/month") is not None)
     _check("and millions", money("sales reached $4.1M in year one") is not None)
 
@@ -230,7 +234,7 @@ def test_tools_and_ideas() -> None:
     _check("in the section", "(earned, verified, AnyKettle)" in proof.section({"a": entry}), proof.section({"a": entry}))
     _check("a failure on that site earns no standing",
            proof._kept({"n": 1, "what": "failed", "business": "idea", "scope": "many", "who": "researchers", "quote": "revenue of $40,000 last year"},
-                       [_page(url="https://trustmrr.com/startup/x")], frozenset(), "2026-10-17", "Kettle API wrappers")["from"] == "seller")
+                       [_page(url="https://trustmrr.com/startup/x", title="Kettle report")], frozenset(), "2026-10-17", "Kettle API wrappers")["from"] == "seller")
     def said_market(url):
         row = {"n": 1, "what": "earned", "business": "idea", "scope": "one", "who": "marketplace data", "quote": "revenue of $40,000 last year"}
         return proof._kept(row, [_page(url=url)], frozenset(), "2026-10-17", "Kettle API wrappers")["from"]
@@ -242,10 +246,16 @@ def test_tools_and_ideas() -> None:
 def test_what_counts_as_against() -> None:
     def many(quote, idea="Birdhouse plan e-books", title="A report", scope="many"):
         row = {"n": 1, "what": "failed", "business": "idea", "scope": scope, "who": "researchers", "quote": quote}
-        return proof._kept(row, [_page(body=quote, title=title)], frozenset(), "2026-10-17", idea)["many"]
+        kept = proof._kept(row, [_page(body=quote, title=title)], frozenset(), "2026-10-17", idea)
+        return bool(kept and kept["many"])
 
     _check("a share of people, on this idea", many("About 80% of authors with 1-3 e-books earn under $100 a month"))
     _check("a figure on all startups says nothing of this one", not many("93% of startups ultimately shut down for good"))
+    row = {"n": 1, "what": "failed", "business": "idea", "scope": "many", "who": "news", "quote": "93% of startups ultimately shut down"}
+    _check("and is not kept at all", proof._kept(row, [_page(body=row["quote"])], frozenset(), "2026-10-17", "Birdhouse plan e-books") is None)
+    _check("a closure whose name holds the idea is", proof._kept(
+        {**row, "quote": "We closed Goodbirdhouse last year for good"}, [_page(body="We closed Goodbirdhouse last year for good")],
+        frozenset(), "2026-10-17", "Birdhouse plan e-books") is not None)
     _check("though the page's title can name the idea", many("93% of them ultimately shut down for good", title="Birdhouse plans: a study"))
     _check("words with no figure are not data", not many("Recorded closure with no past end date", title="The birdhouse die-off"))
     _check("one business is not many", not many("Birdhouse plan shop lost 90% of sales and closed", scope="one"))
@@ -294,7 +304,7 @@ def test_a_session_tests_the_next_idea() -> None:
     _check("and a thin backup is never taken for a real look", all(k["keyless"] is False for _, k in stub.searches))
     text = (folder / "paper.md").read_text(encoding="utf-8")
     _check("the label comes from the ledger", "Kettle price alerts** - priced at $29 (evidence: mixed)" in text, text)
-    _check("an idea not yet tested keeps its label", "(evidence: no income shown)" in text, text)
+    _check("an idea not yet tested says so, not a stale grade", "Birdhouse plan e-books: sold online (evidence: unchecked)" in text, text)
     _check("a proof section sits after the summary, before the ideas",
            text.index("## Proof checked") < text.index("## Kettle alerts") and text.index("Some ideas") < text.index("## Proof checked"), text)
     _check("it explains its labels", "Independent: someone with nothing to sell" in text)
@@ -350,7 +360,7 @@ def test_failures_do_not_become_findings() -> None:
     _check("and says unchecked, not no income", "unchecked" in out, out)
     ledger = proof.load(folder)
     _check("it is not counted as looked", proof.left("Kettle price alerts", ledger) == 3, str(ledger))
-    _check("the paper keeps its old label", "priced at $29 (evidence: independent)" in (folder / "paper.md").read_text(encoding="utf-8"))
+    _check("the paper claims nothing from it", "priced at $29 (evidence: unchecked)" in (folder / "paper.md").read_text(encoding="utf-8"))
     tmp.cleanup()
 
     overnight, folder, tmp = _setup()
@@ -481,8 +491,8 @@ def test_section_text() -> None:
            len(shown) == 3 and shown[-1]["quote"] == "we closed", str(shown))
     ledger2: dict = {}
     wins = "\n".join(_row(quote=f"revenue of ${i},000 here") for i in range(2, 9))
-    loss = _row(what="failed", source="seller", quote="Sadly we closed the doors for good")
-    page = _page(body=" ".join(f"revenue of ${i},000 here." for i in range(2, 9)) + " Sadly we closed the doors for good.")
+    loss = _row(what="failed", source="seller", quote="Sadly our kettle shop closed for good")
+    page = _page(body=" ".join(f"revenue of ${i},000 here." for i in range(2, 9)) + " Sadly our kettle shop closed for good.")
     stub = _Stub(replies=[wins + "\n" + loss], results=[page])
     asyncio.run(proof.step("Kettle price alerts", ledger2, stub.search, stub.complete))
     rows = proof._find(ledger2, "Kettle price alerts")["evidence"]

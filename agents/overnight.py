@@ -391,14 +391,6 @@ def _shortlist_names(text: str) -> list[str]:
             for block in _shortlist_items(text)]
 
 
-def _current_labels(text: str) -> dict:
-    """{item number: label} as the shortlist stands, so checking one idea leaves the rest alone."""
-    labels = {}
-    for i, block in enumerate(_shortlist_items(text), 1):
-        found = _LABEL_RE.search("".join(block))
-        if found and found.group(1).strip().lower() in _EVIDENCE_KINDS:
-            labels[i] = found.group(1).strip().lower()
-    return labels
 
 
 def _unique(folder, stem: str, night: str):
@@ -434,8 +426,8 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
         proof.save(folder, ledger)
         if stopped:
             break
-    labels = _current_labels(paper)
-    labels.update(proof.labels_for(_shortlist_names(paper), ledger))
+    # Anything else says unchecked: "no income shown" on an idea nobody had searched for read as a result.
+    labels = proof.labels_for(_shortlist_names(paper), ledger)
     paper_path.write_text(_for_file(proof.with_section(normalize_shortlist(paper, labels), ledger)) + "\n",
                           encoding="utf-8")
     rel = str(paper_path.relative_to(config.MEMORY_DIR))

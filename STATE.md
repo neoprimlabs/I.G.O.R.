@@ -212,7 +212,7 @@ business, and most of those products have earned under $50000 in all. 20b's rele
 stays weak, so a quote can be real and beside the point. Not yet seen: a real night on the real paper.
 20b read 179034 of its unmeasured daily cap at 00:45 UTC 11-01, mostly these runs, so a night that
 stops on `daily cap 20b` would finally measure it and resumes the next night. Read `work/g3/paper.md`
-after the nights of 11-01 to 11-03: if nothing independent turns up, tell the user the ideas look
+after the nights of 11-02 and 11-03, the three ideas left: if nothing independent turns up, tell the user the ideas look
 unprovable from public sources rather than tune further.
 **Memory review built 11-01** (`memory_review.py`, Hermes' background review with write approval
 on), the next open parity item: the night's self-improvement session reads the user's own typed
@@ -221,7 +221,12 @@ messages and raises at most 3 proposals. Live once on real messages in the throw
 "fact" drawn from a paragraph the user had pasted, which is why a fact must now quote first-person
 words. That rule is tested offline only. Not yet seen: a real night, or an approved memory in chat.
 `user.md` is at 1489 of 1500, so most approved facts must replace a stale line or ask which to drop.
-First real pass, 00:20 11-01: 3 preferences on job searches, all quoting the user's own words, two of
+First real proof night, 11-01: 4 ideas, 12 searches, 50592 tokens, and 20b read 184925 with no cap hit.
+It ranked regulatory alerts first as independent on "combined revenues of $2.9B" across 435 companies, so
+totals and sums over $20M no longer count, and the 3 rows those rules would drop were taken out of the
+ledger by hand (backup beside it). Ideas not yet searched now say unchecked, and a failure must name the idea.
+The digest's only story was a `/projects/` index of work going back months: such pages are now listings.
+First real memory pass, 00:20 11-01: 3 preferences on job searches, all quoting the user's own words, two of
 them near duplicates, waiting for the user with an older code proposal.
 **Learned skills built 10-31** (`skills.py`, GAMEPLAN V.1): drafted overnight from turns of 5+
 tool calls or on "save that as a skill", each one approved by the user's own message, then named

@@ -69,6 +69,10 @@ _QUOTE_CAP = 300
 _CLOSE = 0.5
 _SLACK = 20
 _MIN_EARNED = 1000
+# The first real night ranked regulatory alerts first on "combined revenues of $2.9B" across 435
+# companies, $200M and $95.4M. That is an industry and its largest firms, and says nothing of what an
+# agent and one person could earn.
+_MAX_EARNED = 20_000_000
 _MIN_WORDS = 5
 _KEEP_EARNED = 4
 _KEEP_FAILED = 2
@@ -107,7 +111,8 @@ _ENDS_NONE_RE = re.compile(r"\bNONE\W*$")
 _OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
 # A figure someone hopes for, plans or guesses, and words that never mean money received.
 _WISHFUL_RE = re.compile(r"\b(could|can|might|may|potential|potentially|up to|projected|projection|est|estimated?"
-                         r"|estimates?|targets?|targeting|expected|forecast|tam|market size)\b", re.IGNORECASE)
+                         r"|estimates?|targets?|targeting|expected|forecast|tam|market size|combined|aggregate"
+                         r"|industry|sector)\b", re.IGNORECASE)
 _RECEIVED_RE = re.compile(r"\b(revenues?|income|earn|earns|earned|earning|earnings|made|makes?|making|sales|sold"
                           r"|profits?|royalt\w+|mrr|arr|payouts?|paid out|last 30 days)\b", re.IGNORECASE)
 _MONEY_RE = re.compile(r"[$€£]\s?(\d[\d,]*(?:\.\d+)?)\s*(k|m|b|thousand|million|billion)?\b", re.IGNORECASE)
@@ -290,6 +295,18 @@ def parse_judgement(reply: str) -> Optional[list]:
     return [] if _ENDS_NONE_RE.search(text) else None
 
 
+def mentions(idea: str, text: str) -> bool:
+    """Loosely, for whether a failure is about this idea at all: "Goodlegal" counts for legal."""
+    low = text.lower()
+    return any(word.rstrip("s") in low for word in _words(idea) if len(word) >= 3)
+
+
+def out_of_range(quote: str) -> bool:
+    """Not a sum someone earned, or not one on the scale of one person's business."""
+    return (bool(_WISHFUL_RE.search(quote)) or not _RECEIVED_RE.search(quote)
+            or not _MIN_EARNED <= _largest(quote) <= _MAX_EARNED)
+
+
 def _speaks_of(idea: str, text: str) -> bool:
     # Whole-word starts of 3 letters or more: "e-book" also gives "e", and "api" is inside "rapid".
     return any(re.search(r"\b" + re.escape(word.rstrip("s")), text, re.IGNORECASE)
@@ -317,8 +334,10 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
     if quote is None:
         logger.info("Proof quote not in its excerpt, dropped: %s", str(row.get("quote"))[:80])
         return None
-    if what == "earned" and (_WISHFUL_RE.search(quote) or not _RECEIVED_RE.search(quote)
-                             or _largest(quote) < _MIN_EARNED):
+    if what == "earned" and out_of_range(quote):
+        return None
+    # "93% of startups ultimately shut down" sat on API wrappers, first in their list.
+    if what == "failed" and idea and not mentions(idea, f"{page.get('title', '')} {page.get('url', '')} {quote}"):
         return None
     # A question, not an instruction: told to skip tool sellers, 20b still reported three e-book
     # generators as proof that publishing e-books pays (live 2026-11-01).

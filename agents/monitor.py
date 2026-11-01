@@ -699,7 +699,7 @@ _INDEX_SEGMENTS = {"topics", "topic", "category", "categories", "tag", "tags", "
                    "sections", "archive", "archives"}
 _INDEX_LAST = {"news", "models", "blog", "latest", "articles", "posts", "updates", "releases",
                "research", "ai", "ai-news", "ai-models", "home", "index", "new", "whats-new",
-               "changelog", "trending", "today"}
+               "changelog", "trending", "today", "projects", "publications"}
 # A weekly roundup is mostly what was already in the digest: on 2026-10-30, GPT-6.1 Terra
 # again, two days after OpenAI's own post, by way of ".../ai-dev-weekly-032-...".
 _ROUNDUP_RE = re.compile(
