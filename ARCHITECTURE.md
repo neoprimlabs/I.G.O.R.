@@ -17,30 +17,30 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
   human publishes. It never buys anything and never applies for a job.
 - **No self-restart.** `restart_self` only tells the user a change needs deploying.
 - **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
-  network, secrets or sealed memory, read-only but `/tmp` and `.git`; refused if
-  it cannot start. The shell also refuses a blocklist and DMs the user for a yes
+  network, secrets or sealed memory, read-only but `/tmp`, `.git` and
+  `memory/workspace`; refused if it cannot start. The shell also refuses a blocklist and DMs the user for a yes
   before risky ones (`approvals.py`).
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes and images the user sends are read.
 
-**React's 21 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
+**React's 23 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
-`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `fetch_url`,
-`send_message`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`. No others. Thirteen load on
-request through `load_tools` (Hermes' Tool Search).
+`read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
+`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`. No others. Fifteen load on
+request through `load_tools` (Hermes' Tool Search). `send_file` sends real Word, PDF, Excel or CSV files.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`.
+**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`, `steer`, `btw`.
 
-**Routing.** Eleven fast paths in code, then one router call
+**Routing.** Thirteen fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 21 |
+| React | `TASK`, router failure | 120b | all 23 |
 | Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -67,8 +67,7 @@ without the user's yes.
 **Memory** is markdown in `memory/` plus `context.db`, the conversation store (90
 days, `search_history`); messages leaving the window fold into a running summary
 (`compression.py`, 20b) in every prompt. `memory_read` and
-`memory_write` take names from a fixed list; `memory_write` edits dated entries (add,
-patch, remove), several in one call saved together or not at all, as Hermes. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
+`memory_write` take names from a fixed list; `memory_write` edits dated entries. `corrections.md` and `drafts.md` are sealed. `resume.md` and `memory/private/` are guarded: readable only in a turn
 with no web content, and reading one closes the web for that turn.
 
 **Checkpoints**: `write_file`, `patch_file` and `memory_write` keep a file's old copy
@@ -82,8 +81,8 @@ reply that ran out of steps or offers to go on is judged by 20b. On `continue`, 
 **Cost**: Groq caps tokens per model per day; 120b's daily token budget (200000) is
 shared by Direct and React. `usage.py` counts spend.
 
-**Deployment**: a root-owned script outside `/opt/igor` compiles, imports, runs the
-offline tests, restarts, waits for Discord and rolls back on failure.
+**Deployment**: a root-owned script outside `/opt/igor` tests, restarts, waits for
+Discord and rolls back on failure.
 
 **MCP**: `mcp_server.py` serves six read-only tools over SSH on stdio. `mcp_client.py` uses servers the user lists.
 
@@ -120,7 +119,9 @@ A Discord DM travels this path every time:
    auth check in the system; everything downstream trusts it. A yes or no to a
    waiting approval comes next, then `commands.py` (Hermes' gateway commands: the whole
    message, no model). Other messages take one turn at a time, in order (Hermes' queue
-   mode); `stop` ends the turn in flight at its next step.
+   mode); `stop` ends the turn in flight at its next step. `steer <note>` reaches it there as
+   a user message, or gets its own turn if too late (Hermes' /steer); `btw <question>` while
+   one runs is answered by Direct on 20b (Hermes' /btw). Outside text can use neither.
 3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
    `file:` request skips the router entirely and goes to React, because it is
    document work regardless of what it asks for. Run-together clock times are
@@ -133,6 +134,8 @@ A Discord DM travels this path every time:
    startswith  _RESEARCH_LOOP_TRIGGERS  -> ResearchLoop
    contains    _STOP_RESEARCH_TRIGGERS  -> StopResearch
    exact match _DIGEST_COMMANDS         -> Monitor
+   regex       "send that as a PDF"     -> FileExport (code, no model)
+   regex       "second opinion on ..."  -> SecondOpinion (see Second opinion)
    regex       proposal decision / list -> ProposalDecision / ProposalList (code)
    regex       "save that as a skill"   -> SkillSave (code, one 20b call)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
@@ -176,7 +179,7 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 21 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 23 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
 | **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
@@ -198,12 +201,8 @@ measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
 accepts `none`. React relies on `model_params`. `reasoning_format` has no
 openai-client parameter, so it goes in `extra_body`; as a keyword it raises TypeError.
 
-Two call sites stay out, on purpose:
-
-- **React's main loop** - its `finish_reason` handling is entangled with tool
-  dispatch and `tool_use_failed` retries.
-- **React's forced final answer** and **the router** - doubling could push React's
-  trimmed prompt past the bucket; the router reads one word and fails fast.
+React's main loop stays out (its `finish_reason` handling is tied to tool dispatch), as do
+its forced final answer (doubling could pass the bucket) and the router (one word, fails fast).
 
 Exceptions propagate. On a rate limit the orchestrator notifies and sleeps, or on the daily cap
 answers at once with Groq's wait (`_rate_limit_reply`); the evaluator fails open, Monitor drops the
@@ -226,8 +225,8 @@ System prompt rebuilt each call: `clock.time_line()` and the next seven dates, t
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
 `memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
-thirteen (it returns their rules too; a direct call loads the tool and retries). Workers
-and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
+fifteen (it returns their rules too; a direct call loads the tool and retries; a request for a
+file opens `send_file` at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
@@ -248,39 +247,24 @@ change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 **Price watch, in full.** Rejected listings are marked seen; a failed judge fails
 open and sends unfiltered (an unreadable 200 OK would otherwise swallow a real drop).
 
-**Stock watch, in full.** Shopify's `/products/<handle>.js` gives variants with an
-`available` boolean and a price in cents: keyless, no model call. `aoostar.com`
-blocks Oracle's IPs (429s), so fetches fall back to the `r.jina.ai` relay (third-party,
-public URLs only). A failed fetch carries the old state
-forward (or the next success fakes a restock).
+**Stock watch, in full.** Shopify's `/products/<handle>.js`: keyless, no model call. `aoostar.com`
+blocks Oracle's IPs, so fetches fall back to the `r.jina.ai` relay (public URLs only). A failed
+fetch carries the old state forward (or the next success fakes a restock).
 
-**Watch history** (`history.py`, `memory/history.db`) keeps every successful
-observation (stock and price per variant, the price watch's cheapest match, each new
-job or gig posting); a failed fetch writes nothing. About 130 rows a day, no model calls. React's `watch_history`
-returns changes only, newest first, so a week of hourly "available" is one row.
+**Watch history** (`history.py`, `memory/history.db`) keeps every successful observation, about
+130 rows a day; a failed fetch writes nothing. React's `watch_history` returns changes only, newest first.
 
 **Checkpoints** (Hermes' rollback) are taken once per React turn, in
 `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores, keeping files edited since unless `all`.
 
-`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones. An ambiguous `done` is refused with the candidates listed rather than
-guessed, and it shares `monitor._parse_tasks` with the digest so the two can never
-disagree about what is open.
+`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones; an ambiguous `done`
+is refused with the candidates, and it shares `monitor._parse_tasks` with the digest.
 
-`delegate_task` runs one isolated worker: `handle()` again with an empty context, a
-restricted tool list, 8 iterations and `MODELS["worker"]`. Three constraints,
-each covered by `tests/test_delegation.py`:
-
-- **Worker tools are intersected with what the parent still holds**, not the full
-  list, so a parent that read the web cannot hand a write to a worker.
-- **Granting a worker `search` or `fetch_url` counts as the parent reading the web.**
-  The worker returns text the parent acts on, so `_delegation_wants_web` folds into
-  `batch_reads_web` and the parent's state-changing tools close as they would on a
-  direct read. `delegate_task` is itself in `_QUARANTINED_AFTER_WEB`.
-- **One worker at a time** (`_delegation_gate`), on 20b, not react's 120b: fanning
-  out 429s the hot path while the user waits. Depth is capped at 1
-  so workers cannot delegate, and at 3 delegations per turn. Workers never hold a
-  tool in `_WORKER_FORBIDDEN`.
+`delegate_task` runs one isolated worker: `handle()` with an empty context, a restricted tool list,
+8 iterations and `MODELS["worker"]` (20b), one at a time, depth 1, 3 a turn. Its tools are intersected
+with what the parent still holds and never include `_WORKER_FORBIDDEN`; granting it `search` or
+`fetch_url` counts as the parent reading the web.
 
 `execute_code` (`script_tool.py`, Hermes' tool of that name) runs a script in the sandbox with
 memory hidden. It calls 8 read-only tools over stdin and stdout, under the turn's rules, 12
@@ -290,6 +274,19 @@ lookups and 60s at most; only what it prints returns, as untrusted. No private f
 with up to 6 lines of `context`. It skips private files, `.git` and the venv.
 
 `write_file` and `patch_file` parse a `.py` as they save it and say if the edit broke it (Hermes).
+
+**Files** (`deliver.py`, Hermes' deliverable mode): `send_file` takes Markdown, a server file or the
+last reply, and the name's extension picks Word, PDF, Excel, CSV, Markdown or text, rendered in code
+with the standard library. Paths follow `read_file`'s rules; it stays open after a web read, as a
+reply does. "Send that as a PDF" needs no model. No HTML, and a CSV cell cannot run as a formula.
+
+**Background** (`background.py`, Hermes' terminal background and process_manage): `shell` with
+`background` runs up to 30 minutes, two at a time, at low priority, and code tells the user when it
+ends. `process` lists, polls, reads or kills. A restart ends them; the next start says so. `shell` and
+`python_run` can write `memory/workspace`, kept a week up to 200 MB. Prerun scripts cannot.
+
+**Second opinion** (`moa.py`, Hermes' /moa): on request, 20b and qwen each answer from the conversation's
+user and assistant text, no tools, and React gets that as a private trailing message. One failing stops nothing.
 
 Up to 8 iterations:
 
@@ -330,7 +327,9 @@ to speak only if something is so; the run answers `[SILENT]` and nothing goes (H
 A second brief due within 5 minutes of a pending one is merged into it. A correction
 is `update`, which edits a pending message in place by id. `repeat` (daily, weekdays, weekly) moves
 the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 across
-daylight saving. After downtime it sends one late message, never a backlog; resuming
+daylight saving; an interval (3 hours at the shortest, 5 minutes with a script) steps by its
+minutes. `times` limits the runs; a run ending `[DONE]` on its own line ends the series (Hermes'
+LOOP_COMPLETE). After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run sees the series' last three
 messages, marked sent, never built. An IGOR
@@ -341,7 +340,7 @@ can name a script in `memory/private/cron_scripts/`, sealed from every tool, so 
 Claude Code adds one. It runs first in the sandbox, but with the network and its own folder
 (`IGOR_STATE`), 60s, and can read ordinary memory. Printing nothing or `{"wakeAgent": false}`
 means no model call and no message; failures alert once a streak. `script_only`, or no brief, sends
-what it prints with no model; only a script can repeat `hourly`. `context_from` reads up to 3 other
+what it prints with no model. `context_from` reads up to 3 other
 messages' latest output (`scheduled_outputs.json`); `keep_only` keeps a result unsent. A writer
 sees all this as outside text.
 
@@ -390,8 +389,7 @@ whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
 Every model call goes through `_call`, a wrapper over `llm.complete`. **Both calls run at `reasoning_effort` low**,
 4x to 7x fewer completion tokens than unset.
 
-Findings are delivered as a **raw file attachment with no model pass over them**,
-followed by an offer to synthesize on request. A `synthesize research` fast path
+Findings go out as a raw file attachment with no model pass, then an offer to synthesize, which
 routes to React with an instruction to read the file and not search.
 
 This is also the Dual LLM pattern: the context that sees web content holds no tools.
@@ -594,16 +592,9 @@ prompt in play.
 
 ## Startup checks
 
-`main._smoke_test()` runs after `_ensure_memory_files()` and exits 1 rather than
-raising, so the deploy gate rolls back. It verifies:
-
-- seven `config.MODELS` roles present and non-empty (`worker` is not checked)
-- `DISCORD_BOT_TOKEN`, `GROQ_API_KEY`, `AUTHORIZED_USER_ID` set, `CONTEXT_WINDOW`
-  at least 1
-- four routing fast paths resolve correctly (all on fast paths, so no API call)
-- **every agent module imports.** Agents are imported lazily, so a missing import
-  would otherwise fail on the first message that routes there
-- the sandbox probe, which logs an ERROR but never refuses to start
+`main._smoke_test()` exits 1 rather than raising, so the deploy gate rolls back. It verifies the
+`config.MODELS` roles, the keys, four routing fast paths and that **every agent module imports**
+(they load lazily, so a bad import would otherwise fail on first use). The sandbox probe only logs.
 
 ---
 
@@ -635,18 +626,8 @@ them never takes IGOR down:
 | tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
-**After a healthy deploy:** a crash is `Restart=always`, a dropped connection the
-heartbeat check above. Self-written code runs only once a deploy passes it; any
-other start sets it aside. Below the host (terminated once, July 2026), the PC's
-`scripts/backup_memory.ps1` (daily backup, health check, alerts) and the hourly
-`memory-push.sh` cover it.
-
----
-
-## Dead weight
-
-- **Critic is off** (`ENABLE_CRITIC = False`), so `_critic_pass` and
-  `_CRITIC_PROMPT` never execute. GAMEPLAN V.1.
+**After a healthy deploy:** a crash is `Restart=always`, a dropped connection the heartbeat above.
+Below the host, the PC's `scripts/backup_memory.ps1` and the hourly `memory-push.sh` cover it.
 
 ---
 
@@ -655,6 +636,7 @@ other start sets it aside. Below the host (terminated once, July 2026), the PC's
 1. **The router can misroute at the margins** (35 of 35 live, 2026-10-22). Guards
    cover the harmful cases; Monitor and SelfDescribe hand off what is not theirs.
 2. **Oracle Always Free** can terminate the instance, as in July 2026.
+3. **The critic is off** (`ENABLE_CRITIC`), so `_critic_pass` never runs.
 
 ---
 

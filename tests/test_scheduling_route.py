@@ -312,6 +312,15 @@ async def test_monitor_gets_no_history() -> None:
            seen.get("context") == [], str(seen.get("context")))
 
 
+def test_intervals_route_to_scheduling() -> None:
+    import orchestrator
+    for text in ("every 6 hours check the kettle price and tell me", "every 15 minutes run check.py", "every half an hour ask me to stretch",
+                 "every other day send me a question", "every two hours message me"):
+        _check(f"{text!r} schedules", bool(orchestrator._SCHEDULING.search(text)))
+    for text in ("every 6 people need a kettle", "every good idea takes time"):
+        _check(f"{text!r} does not", not orchestrator._SCHEDULING.search(text))
+
+
 if __name__ == "__main__":
     asyncio.run(test_routing())
     asyncio.run(test_continuity())
@@ -319,6 +328,7 @@ if __name__ == "__main__":
     asyncio.run(test_schedule_cannot_be_claimed_without_the_tool())
     asyncio.run(test_monitor_gets_no_history())
     asyncio.run(test_remember_requires_the_memory_tool())
+    test_intervals_route_to_scheduling()
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
         sys.exit(1)

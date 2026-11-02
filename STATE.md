@@ -260,6 +260,13 @@ script exists only on the server and in the PC's memory backup. **The daily cap 
 a real 429's wait is exactly the tokens over at 200000/86400 a second. The ledger's 24-hour sum read about 206000 of
 200000 while Groq kept answering, and would have held follow-through off until the next afternoon. `usage.headroom`
 now models the bucket, to the hour, and the usage line says what is free. 20b's cap is still unmeasured.
+**Files, steering, second opinions, shorter repeats and background commands built 11-01 evening**, the next
+Hermes gaps that need nothing from the user. `deliver.py` writes Word, PDF, Excel and CSV with the standard library, because
+the host has none of Hermes' libraries and a model writing a document as tool arguments spends a call on it; "send that
+as a PDF" takes no model. Opened in python-docx, openpyxl and PyMuPDF, and the PDF looked at: it reads like a real
+document. Not yet seen: one through Discord on a phone, or Word's own opening of a .docx. `steer` and `btw` (Hermes'
+/steer, /btw), `moa.py` for `second opinion`, `every 6 hours`-style repeats with `times` and `[DONE]`, `background.py`
+and `memory/workspace` (ARCHITECTURE). All offline-tested, failure paths included.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

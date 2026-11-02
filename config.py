@@ -67,6 +67,9 @@ DAILY_TOKEN_CAPS = {
 # of about 1M tokens a day at 5 requests a minute (third-party figures, 2026-10-19).
 # A provider whose key is not in the environment is skipped, so it sits dormant
 # until CEREBRAS_API_KEY is added to .env.
+# moa.py: separate buckets from chat's, so a second opinion leaves the day's chat budget alone.
+SECOND_OPINION_MODELS = ("openai/gpt-oss-20b", "qwen/qwen3.8-27b")
+
 FALLBACK_MODELS = {
     "openai/gpt-oss-120b": ["cerebras:gpt-oss-120b", "openai/gpt-oss-20b"],
 }

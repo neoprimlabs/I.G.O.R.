@@ -498,6 +498,130 @@ async def test_what_the_writer_sees() -> None:
         react.handle, compose.compose = real_handle, real_compose
 
 
+def test_intervals() -> None:
+    for said, stored, words in (("every 6 hours", "every 360m", "every 6 hours"), ("6h", "every 360m", "every 6 hours"),
+                                ("every 15 minutes", "every 15m", "every 15 minutes"), ("every 90 min", "every 90m", "every 90 minutes"),
+                                ("every 2 days", "every 2880m", "every 2 days"), ("Every Half An Hour", "every 30m", "every 30 minutes"),
+                                ("every 1 hour", "hourly", "every hour"), ("every hour", "hourly", "every hour"),
+                                ("every day", "daily", "every day"), ("every weekday", "weekdays", "every weekday"),
+                                ("every week", "weekly", "every week")):
+        repeat, why = scheduled._repeat(said)
+        _check(f"{said!r} reads as {stored}", repeat == stored and not why, f"{repeat} {why}")
+        _check(f"and is said as {words!r}", scheduled._repeat_words(stored) == words, scheduled._repeat_words(stored))
+    for said in ("every 0 hours", "sometimes", "every 900 days", "every minutes"):
+        repeat, why = scheduled._repeat(said)
+        _check(f"{said!r} is refused", repeat is None and why, f"{repeat} {why}")
+
+    due = NOW - timedelta(minutes=1)
+    _check("an interval steps by its minutes", scheduled._next_occurrence(due, "every 15m", NOW) == due + timedelta(minutes=15))
+    _check("and after an outage skips what was missed, staying on its beat",
+           scheduled._next_occurrence(due - timedelta(hours=7), "every 360m", NOW) == due - timedelta(hours=7) + timedelta(hours=12))
+
+    _fresh()
+    reply = scheduled.add(brief="x", in_minutes=5, repeat="every 2 hours", now=NOW)
+    _check("a writer every 2 hours is refused: it spends the budget each time", reply.startswith("Not scheduled") and "every 3 hours" in reply, reply)
+    reply = scheduled.add(brief="x", in_minutes=5, repeat="every 3 hours", now=NOW)
+    _check("every 3 hours is allowed", reply.startswith("Okay") and "every 3 hours" in reply, reply)
+    _fresh("check.py")
+    reply = scheduled.add(in_minutes=5, repeat="every 5 minutes", script="check.py", now=NOW)
+    _check("a script can run every 5 minutes", reply.startswith("Okay") and "every 5 minutes" in reply, reply)
+    _fresh("check.py")
+    reply = scheduled.add(in_minutes=5, repeat="every 4 minutes", script="check.py", now=NOW)
+    _check("but no more often", reply.startswith("Not scheduled") and "5 minutes" in reply, reply)
+    _fresh("check.py")
+    scheduled.add(in_minutes=5, repeat="every 15 minutes", script="check.py", now=NOW)
+    _check("the model's list says it in words", "repeats every 15 minutes" in scheduled.list_pending(), scheduled.list_pending())
+    _check("and so does Monitor", "repeats every 15 minutes" in scheduled.status(), scheduled.status())
+    reply = scheduled.update(_stored()[0]["id"], repeat="every 1 minute", now=NOW)
+    _check("an update is held to the same floor", reply.startswith("Not updated"), reply)
+    reply = scheduled.run_tool({"action": "update", "id": _stored()[0]["id"], "repeat": "every 30 minutes"})
+    _check("and can change it", _stored()[0]["repeat"] == "every 30m" and "every 30 minutes" in reply, reply)
+
+
+async def test_times_and_done() -> None:
+    _fresh()
+    reply = scheduled.add(brief="ask", in_minutes=5, repeat="daily", times=2, now=NOW)
+    _check("it says how many", "2 times in all" in reply, reply)
+    _check("it is kept", _stored()[0]["times_left"] == 2, str(_stored()))
+    _check("the list shows what is left", "2 runs left" in scheduled.list_pending(), scheduled.list_pending())
+    sent = []
+
+    async def send(text):
+        sent.append(text)
+        return True
+
+    async def writer(brief, now, **kw):
+        return "the message"
+
+    later = NOW + timedelta(minutes=6)
+    await scheduled.deliver_due(send, now=later, compose=writer)
+    _check("after the first, one is left", _stored()[0]["times_left"] == 1 and len(sent) == 1, str(_stored()))
+    await scheduled.deliver_due(send, now=later + timedelta(days=1), compose=writer)
+    _check("after the last it is gone", _stored() == [] and len(sent) == 2, str(_stored()))
+
+    _fresh()
+    scheduled.run_tool({"action": "add", "in_minutes": 5, "brief": "ask", "repeat": "weekly", "times": "3"})
+    _check("a number given as a string counts", _stored()[0]["times_left"] == 3, str(_stored()))
+    _fresh()
+    scheduled.run_tool({"action": "add", "in_minutes": 5, "brief": "ask", "repeat": "weekly", "times": "soon"})
+    _check("nonsense is no limit", "times_left" not in _stored()[0], str(_stored()))
+    _fresh()
+    scheduled.add(brief="ask", in_minutes=5, times=4, now=NOW)
+    _check("a one-off has no count", "times_left" not in _stored()[0], str(_stored()))
+
+    _fresh()
+    scheduled.add(brief="watch for the parcel, stop once it has come", in_minutes=5, repeat="every 3 hours", now=NOW)
+    sent.clear()
+
+    async def still_waiting(brief, now, **kw):
+        return "Not yet."
+
+    await scheduled.deliver_due(send, now=later, compose=still_waiting)
+    _check("it carries on until it is told otherwise", len(_stored()) == 1 and sent == ["Not yet."], str(sent))
+
+    async def arrived(brief, now, **kw):
+        return "The parcel has come.\n[DONE]"
+
+    await scheduled.deliver_due(send, now=later + timedelta(hours=3), compose=arrived)
+    _check("[DONE] ends the series", _stored() == [], str(_stored()))
+    _check("and the mark never reaches the user", sent[-1] == "The parcel has come.", str(sent))
+
+    _fresh()
+    scheduled.add(brief="x", in_minutes=5, repeat="every 3 hours", now=NOW)
+    sent.clear()
+
+    async def only_done(brief, now, **kw):
+        return "[DONE]"
+
+    await scheduled.deliver_due(send, now=later, compose=only_done)
+    _check("with nothing else to say it ends in silence", _stored() == [] and sent == [], str(sent))
+
+    _fresh()
+    scheduled.add(brief="x", in_minutes=5, repeat="every 3 hours", now=NOW)
+    sent.clear()
+
+    async def in_passing(brief, now, **kw):
+        return "A page used the words [DONE] in a sentence."
+
+    await scheduled.deliver_due(send, now=later, compose=in_passing)
+    _check("the mark only counts on its own line", len(_stored()) == 1 and len(sent) == 1, str(sent))
+
+    _fresh("check.py")
+    scheduled.add(in_minutes=5, repeat="every 5 minutes", script="check.py", now=NOW)
+
+    async def script_done(name):
+        return "It is back in stock.\n[DONE]", ""
+
+    real = prerun.run
+    prerun.run = script_done
+    sent.clear()
+    try:
+        await scheduled.deliver_due(send, now=later)
+    finally:
+        prerun.run = real
+    _check("a script can end its own series too", _stored() == [] and sent == ["It is back in stock."], str(sent))
+
+
 def test_repeat_steps() -> None:
     due = NOW - timedelta(minutes=1)
     _check("hourly is the next hour", scheduled._next_occurrence(due, "hourly", NOW) == due + timedelta(hours=1))
@@ -531,6 +655,8 @@ if __name__ == "__main__":
     asyncio.run(test_what_the_writer_sees())
     print("\nrepeats")
     test_repeat_steps()
+    test_intervals()
+    asyncio.run(test_times_and_done())
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

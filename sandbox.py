@@ -14,8 +14,10 @@ tools already follow:
 - No network. A shell `curl` brought web text into a turn without the quarantine
   that fetch_url triggers.
 - The sealed and guarded memory files and the deploy machinery are not there.
-- Read-only, except a private /tmp and the repo's .git, which the self-modification
-  workflow commits to before an edit.
+- Read-only, except a private /tmp, the repo's .git, which the self-modification
+  workflow commits to before an edit, and memory/workspace for shell and python_run: Hermes'
+  "filesystem persists between calls", so a command can leave a file for the next one, or for
+  send_file. Nothing that reads outside text can write there, so it needs no quarantine of its own.
 
 If bubblewrap cannot start, the command is refused rather than run bare.
 """
@@ -23,6 +25,7 @@ If bubblewrap cannot start, the command is refused rather than run bare.
 import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -36,7 +39,12 @@ _WRITABLE = (".git",)
 # Per command: 1 GiB of address space, 64 MiB per file written, no core dumps.
 _LIMITS = ("--as=1073741824", "--fsize=67108864", "--core=0")
 
+_WORKSPACE_DAYS = 7
+_WORKSPACE_BYTES = 200 * 1024 * 1024
+_TIDY_EVERY_S = 3600
+
 _ready = False
+_tidied = 0.0
 
 
 class Unavailable(Exception):
@@ -47,13 +55,40 @@ def _path(p: str) -> Path:
     return Path(p) if p.startswith("/") else config.BASE_DIR / p
 
 
+def workspace_folder() -> Path:
+    return config.MEMORY_DIR / "workspace"
+
+
+def _tidy_workspace(now: Optional[float] = None) -> None:
+    """Oldest out first, past a week or past the cap. At most hourly. Never raises."""
+    global _tidied
+    now = time.time() if now is None else now
+    if now - _tidied < _TIDY_EVERY_S:
+        return
+    _tidied = now
+    try:
+        found = []
+        for path in workspace_folder().rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                info = path.stat()
+                found.append((info.st_mtime, info.st_size, path))
+        total = sum(size for _, size, _ in found)
+        for mtime, size, path in sorted(found, key=lambda item: item[0]):
+            if now - mtime > _WORKSPACE_DAYS * 86400 or total > _WORKSPACE_BYTES:
+                path.unlink()
+                total -= size
+    except OSError as e:
+        logger.error("Could not tidy the workspace - %s: %s", type(e).__name__, e)
+
+
 def command(argv: list[str], hide_memory: bool = False, network: bool = False,
-            mounts: tuple = (), env: Optional[dict] = None) -> list[str]:
+            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False) -> list[str]:
     """argv wrapped in bubblewrap with the mounts and limits above. Paths that do not
     exist are skipped: bubblewrap cannot mount over a file that is not there.
     hide_memory empties the whole memory folder, for a script that reaches tools only
     through the rules of script_tool's caller. network and mounts are for prerun.py's
-    scripts alone, which only the user or Claude Code can write."""
+    scripts alone, which only the user or Claude Code can write, and which never get the
+    workspace: a script with the network could leave a page's words where React trusts them."""
     base = str(config.BASE_DIR)
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp"]
@@ -61,6 +96,8 @@ def command(argv: list[str], hide_memory: bool = False, network: bool = False,
         p = _path(rel)
         if p.is_dir():
             args += ["--bind", str(p), str(p)]
+    if workspace and not hide_memory and not network and workspace_folder().is_dir():
+        args += ["--bind", str(workspace_folder()), str(workspace_folder())]
     for rel in _HIDDEN_FILES:
         p = _path(rel)
         if p.is_file():
@@ -103,7 +140,7 @@ def _probe() -> str:
 
 
 def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
-            mounts: tuple = (), env: Optional[dict] = None) -> list[str]:
+            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False) -> list[str]:
     """The sandboxed argv, or Unavailable. A success is remembered; a failure is
     probed again next time, so one bad moment does not disable the tools until a
     restart."""
@@ -117,7 +154,10 @@ def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
                 f"({why}). Nothing ran, and commands are never run outside it. Tell the user; "
                 f"it needs fixing on the server.")
         _ready = True
-    return command(argv, hide_memory, network, mounts, env)
+    if workspace:
+        workspace_folder().mkdir(parents=True, exist_ok=True)
+        _tidy_workspace()
+    return command(argv, hide_memory, network, mounts, env, workspace)
 
 
 def startup_check() -> str:

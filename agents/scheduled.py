@@ -63,6 +63,12 @@ _SAME_SLOT = timedelta(minutes=5)
 _REPEATS = ("hourly", "daily", "weekdays", "weekly")
 _REPEAT_WORDS = {"hourly": "every hour", "daily": "every day", "weekdays": "every weekday",
                  "weekly": "every week"}
+# As Hermes' "every 2h". A run with a script costs nothing until the script finds something, so 5
+# minutes; one without spends a writer call, about 1800 tokens, against a refill of 8300 an hour.
+_EVERY = re.compile(r"^(?:every\s+)?(?:(\d+)\s*)?(m|mins?|minutes?|h|hrs?|hours?|d|days?|half an? hour)$")
+_SAID = {"every hour": "hourly", "every day": "daily", "every weekday": "weekdays", "every week": "weekly"}
+_MIN_WITH_SCRIPT = 5
+_MIN_WITHOUT_SCRIPT = 180
 # Continuity, as Hermes' cron: each run of a repeating message is shown what the
 # series already said. Live 2026-10-16, a weekday "practical idea" series got one
 # specific idea as its brief, so every weekday would have repeated it. Hermes passes
@@ -189,18 +195,43 @@ def _repeat(value: Optional[str]) -> tuple[Optional[str], str]:
     value = value.strip().lower()
     if value in ("", "none", "once", "off"):
         return "", ""
-    if value not in _REPEATS:
-        return None, "repeat must be hourly, daily, weekdays or weekly, or none to stop repeating."
-    return value, ""
+    value = _SAID.get(value, value)
+    if value in _REPEATS:
+        return value, ""
+    every = _EVERY.match(value)
+    if every and (every.group(1) or value.endswith("half an hour") or value.endswith("half a hour")):
+        unit = every.group(2)[0]
+        minutes = 30 if unit == "h" and "half" in every.group(2) else int(every.group(1)) * {"m": 1, "h": 60, "d": 1440}[unit]
+        if 0 < minutes <= 30 * 1440:
+            return ("hourly" if minutes == 60 else f"every {minutes}m"), ""
+    return None, ("repeat must be daily, weekdays, weekly, an interval such as every 6 hours, or none to stop "
+                  "repeating.")
+
+
+def _interval(repeat: Optional[str]) -> Optional[int]:
+    """Minutes between runs, for a repeat that goes by the clock's minutes and not its hours."""
+    if repeat == "hourly":
+        return 60
+    return int(repeat[6:-1]) if repeat and repeat.startswith("every ") else None
+
+
+def _repeat_words(repeat: str) -> str:
+    minutes = _interval(repeat)
+    if repeat in _REPEAT_WORDS or minutes is None:
+        return _REPEAT_WORDS.get(repeat, repeat)
+    if minutes % 1440 == 0:
+        return f"every {minutes // 1440} days" if minutes > 1440 else "every day"
+    return f"every {minutes // 60} hours" if minutes % 60 == 0 else f"every {minutes} minutes"
 
 
 def _next_occurrence(due: datetime, repeat: str, now: datetime) -> datetime:
     """The next local-clock occurrence after now. Stepping the local calendar, not
     adding 24h in UTC, keeps 9:00 at 9:00 across a daylight-saving change, and
     skipping past now means a restart sends one late message, not a backlog."""
-    if repeat == "hourly":
-        missed = (now - due) // timedelta(hours=1) + 1
-        return (due + missed * timedelta(hours=1)).replace(microsecond=0)
+    minutes = _interval(repeat)
+    if minutes:
+        step = timedelta(minutes=minutes)
+        return (due + ((now - due) // step + 1) * step).replace(microsecond=0)
     local = due.astimezone(clock.USER_TZ)
     wall, day = local.time(), local.date()
     step = timedelta(days=7 if repeat == "weekly" else 1)
@@ -274,8 +305,12 @@ def _job_problem(entry: dict, known: set) -> str:
         return "script_only needs a script."
     if not entry.get("script_only") and not entry.get("brief") and not entry.get("content"):
         return "give a brief, or script_only to send what the script prints."
-    if entry.get("repeat") == "hourly" and not script:
-        return "only a message with a script can repeat hourly: any other run spends the daily budget every hour."
+    minutes = _interval(entry.get("repeat"))
+    if minutes and not script and minutes < _MIN_WITHOUT_SCRIPT:
+        return ("only a message with a script can repeat more often than every 3 hours: any other run spends the "
+                "daily budget each time.")
+    if minutes and minutes < _MIN_WITH_SCRIPT:
+        return "a script can repeat every 5 minutes at the shortest."
     sources = entry.get("context_from") or []
     if sources and entry.get("script_only"):
         return "a script_only message has no model to read context_from."
@@ -310,7 +345,8 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
         window: Optional[str] = None, brief: Optional[str] = None,
         now: Optional[datetime] = None, repeat: Optional[str] = None,
         script: Optional[str] = None, script_only: Optional[bool] = False,
-        context_from: Optional[list] = None, keep_only: Optional[bool] = False) -> str:
+        context_from: Optional[list] = None, keep_only: Optional[bool] = False,
+        times: Optional[int] = None) -> str:
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
     brief = (brief or "").strip()
@@ -373,11 +409,14 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
 
     entry = {"id": secrets.token_hex(3), "due": due.isoformat(), "content": content,
              "brief": brief, "created": now.isoformat(), "attempts": 0, "repeat": repeat, **job}
+    if times and repeat:
+        entry["times_left"] = times
     others = list(entries)
     entries.append(entry)
     _save(entries)
     logger.info("Scheduled message %s for %s", entry["id"], entry["due"])
-    reply = f"Okay, {_human(due, now)}" + (f", then {_REPEAT_WORDS[repeat]}." if repeat else ".")
+    reply = f"Okay, {_human(due, now)}" + (f", then {_repeat_words(repeat)}" if repeat else "")
+    reply += f", {times} times in all." if times and repeat else "."
     if job:
         reply += f" It {_job_words(entry, ids=False)}."
     # On its own line: the first line is shown to the user under the reply. The next call has to
@@ -398,7 +437,8 @@ def _lines(entries: list[dict]) -> str:
     lines = []
     for e in sorted(entries, key=lambda e: e["due"]):
         state = "  FAILED to send - cancel to clear" if e.get("failed") else ""
-        state += f"  repeats {e['repeat']}" if e.get("repeat") else ""
+        state += f"  repeats {_repeat_words(e['repeat'])}" if e.get("repeat") else ""
+        state += f", {e['times_left']} runs left" if e.get("times_left") else ""
         state += "  PAUSED" if e.get("paused") else ""
         state += f"  {_job_words(e)}" if _job_words(e) else ""
         summary = (e.get("content") or e.get("brief") or e.get("script") or "")[:80]
@@ -436,7 +476,8 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
            window: Optional[str] = None, brief: Optional[str] = None,
            now: Optional[datetime] = None, repeat: Optional[str] = None,
            script: Optional[str] = None, script_only: Optional[bool] = None,
-           context_from: Optional[list] = None, keep_only: Optional[bool] = None) -> str:
+           context_from: Optional[list] = None, keep_only: Optional[bool] = None,
+           times: Optional[int] = None) -> str:
     """Change a pending message in place: its time, its brief, its job settings, or a mix.
 
     A correction used to be cancel-then-add, two calls, and React did the add and
@@ -447,18 +488,18 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     now = now or datetime.now(timezone.utc)
     entry_id = (entry_id or "").strip()
     brief = (brief or "").strip()
-    times = sum(x is not None for x in (at, in_minutes, window))
-    if times > 1:
+    moved = sum(x is not None for x in (at, in_minutes, window))
+    if moved > 1:
         return "Not updated: give at most one of at, in_minutes or window."
     repeat, problem = _repeat(repeat)
     if problem:
         return f"Not updated: {problem}"
     job = {k: v for k, v in (("script", script), ("script_only", script_only),
                              ("context_from", context_from), ("keep_only", keep_only)) if v is not None}
-    if not times and not brief and repeat is None and not job:
+    if not moved and not brief and repeat is None and not job and not times:
         return "Not updated: give a new time, a new brief, a repeat, or a mix."
     due = None
-    if times:
+    if moved:
         due, problem = _due(at, in_minutes, window, now)
         if problem:
             return f"Not updated: {problem}"
@@ -491,9 +532,11 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
         entry["repeat"] = repeat
         if repeat == "weekdays":
             entry["due"] = _onto_weekday(datetime.fromisoformat(entry["due"])).isoformat()
+    if times:
+        entry["times_left"] = times
     _save(entries)
     logger.info("Updated scheduled message %s, due %s", entry_id, entry["due"])
-    every = f", then {_REPEAT_WORDS[entry['repeat']]}" if entry.get("repeat") else ""
+    every = f", then {_repeat_words(entry['repeat'])}" if entry.get("repeat") else ""
     return f"Okay, now {_human(datetime.fromisoformat(entry['due']), now)}{every}."
 
 
@@ -521,6 +564,8 @@ def set_paused(entry_id: str, paused: bool, now: Optional[datetime] = None) -> s
 
 
 _SILENT = "[SILENT]"
+# Hermes' LOOP_COMPLETE, on its own line: this was the last one, whatever is left of the series.
+_DONE = re.compile(r"^\s*\[DONE\]\s*$", re.MULTILINE)
 
 
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
@@ -569,10 +614,13 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                 logger.error("Composing %s failed - %s: %s", entry["id"], type(e).__name__, e)
                 written = None
             text = (written or "").strip() or "\n\n".join(x for x in (brief, printed) if x)
+        finished = not broke and not entry.get("content") and bool(_DONE.search(text))
+        if finished:
+            text = _DONE.sub("", text).strip()
         body = text
         # Hermes' cron: a job with nothing to report says so and nothing is sent. A failed
         # run never gets here with the mark, so it still reaches the user.
-        silent = quiet or (not broke and bool(brief) and not entry.get("content") and _SILENT in text)
+        silent = quiet or (not broke and bool(brief) and not entry.get("content") and _SILENT in text) or (finished and not text)
         keep = bool(entry.get("keep_only")) and not broke
         if now - datetime.fromisoformat(entry["due"]) > _LATE_AFTER:
             text = f"(Scheduled for {_local(entry['due'])}, delivered late.)\n{text}"
@@ -600,7 +648,11 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                 kept["script_failures"] = kept.get("script_failures", 0) + 1
             elif kept is not None:
                 kept.pop("script_failures", None)
-            if kept is not None and kept.get("repeat"):
+            left = kept.get("times_left") if kept is not None else None
+            last_run = finished or (isinstance(left, int) and left <= 1)
+            if kept is not None and kept.get("repeat") and not last_run:
+                if left:
+                    kept["times_left"] = left - 1
                 kept["due"] = _next_occurrence(datetime.fromisoformat(kept["due"]),
                                                kept["repeat"], now).isoformat()
                 kept["attempts"] = 0
@@ -639,7 +691,7 @@ def status() -> str:
     lines = []
     for e in sorted(entries, key=lambda e: e["due"]):
         state = " (failed to send)" if e.get("failed") else ""
-        state += f" (repeats {e['repeat']})" if e.get("repeat") else ""
+        state += f" (repeats {_repeat_words(e['repeat'])})" if e.get("repeat") else ""
         state += " (paused)" if e.get("paused") else ""
         state += f" ({_job_words(e, ids=False)})" if _job_words(e) else ""
         lines.append(f"  - {_local(e['due'])}{state}: {(e.get('brief') or e.get('content') or e.get('script') or '')[:80]}")
@@ -686,6 +738,8 @@ def run_tool(inputs: dict) -> str:
             script = ""
         job = {"script": script, "script_only": _flag(inputs.get("script_only")),
                "context_from": _ids(inputs.get("context_from")), "keep_only": _flag(inputs.get("keep_only"))}
+        times = inputs.get("times")
+        job["times"] = int(times) if isinstance(times, (int, str)) and str(times).strip().isdigit() and int(times) > 0 else None
         if action == "update":
             return update(inputs.get("id", ""), at=at, in_minutes=in_minutes,
                           window=window, brief=brief, repeat=repeat, **job)

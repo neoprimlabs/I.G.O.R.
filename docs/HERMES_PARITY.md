@@ -16,10 +16,16 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | `grounded-citations` ledger | `proof.py` | Overnight income ideas only: code checks each quote is on the page, and the ledger outlives the paper's revisions. Reads Exa's excerpts rather than whole pages, for the budget. |
 | Gateway `/stop` `/retry` `/undo` `/usage` `/status` `/help` | `commands.py` | Plain words, with or without the slash. |
 | `busy_input_mode: queue` | One turn at a time | Queue, not Hermes' default interrupt: two turns at once share one rate limit. `stop` covers the rest. |
+| `/steer`, `/btw` | `steer`, `btw` | Plain words. A side question runs on 20b, the bucket the turn is not using, and is kept in the conversation, of which there is one. Neither carries outside text. |
+| `terminal(background=true)`, `process_manage`, `notify_on_complete` | `shell(background)`, `process`, `background.py` | The end goes to the user in code, not through a model call. Two at a time, 30 minutes each, at low priority. No writing to a command's input, and a restart ends them, saying so. |
+| Terminal files persist between calls | `memory/workspace` | One folder, kept a week up to 200 MB. Scheduled scripts, which have the network, cannot write there. |
+| Deliverable mode | `send_file`, `deliver.py` | Word, PDF, Excel and CSV written in code with the standard library, since the host has none of Hermes' libraries. From Markdown, a server file or the last reply, which costs no output tokens. No charts or HTML. |
+| `/moa`, Mixture of Agents | `moa.py`, `second opinion` | One-shot only, on 20b and qwen advising 120b: the models this account has. Not a selectable model, and no presets. |
 | `redact_secrets` | `sanitize.redact` | |
 | Protected paths | `_is_secret_file` | |
 | Cron `[SILENT]` | `scheduled_message` | |
-| Cron | `scheduled_message`, `compose.write` | Read-only tools. Repeats hourly at most, and hourly only with a script; Hermes takes any interval. |
+| Cron | `scheduled_message`, `compose.write` | Read-only tools. Any interval, but 3 hours at the shortest without a script and 5 minutes with one: a run without one spends tokens. `times` as Hermes' `repeat`. |
+| `/loop` stop conditions | `[DONE]`, `times` | Hermes' `LOOP_COMPLETE` and `--times`. No `--until` judge: the brief says when to stop, and the run judges it. |
 | Cron `script`, `no_agent`, wake gate | `prerun.py` | Only the user or Claude Code can add a script: the folder is sealed from every tool. In the sandbox with the network, no keys and no private files. 60 seconds, not an hour. A failure alerts once a streak, not every run. |
 | Cron `context_from`, `deliver: local` | `context_from`, `keep_only` | The latest output, dated, up to 3 sources. An entry that reads others goes last in a tick, where Hermes does not wait. |
 | `/heartbeat` | `heartbeats.py` | Code compares pages and only a change reaches a model; a full turn per tick would spend the day. |

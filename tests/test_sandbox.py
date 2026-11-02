@@ -96,7 +96,7 @@ def test_tools_never_run_bare() -> None:
     real_prepare, real_run = sandbox.prepare, subprocess.run
     started = []
 
-    def down(argv):
+    def down(argv, **kw):
         raise sandbox.Unavailable("NOT RUN: test")
 
     try:

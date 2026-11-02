@@ -89,7 +89,7 @@ async def _shell_flow() -> None:
     from agents import react
     ran = []
 
-    async def fake_run(command, timeout=10):
+    async def fake_run(command, timeout=10, background=False):
         ran.append(command)
         return "done"
 

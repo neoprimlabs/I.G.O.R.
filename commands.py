@@ -28,7 +28,33 @@ HELP = ("These take no model call. stop ends what I am working on. retry runs yo
         "scheduled. rollback lists file changes I can put back. heartbeat every 1h, with a link, "
         "watches a page. skills lists what I have learned; archive, restore, pin or unpin skill "
         "with its name changes one. save that as a skill drafts one from the last task, for you "
-        "to approve.")
+        "to approve. send that as a PDF, or Word, Excel or CSV, puts my last message in a file. While I am "
+        "working, steer with a note adds it at my next step, and btw with a question answers it on the "
+        "side. second opinion, with a question, also asks my other models: that one spends tokens.")
+
+
+# Hermes' /steer and /btw. A bare word first, so "steering wheel" and "btwn" stay ordinary.
+_STEER = re.compile(r"^\s*/?steer\b[\s,:.-]*(.+)$", re.IGNORECASE | re.DOTALL)
+_ASIDE = re.compile(r"^\s*/?btw\b[\s,:.-]*(.+)$", re.IGNORECASE | re.DOTALL)
+# Hermes' /moa. Opening the message, so "do I need a second opinion" stays an ordinary question.
+_OPINION = re.compile(r"^\W*(?:moa\b|(?:(?:please|igor|can you|could you)[,\s]+)*(?:(?:get|give me|i want|i'?d like)\s+)?"
+                      r"(?:a\s+)?second opinion\b(?:\s+(?:on|about|for))?|ask the (?:panel|other models)\b"
+                      r"(?:\s+(?:on|about))?)[\s,:.?-]*(.*)$", re.IGNORECASE | re.DOTALL)
+
+_FILE_WORDS = {"word": ".docx", "doc": ".docx", "docx": ".docx", "document": ".docx", "pdf": ".pdf", "excel": ".xlsx",
+               "xlsx": ".xlsx", "spreadsheet": ".xlsx", "sheet": ".xlsx", "csv": ".csv", "text": ".txt", "txt": ".txt",
+               "markdown": ".md", "md": ".md"}
+# "Send that as a PDF" is the last reply in a file, answered in code. Anything more goes to React.
+_EXPORT = re.compile(
+    r"^\W*(?:(?:please|igor|can you|could you|would you)[,\s]+)*"
+    r"(?:(?:send|give|make|turn|put|save|export|convert)\s+(?:me\s+)?|can i (?:get|have)\s+)"
+    r"(?:that|this|it|the (?:last|above) (?:message|reply|answer|one))(?:\s+to\s+me)?\s+"
+    r"(?:(?:over\s+)?(?:as|in|into|to)\s+)?(?:an?\s+)?"
+    r"(word|docx?|document|pdf|excel|xlsx|spreadsheet|sheet|csv|text|txt|markdown|md)"
+    r"(?:\s+(?:file|doc|document|sheet|spreadsheet))?(?:\s+please)?\W*$", re.IGNORECASE)
+_WANTS_FILE = re.compile(
+    r"\b(make|create|write|draft|send|give|put|save|export|generate|build|prepare|turn|format)\b.{0,120}?"
+    r"\b(word (?:doc|document|file)|docx|pdf|excel|xlsx|spreadsheet|csv)\b", re.IGNORECASE | re.DOTALL)
 
 
 def parse(text: str) -> Optional[str]:
@@ -45,3 +71,28 @@ def skill_action(text: str) -> Optional[tuple[str, str]]:
 
 def saves_skill(text: str) -> bool:
     return bool(_SAVE_SKILL.match(text or ""))
+
+
+def steer_text(text: str) -> Optional[str]:
+    m = _STEER.match(text or "")
+    return m.group(1).strip() if m and m.group(1).strip() else None
+
+
+def aside_text(text: str) -> Optional[str]:
+    m = _ASIDE.match(text or "")
+    return m.group(1).strip() if m and m.group(1).strip() else None
+
+
+def second_opinion(text: str) -> Optional[str]:
+    """What to ask, "" for the last answer, or None when this is not a request for one."""
+    m = _OPINION.match(text or "")
+    return m.group(1).strip() if m else None
+
+
+def export_format(text: str) -> Optional[str]:
+    m = _EXPORT.match(text or "")
+    return _FILE_WORDS[m.group(1).lower()] if m else None
+
+
+def wants_file(text: str) -> bool:
+    return bool(_WANTS_FILE.search(text or ""))

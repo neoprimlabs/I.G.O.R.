@@ -285,6 +285,8 @@ _SCHEDULING = re.compile(
     r"(morning|afternoon|evening)|later|daily|weekly|weekdays?)\b"
     r"|\bevery (hour|day|weekday|week|morning|evening|night|monday|tuesday|wednesday|thursday|"
     r"friday|saturday|sunday)\b"
+    r"|\bevery (half an? hour|\d+\s*(m|mins?|minutes?|h|hrs?|hours?|days?)\b|(two|three|four|five|six|eight|twelve|"
+    r"few|couple of|other)\s+(minutes?|hours?|days?)\b)"
     r"|\b(make|move|push|change) it (to )?(\d|noon|midnight)"
     r"|\b(pause|resume|unpause|cancel|stop) (that|it|the|this|my)\b.*\b(message|reminder|one|"
     r"check-?in|series)\b"
@@ -435,6 +437,9 @@ class Orchestrator:
         # 8000 TPM bucket and could answer out of order. stop reaches the turn in flight.
         self._turn_lock = asyncio.Lock()
         self._stop_turn: asyncio.Event | None = None
+        # Hermes' /steer: the turn a note can still reach, and notes that came too late for it.
+        self._live_carry: dict | None = None
+        self._late_notes: list[str] = []
         from context_store import load_timed
         self._context: list[dict] = load_timed(_CONTEXT_KEEP)
 
@@ -465,6 +470,22 @@ class Orchestrator:
         if skill_action:
             import skills
             return skills.act(*skill_action), False
+
+        # Text from a document or an image is not the user's own words, so neither of these may
+        # carry it past the rules a turn applies to such text. It waits its turn like anything else.
+        from agents.react import _UNTRUSTED_OPEN
+        if _UNTRUSTED_OPEN not in content:
+            note = commands.steer_text(content)
+            if note is not None:
+                carry = self._live_carry
+                if carry is not None and carry.get("steerable"):
+                    carry.setdefault("steer", []).append(note)
+                    return "Noted. I will read that at my next step.", False
+                # Nothing to steer, so it is simply the next message.
+                content = note
+            aside = commands.aside_text(content)
+            if aside is not None and (self._turn_lock.locked() or self._stop_follow is not None):
+                return await self._aside(aside), False
 
         # Any other message ends a follow-through, the round in flight included: Hermes'
         # "user messages always preempt". After approvals, since a yes to a command that
@@ -516,6 +537,23 @@ class Orchestrator:
             return await research_loop.stop()
         return "Stopping at the next step." if stopped else "Nothing is running."
 
+    async def _aside(self, question: str) -> str:
+        """Hermes' /btw, while a turn runs: an answer from the conversation so far, no tools, on the
+        bucket the turn is not using. Stored, since there is one conversation to remember."""
+        from agents import direct
+        base = functools.partial(call_claude, self._client, self._notify)
+
+        async def on_the_other_bucket(system, messages, max_tokens=2048, model=None):
+            return await base(system, messages, max_tokens=max_tokens, model=config.MODELS["summary"])
+
+        try:
+            reply = await direct.handle(question, self._window(), on_the_other_bucket)
+        except Exception as e:
+            logger.error("A side question failed - %s: %s", type(e).__name__, e)
+            return "I could not answer that on the side. Ask again when I have finished."
+        self._update_context(question, reply)
+        return reply
+
     def _forget_last_exchange(self) -> str | None:
         """Hermes' /undo: the last user message and the replies to it, in the store and in
         the copy prompts are built from. The user's words, or None if there are none."""
@@ -545,7 +583,7 @@ class Orchestrator:
             from context_store import last_timestamp
             previous = last_timestamp()
             gap = (datetime.now(timezone.utc) - previous).total_seconds() if previous else None
-            if gap is not None and _looks_like_reformulation(task, gap):
+            if gap is not None and destination != "FileExport" and _looks_like_reformulation(task, gap):
                 self._log_correction(task, destination, signal="reformulation")
         if destination == "StopResearch":
             file_mode = True
@@ -555,6 +593,7 @@ class Orchestrator:
         stop = asyncio.Event()
         self._stop_turn = stop
         carry: dict = {"stop": stop}
+        self._live_carry = carry
         try:
             response = await self._route(destination, task, file_mode=file_mode, carry=carry)
         except openai.RateLimitError as e:
@@ -573,6 +612,9 @@ class Orchestrator:
         finally:
             backup_notice = llm.end_turn(turn)
             self._stop_turn = None
+            self._close_carry(carry)
+            if stop.is_set():
+                self._late_notes.clear()
 
         if stop.is_set() and not response.strip():
             self._update_context(task, "[stopped by the user before answering]")
@@ -584,7 +626,7 @@ class Orchestrator:
         skill_captured = False
         if config.ENABLE_CRITIC:
             skill_captured = await self._critic_pass(destination, task, response)
-        self._update_context(task, response)
+        self._update_context(self._with_notes(task, carry), response)
         if file_mode:
             return response, file_mode
         if destination == "React" and seq == self._seq:
@@ -612,11 +654,15 @@ class Orchestrator:
             return "StopResearch"
         if lower in _DIGEST_COMMANDS:
             return "Monitor"
+        import commands
+        if commands.export_format(content):
+            return "FileExport"
+        if commands.second_opinion(content) is not None:
+            return "SecondOpinion"
         if _proposal_decisions(content):
             return "ProposalDecision"
         if _asks_for_proposals(content):
             return "ProposalList"
-        import commands
         if commands.saves_skill(content):
             return "SkillSave"
         import checkpoints
@@ -632,6 +678,8 @@ class Orchestrator:
         if _JOB_WORD.search(content) and _JOB_EXCLUDE.search(content):
             return "Remember"
         if _MORE_ABOUT.search(content) or (_JOB_WORD.search(content) and _ABOUT_FOUND.search(content)):
+            return "React"
+        if commands.wants_file(content):
             return "React"
         if self._last_route == "Remember" and _CORRECTING.search(lower) and len(lower) < 120:
             return "Remember"
@@ -742,6 +790,23 @@ class Orchestrator:
             self._monitor_declined = True
             from agents import direct
             return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+
+        if destination == "FileExport":
+            import commands
+            import deliver
+            return await deliver.export_last(commands.export_format(content))
+
+        if destination == "SecondOpinion":
+            import commands
+            import moa
+            question = commands.second_opinion(content) or "Give me a second opinion on your last answer."
+            carry = {} if carry is None else carry
+            guidance, line = await moa.advise(question, self._window(moa.WINDOW_CHARS, with_summary=False))
+            if guidance:
+                carry["guidance"] = guidance
+            react.set_notify(self._notify)
+            reply = await react.handle(question, self._window(), max_tokens=max_tokens, carry=carry)
+            return f"{reply}\n{line}" if reply else reply
 
         if destination == "ProposalDecision":
             import proposals
@@ -859,6 +924,8 @@ class Orchestrator:
         """Further rounds on the React turn just answered, if it stopped short
         (followthrough.py). The bot calls this once that reply is sent; each round's
         reply goes out through send. Returns how many rounds ran."""
+        if await self._run_late_notes(send):
+            return 0
         pending, self._pending_follow = self._pending_follow, None
         if pending is None:
             return 0
@@ -866,25 +933,63 @@ class Orchestrator:
         stop = asyncio.Event()
         self._stop_follow = stop
         try:
-            return await followthrough.run(*pending, stop, self._round, send, typing)
+            rounds = await followthrough.run(*pending, stop, self._round, send, typing)
         finally:
             if self._stop_follow is stop:
                 self._stop_follow = None
+        await self._run_late_notes(send)
+        return rounds
+
+    async def _run_late_notes(self, send: Callable[[str], Awaitable[None]]) -> bool:
+        """A note that came as a turn was ending. It is the user's own message, so it gets a turn."""
+        late, self._late_notes = self._late_notes, []
+        if not late:
+            return False
+        self._pending_follow = None
+        result = await self.process(config.AUTHORIZED_USER_ID, "\n".join(late))
+        self._pending_follow = None
+        if result and result[0].strip():
+            await send(result[0])
+        return True
 
     async def _round(self, message: str, carry: dict) -> str:
         import followthrough
         from agents import react
         react.set_notify(self._notify)
         turn = llm.start_turn()
+        self._live_carry = carry
         try:
             reply = await react.handle(message, self._window(), max_tokens=2048, carry=carry,
                                        max_iterations=followthrough.ROUND_STEPS)
         finally:
             notice = llm.end_turn(turn)
+            self._close_carry(carry)
+        self._store_notes(carry)
         if not reply.strip():
             return reply
         self._store_round(reply)
         return f"{reply}\n\n{notice}" if notice else reply
+
+    def _close_carry(self, carry: dict) -> None:
+        """A turn can take no more notes. Any it never reached get a turn of their own, after this
+        reply goes out (follow_through)."""
+        carry["steerable"] = False
+        self._live_carry = None
+        self._late_notes.extend(carry.pop("steer", []))
+
+    @staticmethod
+    def _with_notes(task: str, carry: dict) -> str:
+        """What the user asked, with what they added while it ran, for the record of the turn."""
+        notes = carry.pop("steered", [])
+        return "\n".join([task] + [f"[Added while I worked: {note}]" for note in notes])
+
+    def _store_notes(self, carry: dict) -> None:
+        """Notes a follow-through round read: no user message of its own holds them."""
+        from context_store import append
+        for note in carry.pop("steered", []):
+            entry = {"role": "user", "content": _cap(note, _STORE_CAP), "ts": datetime.now(timezone.utc).timestamp()}
+            self._context.append(entry)
+            append("user", entry["content"])
 
     def _store_round(self, text: str) -> None:
         """A follow-through round's reply. Conversation, not a post, though no user

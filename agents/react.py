@@ -54,7 +54,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url"})
 
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
-    "scheduled_message", "delegate_task", "task_update", "goal", "proposal",
+    "scheduled_message", "delegate_task", "task_update", "goal", "proposal", "process",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -277,14 +277,42 @@ _TOOLS = [
     },
     {
         "name": "shell",
-        "description": "Run a shell command on the server and return output. Use for inspection (files, disk, git). Runs as igor with cwd=/opt/igor in a sandbox: no network, no secrets, sees only its own processes, files read-only except /tmp and .git. Output capped at 4000 chars.",
+        "description": "Run a shell command on the server and return output. Use for inspection (files, disk, git). Runs as igor with cwd=/opt/igor in a sandbox: no network, no secrets, sees only its own processes, files read-only except /tmp, .git and memory/workspace, which lasts between commands for a week. Output capped at 4000 chars.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "command": {"type": "string", "description": "Shell command to run (passed to bash -c)"},
                 "timeout": {"type": "integer", "description": "Timeout in seconds (default 10, max 30)"},
+                "background": {"type": "boolean", "description": "For a command longer than that: it runs on, up to 30 minutes, and the user is told when it ends"},
             },
             "required": ["command"],
+        },
+    },
+    {
+        "name": "process",
+        "description": "Background commands started with shell's background. list: running and recently finished. poll: status and new output. log: output from an offset. kill: stop one. The user is told when one ends, so do not wait or keep checking.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "poll", "log", "kill"]},
+                "id": {"type": "string", "description": "poll, log, kill: the id it started with"},
+                "offset": {"type": "integer", "description": "log: where to read from"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "send_file",
+        "description": "Send the user a real file in this chat: Word (.docx), PDF, Excel (.xlsx), CSV, Markdown or text. The name's extension picks the format. Give exactly one source. content: the document in plain Markdown, with headings, lists, tables and bold; for Excel or CSV, a Markdown table. path: a file on the server, converted if the extension differs. last_reply: your previous reply. Writing a document out costs tokens, so prefer path or last_reply when it already exists. Say in your reply what you sent.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "File name with its extension, such as cover-letter.docx"},
+                "content": {"type": "string", "description": "The document, in Markdown"},
+                "path": {"type": "string", "description": "A file relative to IGOR's root, such as memory/work/g3/paper.md"},
+                "last_reply": {"type": "boolean", "description": "Send your previous reply"},
+            },
+            "required": ["name"],
         },
     },
     {
@@ -318,11 +346,12 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "update", "pause", "resume", "list", "cancel"]},
-                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If the user dictated exact words, put them in double quotes"},
+                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If it should stop repeating once something happens, say that too. If the user dictated exact words, put them in double quotes"},
                 "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM, or HH:MM for the next time the clock reads that"},
                 "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
                 "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
-                "repeat": {"type": "string", "enum": ["hourly", "daily", "weekdays", "weekly", "none"], "description": "add, update: send again at the same local time. none stops repeating. hourly needs a script"},
+                "repeat": {"type": "string", "description": "add, update: daily, weekdays or weekly, at the same local time; or an interval, such as every 6 hours; none stops repeating. Every 3 hours is the shortest without a script, every 5 minutes with one"},
+                "times": {"type": "integer", "description": "add, update: stop after this many runs"},
                 "script": {"type": "string", "description": "add, update: a script from list, run first. If it prints nothing, nothing is written or sent. With no brief, what it prints is the message. none removes it"},
                 "script_only": {"type": "boolean", "description": "add, update: no model, just what the script prints"},
                 "context_from": {"type": "array", "items": {"type": "string"}, "description": "add, update: ids of up to 3 other messages whose latest output this one reads"},
@@ -420,6 +449,8 @@ _DEFERRED_TOOLS = {
                  "List first, show the user the problem, evidence and change, and approve or "
                  "reject only on their explicit word for that id."),
     "send_message": ("send the user a message now, apart from this reply", ""),
+    "send_file": ("send the user a real file: Word, PDF, Excel, CSV or text", ""),
+    "process": ("background commands: list, poll, log, kill", ""),
     "python_run": ("run Python in the sandbox", ""),
     "write_file": ("write a file on the server",
                    "Only for modifying IGOR's own code, or when the user explicitly asks for a file "
@@ -650,7 +681,7 @@ async def _run_code(code: str, timeout: int = 10) -> str:
 
     import sandbox
     try:
-        argv = sandbox.prepare([sys.executable, "-c", code])
+        argv = sandbox.prepare([sys.executable, "-c", code], workspace=True)
     except sandbox.Unavailable as e:
         return str(e)
 
@@ -1114,7 +1145,7 @@ _WORKER_MAX_TOKENS = 1024
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
     "delegate_task", "goal", "proposal", "send_message", "scheduled_message", "restart_self",
-    "memory_write", "task_update", "execute_code",
+    "memory_write", "task_update", "execute_code", "send_file", "process",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
 # It writes tasks.md, which the morning digest and presence both read, so a worker
@@ -1485,7 +1516,7 @@ def _hardline_refusal(command: str) -> Optional[str]:
     return None
 
 
-async def _run_shell(command: str, timeout: int = 10) -> str:
+async def _run_shell(command: str, timeout: int = 10, background: bool = False) -> str:
     import subprocess
 
     refusal = _hardline_refusal(command)
@@ -1495,11 +1526,15 @@ async def _run_shell(command: str, timeout: int = 10) -> str:
                 "overridden - do not retry or rephrase it. Tell the user what you were "
                 "trying to do and let them run it themselves if it is really needed.")
 
+    if background:
+        import background as background_commands
+        return await background_commands.start(command, _notify_fn)
+
     timeout = min(max(timeout, 1), 30)
 
     import sandbox
     try:
-        argv = sandbox.prepare(["bash", "-c", command])
+        argv = sandbox.prepare(["bash", "-c", command], workspace=True)
     except sandbox.Unavailable as e:
         return str(e)
 
@@ -1809,7 +1844,17 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
                 return (f"NOT RUN: this command needs the user's approval because {why}, and "
                         f"{reason}. Do not retry it in this turn. Tell the user what you wanted to "
                         "run and why; they can ask for it again in a new message.")
-        return await _run_shell(command, timeout)
+        return await _run_shell(command, timeout, background=inputs.get("background") in (True, "true"))
+
+    if name == "process":
+        import background
+        return background.run_tool(inputs)
+
+    if name == "send_file":
+        import deliver
+        source = (inputs.get("path") or "").strip()
+        problem = _path_problem(source, allow_private) if source else None
+        return problem or await deliver.run_tool(inputs)
 
     if name.startswith("mcp_"):
         import mcp_client
@@ -1918,7 +1963,7 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
 # what landed. Discord is IGOR's only screen, so it gets both. Live 2026-10-22 and
 # 10-23, "Got it" stood in for saves that never happened.
 _SAVING_TOOLS = frozenset({"memory_write", "task_update", "write_file", "patch_file",
-                           "scheduled_message", "goal"})
+                           "scheduled_message", "goal", "send_file"})
 _RECEIPTS: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_receipts", default=None)
 _TRACE: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_trace", default=None)
 _MAX_RECEIPT_LINES = 4
@@ -1931,7 +1976,7 @@ def _record_receipt(name: str, args: dict, result: str) -> None:
     text = (result or "").strip()
     if not text or text.startswith("[you already made"):
         return
-    target = (args or {}).get("file") or (args or {}).get("path") or name
+    target = (args or {}).get("file") or (args or {}).get("path") or (args or {}).get("name") or name
     failed = text.startswith(("[", "Not "))
     # A batch of memory edits says one line per edit, and each one landed.
     lines = text.splitlines() if not failed and len((args or {}).get("operations") or []) > 1 else text.splitlines()[:1]
@@ -1953,6 +1998,19 @@ def _receipt_footer(receipts: list) -> str:
         lines.append(f"-# Not saved, whatever the reply above says: {len(failed)} change(s) failed")
         lines.extend(f"-# {t}: {line}" for t, line in failed[:_MAX_RECEIPT_LINES])
     return "\n".join(lines)
+
+
+def _take_notes(messages: list[dict], carry: dict) -> list[dict]:
+    """Hermes' /steer: what the user sent while this ran, as a user message after the last tool
+    result, the order Hermes settled on after smearing it onto a tool result broke replays."""
+    notes = carry.get("steer")
+    if not notes:
+        return messages
+    carry["steer"] = []
+    carry.setdefault("steered", []).extend(notes)
+    logger.info("ReAct took %d note(s) from the user mid-turn", len(notes))
+    return messages + [{"role": "user", "content": "[The user sent this while you were working. It comes from "
+                        "them, so act on it along with what they first asked: " + "\n".join(notes) + "]"}]
 
 
 async def handle(
@@ -2048,6 +2106,12 @@ async def _handle(
     # for. The turn reports back what it read, whether it ran out of steps, and stops
     # at its next step once the user writes again.
     carry = {} if carry is None else carry
+    if _depth == 0:
+        carry["steerable"] = True
+    # moa.py: their own trailing message, as Hermes', so what the user asked stays apart from them.
+    guidance = carry.pop("guidance", None)
+    if guidance:
+        messages = messages + [{"role": "user", "content": guidance}]
     # A document or image in the message is outside text too. Found 2026-10-30: reading an
     # inbox file closed the tools that change things, but the same words in the message did
     # not, so a forwarded file could have asked for a memory write.
@@ -2060,11 +2124,17 @@ async def _handle(
     # Only the main agent: a worker or scheduled run names its own short list.
     defer = allowed_tools is None and _depth == 0
     loaded: set = {force_tool} if force_tool else set()
+    # A bridge step costs a whole model call, and this says what it would have loaded.
+    if defer:
+        import commands
+        if commands.wants_file(message.split(_UNTRUSTED_OPEN)[0]):
+            loaded.add("send_file")
     empty_retried = False
     for i in range(max_iterations):
         if stop is not None and stop.is_set():
             logger.info("ReAct stopped at iteration %d: the user wrote again", i + 1)
             return ""
+        messages = _take_notes(messages, carry) if _depth == 0 else messages
         if web_read:
             tools = [t for t in tools if t["function"]["name"] not in _QUARANTINED_AFTER_WEB]
         if private_read:
@@ -2162,6 +2232,9 @@ async def _handle(
                     return _load_tools(args.get("names"), tools, loaded)
                 if job_turn and tc.function.name == "search" and not args.get("source"):
                     args["source"] = "jobs"
+                # A worker must not reach the user, and a background command's end would.
+                if _depth and tc.function.name == "shell":
+                    args.pop("background", None)
                 # Judged as a batch: gather gives no ordering guarantee, so a batch
                 # holding both a web call and a private read closes both.
                 blocked = _quarantine_check(
@@ -2236,6 +2309,7 @@ async def _handle(
     if not carry.get("too_big"):
         logger.warning("ReAct hit max iterations (%d) - forcing a final answer", max_iterations)
         carry["out_of_steps"] = True
+    messages = _take_notes(messages, carry) if _depth == 0 else messages
     # With no tool run there is nothing to report. Told to say so plainly, a turn on
     # 2026-10-30 opened "In this turn I did not run any searches" to a user who asked none.
     ran_tools = any(m.get("role") == "tool" for m in messages)

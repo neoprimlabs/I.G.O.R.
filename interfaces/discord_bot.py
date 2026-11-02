@@ -48,6 +48,12 @@ class IgorBot(discord.Client):
                       connected_fn=lambda: monitor.gateway_connected(self))
         import approvals
         approvals.set_sender(self.send_to_user)
+        import deliver
+        deliver.set_sender(self.send_bytes_to_user)
+        import background
+        lost = background.lost_in_restart()
+        if lost:
+            await self.send_to_user(lost)
 
     async def on_message(self, message: discord.Message) -> None:
         if self.user is None or message.author.id == self.user.id:
@@ -160,6 +166,20 @@ class IgorBot(discord.Client):
             except discord.HTTPException:
                 self._dm_channel = None
         logger.error("Failed to send message to user after retry")
+        return False
+
+    async def send_bytes_to_user(self, data: bytes, filename: str) -> bool:
+        """A real file, from deliver.py. Not recorded as a post: the reply that goes with it is."""
+        for attempt in range(2):
+            channel = await self._get_dm_channel()
+            if channel is None:
+                return False
+            try:
+                await channel.send(file=discord.File(io.BytesIO(data), filename=filename))
+                return True
+            except discord.HTTPException as e:
+                logger.error("Failed to send %s - %s: %s", filename, type(e).__name__, e)
+                self._dm_channel = None
         return False
 
     async def send_file_to_user(self, content: str) -> None:
