@@ -245,15 +245,18 @@ def _line(row, conn) -> str:
     return f"{_name(row['id'])} {row['status']}{extra}. {row['title']}"
 
 
+EMPTY = "The board is empty. board add, with a task, puts work on it."
+
+
 def listing() -> str:
     if not _path().exists():
-        return "The board is empty. board add, with a task, puts work on it."
+        return EMPTY
     with _open() as conn:
         rows = conn.execute("""SELECT * FROM tasks WHERE status NOT IN ('done', 'archived')
                                ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'blocked' THEN 1 WHEN 'ready' THEN 2 ELSE 3 END, id""").fetchall()
         done = conn.execute("SELECT * FROM tasks WHERE status = 'done' ORDER BY finished DESC, id DESC LIMIT 5").fetchall()
         lines = [_line(r, conn) for r in rows] + [f"{_name(r['id'])} done. {r['title']}" for r in done]
-    return "\n".join(lines) or "The board is empty. board add, with a task, puts work on it."
+    return "\n".join(lines) or EMPTY
 
 
 def show(task) -> str:

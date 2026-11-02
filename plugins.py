@@ -357,11 +357,14 @@ async def drain() -> None:
         await asyncio.gather(*list(_tasks))
 
 
+NONE_PLACED = ("No plugins are installed. One goes in memory/private/cron_scripts/plugins/<name>/ on the server, "
+               "in Hermes' format, and only you or Claude Code can place it.")
+
+
 def listing() -> str:
     found, on = _found(), enabled()
     if not found and not on:
-        return ("No plugins are installed. One goes in memory/private/cron_scripts/plugins/<name>/ on the server, "
-                "in Hermes' format, and only you or Claude Code can place it.")
+        return NONE_PLACED
     lines = []
     for name in sorted(set(found) | set(on)):
         info = manifest(found[name]) if name in found else {}

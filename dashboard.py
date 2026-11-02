@@ -27,6 +27,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 _STARTED = time.time()
 _BOOT = secrets.token_hex(4)
 _HERE = Path(__file__).resolve().parent / "dashboard_page"
-_ERROR_LINES = 15
+_ERROR_LINES = 10
 # Everything the page loads, by name: nothing else under the folder is served. The fonts are OFL, licences beside them.
 _ASSETS = {"app.js": "application/javascript", "app.css": "text/css", "igor.jpg": "image/jpeg", "npl.jpg": "image/jpeg",
            "fonts/bebas-neue.woff2": "font/woff2", "fonts/dm-mono-400.woff2": "font/woff2", "fonts/dm-mono-500.woff2": "font/woff2"}
@@ -92,11 +93,22 @@ def _safe(fn):
         return {"unreadable": f"{type(e).__name__}"}
 
 
+def _when(moment: datetime) -> str:
+    """A time as the user would say it: today 2:20 PM, tomorrow 4:00 AM, Fri 9:00 AM, Mon 9 Nov, 12:00 PM."""
+    import clock
+    local = moment.astimezone(clock.USER_TZ)
+    days = (local.date() - datetime.now(clock.USER_TZ).date()).days
+    day = {0: "today", 1: "tomorrow", -1: "yesterday"}.get(days)
+    if day is None:
+        day = local.strftime("%a") if 1 < days < 7 else f"{local:%a} {local.day} {local:%b},"
+    return f"{day} {local.strftime('%I:%M %p').lstrip('0')}"
+
+
 def _commit():
     done = subprocess.run(["git", "-C", str(config.BASE_DIR), "log", "-1", "--format=%h%x09%s%x09%cI"],
                           capture_output=True, text=True, timeout=5)
     sha, subject, when = (done.stdout.strip().split("\t") + ["", "", ""])[:3]
-    return {"sha": sha, "subject": subject, "when": when}
+    return {"sha": sha, "subject": subject, "when": when, "when_text": _when(datetime.fromisoformat(when)) if when else ""}
 
 
 def _process():
@@ -134,19 +146,42 @@ def _tokens():
         models[model] = {"total": sum(labels.values()), "by_label": dict(sorted(labels.items(), key=lambda kv: -kv[1])),
                          "cap": config.DAILY_TOKEN_CAPS.get(model), "headroom": usage.headroom(model, now),
                          "hourly": [sum((ledger.get(h, {}).get(model) or {}).values()) for h in hours]}
-    return {"hours": [moment.astimezone(clock.USER_TZ).strftime("%H") for moment in moments], "models": models}
+    roles = {}
+    for role, model in config.MODELS.items():
+        roles.setdefault(model, []).append(role)
+    for model, entry in models.items():
+        entry["roles"] = roles.get(model, [])
+    return {"hours": [moment.astimezone(clock.USER_TZ).strftime("%I %p").lstrip("0") for moment in moments], "models": models}
 
 
 def _scheduled():
-    import clock
     path = config.MEMORY_DIR / "scheduled.json"
     entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
     rows = []
     for entry in sorted(entries, key=lambda e: e.get("due") or ""):
-        due = datetime.fromisoformat(entry["due"]).astimezone(clock.USER_TZ) if entry.get("due") else None
-        rows.append({"due": due.strftime("%a %d %b, %H:%M") if due else "", "repeat": entry.get("repeat") or "once",
-                     "what": (entry.get("brief") or entry.get("content") or (f"script {entry['script']}" if entry.get("script") else ""))[:120]})
+        script = entry.get("script")
+        rows.append({"when": _when(datetime.fromisoformat(entry["due"])) if entry.get("due") else "",
+                     "repeat": entry.get("repeat") or "once",
+                     "what": (entry.get("brief") or entry.get("content") or (f"Runs {script}" if script else "(no brief)"))[:120]})
     return rows
+
+
+# The scheduler's jobs by name. One run once at startup is left out.
+_JOB_NAMES = {"morning_digest": "Morning digest", "model_update_check": "Model update check", "job_watch": "Job watch",
+              "gig_watch": "Gig watch", "price_watch": "Price watch", "stock_watch": "Stock watch",
+              "scheduled_messages": "Scheduled messages", "heartbeat": "Heartbeat", "page_heartbeat": "Page watch",
+              "board": "Task board", "presence": "Check-ins", "advocacy_draft": "Weekly advocacy draft",
+              "overnight": "Overnight work"}
+# overnight.py works 00:00 to 06:59; its hourly tick does nothing the rest of the day.
+_NIGHT_ENDS = 7
+
+
+def _every(interval: timedelta) -> str:
+    minutes = round(interval.total_seconds() / 60)
+    if minutes < 60:
+        return "every minute" if minutes <= 1 else f"every {minutes} minutes"
+    hours = round(minutes / 60)
+    return "every hour" if hours == 1 else f"every {hours} hours"
 
 
 def _jobs():
@@ -155,8 +190,24 @@ def _jobs():
     scheduler = monitor._scheduler
     if scheduler is None or not scheduler.running:
         return []
-    return [{"id": j.id, "next": j.next_run_time.astimezone(clock.USER_TZ).strftime("%a %H:%M") if j.next_run_time else "not scheduled"}
-            for j in sorted(scheduler.get_jobs(), key=lambda j: j.next_run_time or datetime.max.replace(tzinfo=timezone.utc))]
+    rows = []
+    for job in scheduler.get_jobs():
+        if job.id.endswith("_startup") or job.next_run_time is None:
+            continue
+        upcoming, interval = job.next_run_time, getattr(job.trigger, "interval", None)
+        if interval is not None:
+            every = _every(interval)
+        else:
+            fields = {f.name: str(f) for f in getattr(job.trigger, "fields", [])}
+            every = "weekly" if fields.get("day_of_week", "*") != "*" else "daily" if fields.get("hour", "*") != "*" else "hourly"
+        if job.id == "overnight":
+            local = upcoming.astimezone(clock.USER_TZ)
+            upcoming = (local + timedelta(days=1)).replace(hour=0) if local.hour >= _NIGHT_ENDS else local
+            every = "nightly, midnight to 7 AM"
+        rows.append({"name": _JOB_NAMES.get(job.id, job.id.replace("_", " ").capitalize()), "when": _when(upcoming),
+                     "every": every, "frequent": interval is not None and interval < timedelta(hours=1),
+                     "at": upcoming.timestamp()})
+    return sorted(rows, key=lambda r: r["at"])
 
 
 def _lines(text: str) -> list[str]:
@@ -165,17 +216,19 @@ def _lines(text: str) -> list[str]:
 
 def _board():
     import board
-    return _lines(board.listing())
+    text = board.listing()
+    return [] if text == board.EMPTY else _lines(text)
 
 
 def _plugins():
     import plugins
-    return _lines(plugins.listing())
+    text = plugins.listing()
+    return [] if text == plugins.NONE_PLACED else _lines(text)
 
 
 def _background():
     import background
-    return _lines(background.listing())
+    return _lines(background.listing()) if background._jobs else []
 
 
 def _proposals():
@@ -189,15 +242,36 @@ def _engines():
             "lightpanda": bool(shutil.which("lightpanda")), "browser": browser.status().removeprefix("Browser: ").rstrip(".")}
 
 
+_LOG_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[,.]\d+ (\w+) ([\w.]+): (.*)$")
+
+
 def _errors():
+    """The newest errors, newest first. A run of the same message with only its numbers changed, such as
+    Discord's reconnect attempts, is one row with a count."""
     path = config.LOG_FILE
     if not path.exists():
         return []
     with open(path, "rb") as f:
         f.seek(max(0, path.stat().st_size - 40000))
         tail = f.read().decode("utf-8", "replace").splitlines()
-    rows = [line for line in tail if line[:4].isdigit()]
-    return [sanitize.redact(line)[:300] for line in rows[-_ERROR_LINES:]][::-1]
+    groups = []
+    for line in reversed([line for line in tail if line[:4].isdigit()]):
+        found = _LOG_LINE.match(line)
+        if found:
+            stamp, _, where, what = found.groups()
+            # The log's times are the host's own.
+            when = _when(datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").astimezone())
+        else:
+            when, where, what = "", "", line
+        what = sanitize.redact(what)
+        shape = (where, re.sub(r"\d+(\.\d+)?", "#", what))
+        if groups and groups[-1]["shape"] == shape:
+            groups[-1]["count"] += 1
+            continue
+        if len(groups) == _ERROR_LINES:
+            break
+        groups.append({"shape": shape, "when": when, "where": where.removeprefix("agents."), "what": what[:200], "count": 1})
+    return [{key: value for key, value in group.items() if key != "shape"} for group in groups]
 
 
 def snapshot() -> dict:

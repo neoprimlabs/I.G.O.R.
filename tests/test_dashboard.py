@@ -50,8 +50,12 @@ def test_the_snapshot():
         {"id": "b", "due": "2026-11-02T17:00:55+00:00", "brief": "", "content": "", "script": "host_watch.py", "repeat": "hourly"}]), encoding="utf-8")
     (config.MEMORY_DIR / "heartbeat.txt").write_text("now", encoding="utf-8")
     secret = "gsk_" + "b" * 40
-    config.LOG_FILE.write_text("Traceback line with no date\n" + "".join(
-        f"2026-11-02 0{i}:00:00,000 ERROR x: failure {i} key={secret}\n" for i in range(20)), encoding="utf-8")
+    config.LOG_FILE.write_text(
+        "Traceback line with no date\n"
+        + "".join(f"2026-11-01 0{i}:00:00,000 ERROR x: failure {i} key={secret}\n" for i in range(5))
+        + "".join(f"2026-11-02 01:{i:02d}:00,000 ERROR agents.y: problem {chr(97 + i)}\n" for i in range(12))
+        + "".join(f"2026-11-02 02:0{i}:00,000 ERROR discord.client: Attempting a reconnect in {i}.5s\n" for i in range(3)),
+        encoding="utf-8")
     data = dashboard.snapshot()
     json.dumps(data)
     print("  info ", json.dumps({k: (v if k != "tokens" else "...") for k, v in data.items()})[:600])
@@ -60,16 +64,25 @@ def test_the_snapshot():
     _check("headroom against the cap", react["cap"] == config.DAILY_TOKEN_CAPS["openai/gpt-oss-120b"] and react["headroom"] == react["cap"] - 6000, str(react))
     _check("24 hourly bars, the newest last", len(react["hourly"]) == 24 and react["hourly"][-1] == 6000, str(react["hourly"]))
     import clock
-    _check("labelled in the user's own hours", data["tokens"]["hours"][-1] == datetime.now(timezone.utc).astimezone(clock.USER_TZ).strftime("%H"), str(data["tokens"]["hours"][-3:]))
+    _check("labelled in the user's own hours", data["tokens"]["hours"][-1] == datetime.now(timezone.utc).astimezone(clock.USER_TZ).strftime("%I %p").lstrip("0"), str(data["tokens"]["hours"][-3:]))
+    _check("each model with what it is for", "chat" in react["roles"] and "router" in data["tokens"]["models"].get("qwen/qwen3.8-27b", {"roles": ["router"]})["roles"], str(react["roles"]))
     _check("the browser row says it once", not str(data["engines"].get("browser", "")).startswith("Browser"), str(data["engines"]))
     _check("the disk's size, for its gauge", "disk_total_mb" in data["resources"] or "unreadable" in data["resources"])
     _check("an uncapped model says so", data["tokens"]["models"]["openai/gpt-oss-20b"]["cap"] is None and data["tokens"]["models"]["openai/gpt-oss-20b"]["hourly"][-4] == 1200)
-    _check("scheduled messages, soonest first, in local time", [s["what"] for s in data["scheduled"]] == ["script host_watch.py", "Practical idea for IGOR"], str(data["scheduled"]))
+    _check("scheduled messages, soonest first, in plain words", [s["what"] for s in data["scheduled"]] == ["Runs host_watch.py", "Practical idea for IGOR"]
+           and data["scheduled"][1]["when"].endswith("11:00 AM"), str(data["scheduled"]))
     _check("Discord connected by the heartbeat", data["process"]["discord"] == "connected")
-    _check("newest errors first, only dated lines, at most 15", len(data["errors"]) == 15 and "failure 19" in data["errors"][0], str(data["errors"][:2]))
-    _check("keys in errors are redacted", not any(secret in e for e in data["errors"]))
+    errors = data["errors"]
+    _check("newest errors first, at most 10, only dated lines", len(errors) == 10 and not any("Traceback" in e["what"] for e in errors), str(errors[:2]))
+    _check("a run of one message with its numbers changing is one row", errors[0]["where"] == "discord.client" and errors[0]["count"] == 3
+           and errors[0]["what"] == "Attempting a reconnect in 2.5s", str(errors[0]))
+    _check("each with when and where", errors[1]["what"] == "problem l" and errors[1]["where"] == "y" and errors[1]["when"] and errors[1]["count"] == 1, str(errors[1]))
+    config.LOG_FILE.write_text(f"2026-11-02 03:00:00,000 ERROR x: failure 1 key={secret}\n", encoding="utf-8")
+    _check("keys in errors are redacted", secret not in json.dumps(dashboard._errors()))
     _check("no proposals file is zero waiting, or says why", data["proposals"] == 0 or "unreadable" in data["proposals"], str(data["proposals"]))
-    _check("the board and plugins answer", isinstance(data["board"], list) and isinstance(data["plugins"], list))
+    _check("an empty board and no plugins are empty lists, not instructions", data["board"] == [] and data["plugins"] == [] and data["background"] == [],
+           str((data["board"], data["plugins"], data["background"])))
+    _check("the last update in plain words", data["commit"].get("when_text", "x") != "" or "unreadable" in data["commit"], str(data["commit"]))
     if Path("/proc/meminfo").exists():
         _check("memory and disk with a level", data["resources"]["memory"] in ("ok", "elevated", "critical") and data["resources"]["disk_free_mb"] > 0)
     (config.MEMORY_DIR / "heartbeat.txt").unlink()
@@ -89,6 +102,50 @@ def test_a_part_that_fails_fails_alone():
         dashboard._scheduled = held
     _check("the broken part says so", data["scheduled"] == {"unreadable": "ValueError"}, str(data["scheduled"]))
     _check("the rest still comes back", "models" in data["tokens"])
+
+
+def test_plain_times():
+    import clock
+    now = datetime.now(clock.USER_TZ).replace(hour=14, minute=20, second=0, microsecond=0)
+    _check("today", dashboard._when(now) == "today 2:20 PM", dashboard._when(now))
+    _check("tomorrow", dashboard._when(now.replace(hour=4) + timedelta(days=1)) == "tomorrow 4:20 AM", dashboard._when(now.replace(hour=4) + timedelta(days=1)))
+    _check("yesterday", dashboard._when(now - timedelta(days=1)) == "yesterday 2:20 PM")
+    soon = now + timedelta(days=3)
+    _check("within the week, the day", dashboard._when(soon) == f"{soon:%a} 2:20 PM", dashboard._when(soon))
+    far = now + timedelta(days=9)
+    _check("further off, the date", dashboard._when(far) == f"{far:%a} {far.day} {far:%b}, 2:20 PM", dashboard._when(far))
+    _check("from any zone", dashboard._when(now.astimezone(timezone.utc)) == "today 2:20 PM")
+
+
+def test_jobs_in_plain_words():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from agents import monitor
+    scheduler = BackgroundScheduler(timezone="UTC")
+
+    def nothing():
+        pass
+
+    scheduler.add_job(nothing, "interval", seconds=60, id="heartbeat")
+    scheduler.add_job(nothing, "cron", hour=11, minute=30, id="job_watch")
+    scheduler.add_job(nothing, "cron", day_of_week="mon", hour=12, id="advocacy_draft")
+    scheduler.add_job(nothing, "cron", minute=20, id="overnight")
+    scheduler.add_job(nothing, "interval", hours=2, id="price_watch")
+    scheduler.add_job(nothing, "date", run_date=datetime.now(timezone.utc) + timedelta(minutes=5), id="price_watch_startup")
+    held = monitor._scheduler
+    scheduler.start(paused=True)
+    monitor._scheduler = scheduler
+    try:
+        jobs = {j["name"]: j for j in dashboard._jobs()}
+    finally:
+        monitor._scheduler = held
+        scheduler.shutdown(wait=False)
+    _check("plain names, and a run at startup is left out", set(jobs) == {"Heartbeat", "Job watch", "Weekly advocacy draft", "Overnight work", "Price watch"}, str(list(jobs)))
+    _check("a job every minute is frequent", jobs["Heartbeat"]["frequent"] and jobs["Heartbeat"]["every"] == "every minute")
+    _check("how often, in words", (jobs["Job watch"]["every"], jobs["Weekly advocacy draft"]["every"], jobs["Price watch"]["every"]) == ("daily", "weekly", "every 2 hours"),
+           str([(j["name"], j["every"]) for j in jobs.values()]))
+    _check("overnight work is named for the night it runs", jobs["Overnight work"]["when"].endswith(":20 AM") and jobs["Overnight work"]["every"].startswith("nightly"),
+           str(jobs["Overnight work"]))
+    _check("soonest first", [j["at"] for j in sorted(jobs.values(), key=lambda j: j["at"])] == sorted(j["at"] for j in jobs.values()))
 
 
 def test_pressure_levels():

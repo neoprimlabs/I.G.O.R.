@@ -13,12 +13,31 @@ function el(tag, text, cls) {
   return node;
 }
 
-function fill(id, rows, empty) {
+function fill(id, rows, empty, make) {
   const list = $(id);
   list.replaceChildren();
   if (!Array.isArray(rows)) { list.append(el("li", "Could not be read.", "bad")); return; }
-  if (!rows.length) { list.append(el("li", empty, "muted")); return; }
-  for (const row of rows) list.append(el("li", row));
+  if (!rows.length) { if (empty) list.append(el("li", empty, "muted")); return; }
+  for (const row of rows) list.append(make ? make(row) : el("li", row));
+}
+
+// A row's main line, then a smaller line under it.
+function twoLine(main, meta) {
+  const item = el("li");
+  item.append(el("span", main, "main"), el("span", meta.filter(Boolean).join("  ·  "), "meta"));
+  return item;
+}
+
+// The usage ledger's labels, where the code's own word means nothing to the user.
+const LABELS = {"React": "Tool work", "Isolated run": "Live tests", "Router": "Routing", "FollowThrough": "Follow-through",
+                "SelfDescribe": "Questions about itself", "Compression": "Memory upkeep", "Compose": "Writing"};
+const PLACES = {"discord.client": "Discord", "llm": "Model", "orchestrator": "Turn"};
+
+function modelRole(roles) {
+  if (roles.includes("chat")) return "Main model, for chat and tools";
+  if (roles.includes("research")) return "Background model, for research and summaries";
+  if (roles.includes("router")) return "Router, and reads images";
+  return roles.join(", ");
 }
 
 function minutes(seconds) {
@@ -60,8 +79,9 @@ function gauges(data) {
   box.replaceChildren();
   const r = data.resources || {}, models = (data.tokens || {}).models || {};
   if (r.memory_total_mb) {
+    const swap = r.swap_used_mb ? ", " + r.swap_used_mb + " MB in swap" : "";
     box.append(gauge("Memory free", 100 * r.memory_available_mb / r.memory_total_mb, r.memory_available_mb + " MB",
-                     "of " + r.memory_total_mb + " MB", r.memory === "ok" ? "ok" : r.memory === "elevated" ? "warn" : "bad"));
+                     "of " + r.memory_total_mb + " MB" + swap, r.memory === "ok" ? "ok" : r.memory === "elevated" ? "warn" : "bad"));
   }
   if (r.disk_total_mb) {
     box.append(gauge("Disk free", 100 * r.disk_free_mb / r.disk_total_mb, (r.disk_free_mb / 1024).toFixed(1) + " GB",
@@ -71,7 +91,7 @@ function gauges(data) {
   if (main) {
     const [, m] = main;
     const share = 100 * m.headroom / m.cap;
-    box.append(gauge("Main model budget", share, m.headroom.toLocaleString(), "tokens free now", share < 20 ? "bad" : share < 40 ? "warn" : "ok"));
+    box.append(gauge("Model budget", share, m.headroom.toLocaleString(), "tokens free now", share < 20 ? "bad" : share < 40 ? "warn" : "ok"));
   }
   if (typeof data.proposals === "number") {
     box.append(counter("Proposals", data.proposals, data.proposals ? "waiting for you" : "none waiting", data.proposals ? "warn" : ""));
@@ -86,15 +106,14 @@ function health(data) {
   const up = p.discord === "connected";
   add("Discord", p.discord || "unknown", up ? "ok" : "bad");
   add("Running for", minutes(p.up_seconds));
-  add("Swap in use", r.swap_used_mb !== undefined ? r.swap_used_mb + " MB" : "unknown");
-  add("Code", c.sha ? c.sha + "  " + c.subject : "unknown");
-  add("Sandbox", e.sandbox ? "ready" : "missing", e.sandbox ? "ok" : "bad");
-  add("Video", e.ffmpeg ? "ffmpeg installed" : "ffmpeg not installed", e.ffmpeg ? "ok" : "muted");
-  add("Browser", e.browser || "unknown", e.lightpanda ? "ok" : "muted");
+  add("Last update", c.subject ? c.subject + (c.when_text ? ", " + c.when_text : "") : "unknown");
+  add("Code sandbox", e.sandbox ? "ready" : "missing", e.sandbox ? "ok" : "bad");
+  add("Video", e.ffmpeg ? "ready" : "waiting for ffmpeg", e.ffmpeg ? "ok" : "muted");
+  add("Web browser", e.lightpanda ? e.browser || "ready" : "waiting for Lightpanda", e.lightpanda ? "ok" : "muted");
   $("portrait").classList.toggle("down", !up);
   const summary = $("summary");
   summary.classList.toggle("down", !up);
-  summary.textContent = (up ? "Online" : "Not connected to Discord") + "  /  up " + minutes(p.up_seconds);
+  summary.textContent = (up ? "Online" : "Not connected to Discord") + "  ·  up " + minutes(p.up_seconds);
   const banner = $("banner");
   const worst = [r.disk === "critical" && "The disk is almost full.", r.memory === "critical" && "IGOR is almost out of memory and may restart.",
                  r.disk === "elevated" && "Disk space is low.", r.memory === "elevated" && "Memory is low."].find(Boolean);
@@ -113,26 +132,38 @@ function tokens(data) {
     card.style.setProperty("--m", MODEL_COLOURS[index % MODEL_COLOURS.length]);
     const head = el("div", null, "model-head");
     const title = el("h3");
-    const [vendor, model] = name.includes("/") ? name.split("/") : ["", name];
-    if (vendor) title.append(el("i", vendor + " / "));
-    title.append(model);
-    const left = m.cap ? m.headroom.toLocaleString() + " of " + m.cap.toLocaleString() + " free now" : "No daily cap measured";
-    head.append(title, el("span", m.total.toLocaleString() + " spent.  " + left, m.cap && m.headroom < m.cap * 0.2 ? "warn" : "muted"));
+    title.append(el("i", name.includes("/") ? name.split("/")[1] : name));
+    head.append(title, el("span", modelRole(m.roles || []), "role"));
     card.append(head);
+    // The daily cap is a bucket that refills by the second, so spent and free do not add up to the cap.
+    const use = el("p", null, "use");
+    use.append(el("b", m.total.toLocaleString()), " used in 24 hours. ");
+    if (m.cap) {
+      use.append(el("b", m.headroom.toLocaleString(), m.headroom < m.cap * 0.2 ? "warn" : ""),
+                 " of " + m.cap.toLocaleString() + " free now, refilling about " + (Math.round(m.cap / 24 / 100) * 100).toLocaleString() + " an hour.");
+    } else {
+      use.append("Its daily limit is not measured.");
+    }
+    card.append(use);
     const bars = el("div", null, "bars");
     const most = Math.max(1, ...m.hourly);
     m.hourly.forEach((n, i) => {
       const bar = el("span");
       bar.style.height = Math.max(2, Math.round((n / most) * 100)) + "%";
-      bar.title = (t.hours[i] || "") + ":00, " + n.toLocaleString() + " tokens";
+      bar.title = (t.hours[i] || "") + ", " + n.toLocaleString() + " tokens";
       bars.append(bar);
     });
     card.append(bars);
     const hours = el("div", null, "hours");
-    hours.append(el("span", (t.hours[0] || "") + ":00"), el("span", (t.hours[12] || "") + ":00"), el("span", "now"));
+    hours.append(el("span", t.hours[0] || ""), el("span", t.hours[12] || ""), el("span", "now"));
     card.append(hours);
-    const labels = Object.entries(m.by_label).slice(0, 6).map(([k, v]) => k + " " + v.toLocaleString()).join("  \u00b7  ");
-    card.append(el("p", labels, "labels"));
+    const chips = el("div", null, "chips");
+    for (const [label, spent] of Object.entries(m.by_label).slice(0, 6)) {
+      const chip = el("span", (LABELS[label] || label) + " ", "chip");
+      chip.append(el("b", spent.toLocaleString()));
+      chips.append(chip);
+    }
+    card.append(chips);
     box.append(card);
   });
 }
@@ -141,12 +172,16 @@ function render(data) {
   gauges(data);
   health(data);
   tokens(data);
-  fill("scheduled", Array.isArray(data.scheduled) ? data.scheduled.map((s) => s.due + "  /  " + s.repeat + "  /  " + (s.what || "(no brief)")) : null, "Nothing scheduled.");
-  fill("board", data.board, "The board is empty.");
-  fill("jobs", Array.isArray(data.jobs) ? data.jobs.map((j) => j.id.replace(/_/g, " ") + "  /  " + j.next) : null, "The scheduler is not running.");
-  fill("plugins", data.plugins, "No plugins.");
-  fill("background", data.background, "No background commands.");
-  fill("errors", data.errors, "No errors logged.");
+  fill("scheduled", data.scheduled, "Nothing scheduled.", (s) => twoLine(s.what, [s.when, s.repeat]));
+  fill("board", data.board, "Nothing on the board.");
+  const jobs = Array.isArray(data.jobs) ? data.jobs : null;
+  fill("jobs", jobs && jobs.filter((j) => !j.frequent), "The scheduler is not running.", (j) => twoLine(j.name, [j.when, j.every]));
+  const often = jobs ? jobs.filter((j) => j.frequent).map((j) => j.name) : [];
+  $("often").hidden = !often.length;
+  $("often").textContent = "Also running every few minutes: " + often.join(", ") + ".";
+  fill("plugins", data.plugins, "No plugins installed.");
+  fill("background", data.background, "");
+  fill("errors", data.errors, "No errors logged.", (e) => twoLine(e.what, [e.when, PLACES[e.where] || e.where, e.count > 1 ? e.count + " times" : ""]));
   $("footer").textContent = "Synced " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
 }
 
