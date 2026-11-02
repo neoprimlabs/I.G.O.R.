@@ -39,6 +39,11 @@ The runtime is the server. There is no local run.
   unmeasured - do not assume 200000 carries over. Before designing anything that
   sends a large fixed prompt on every call, divide the cap by that prompt size and
   ask whether the answer is a usable number of requests per day.
+- **The daily cap is a bucket that refills, not a 24-hour sum.** Measured 2026-11-01 from a real
+  429 body: "Limit 200000, Used 195831, Requested 4937. Please try again in 5m31.776s" is 768
+  over, and 768 at 200000/86400 tokens a second is exactly that wait. The per-minute limit fits
+  8000/60 the same way. So about 8300 of 120b come back each hour, whatever was spent when.
+  `usage.headroom` models this; the 24-hour sum is only a record of who spent it.
 - **Prompt caching does nothing on this account.** Groq's docs offer it for gpt-oss and
   say cached tokens do not count against limits. Measured 2026-10-30 on both models:
   `prompt_tokens_details` is null on identical calls seconds apart and the count does not

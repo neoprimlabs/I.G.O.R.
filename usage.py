@@ -7,10 +7,14 @@ per-minute bucket and look healthy throughout. Every response does carry its exa
 usage, and until this module it was thrown away.
 
 Hourly buckets in memory/token_ledger.json, so the file stays small and a restart
-keeps the count. The 24h figure sums whole hours, so it can overstate by up to an
-hour of use - the safe direction for a budget. It is IGOR's own count: anything
-else spending on the same key (a test run from a shell, the Groq console) only
-shows up here if it went through record().
+keeps the count. It is IGOR's own count: anything else spending on the same key (a
+test run from a shell, the Groq console) only shows up here if it went through record().
+
+The cap is a bucket, not a 24-hour sum. Measured 2026-11-01 from real 429 bodies: "Limit
+200000, Used 195831, Requested 4937. Please try again in 5m31.776s" is 768 over, and 768
+tokens at 200000/86400 a second is exactly that wait; the per-minute limit fits 8000/60
+the same way. So what headroom gives is what Groq would allow, and the 24-hour sum, which
+read 206000 of 200000 that day while Groq kept answering, is only a record of who spent it.
 """
 
 import json
@@ -87,11 +91,19 @@ def last_24h(now: Optional[datetime] = None) -> dict[str, dict[str, int]]:
 
 
 def headroom(model: str, now: Optional[datetime] = None) -> Optional[int]:
-    """Tokens left today on a model with a measured cap, or None if it has none."""
+    """Tokens Groq would allow now on a model with a measured cap, or None if it has none.
+    To the hour: an hour's spend is counted whole until the next, then refills a full hour's worth."""
     cap = config.DAILY_TOKEN_CAPS.get(model)
     if cap is None:
         return None
-    return cap - sum(last_24h(now).get(model, {}).values())
+    now = now or datetime.now(timezone.utc)
+    data, used = _load(), 0.0
+    for back in range(int(_KEEP.total_seconds() // 3600), -1, -1):
+        hour = data.get(_hour(now - timedelta(hours=back)))
+        labels = hour.get(model) if isinstance(hour, dict) else None
+        spent = sum(int(n) for n in labels.values()) if isinstance(labels, dict) else 0
+        used = min(cap, max(0.0, used - cap / 24) + spent)
+    return round(cap - used)
 
 
 def summary(now: Optional[datetime] = None) -> str:
@@ -104,7 +116,9 @@ def summary(now: Optional[datetime] = None) -> str:
         labels = spent[model]
         total = sum(labels.values())
         cap = config.DAILY_TOKEN_CAPS.get(model)
-        against = f" of {cap:,} daily cap" if cap else " (daily cap not measured)"
+        # Rounded: it is right to the hour, and a phone reads it aloud.
+        against = (f", about {round(headroom(model, now), -3):,} of the {cap:,} daily cap free now, since it refills steadily"
+                   if cap else " (daily cap not measured)")
         parts = ", ".join(f"{k} {v:,}" for k, v in sorted(labels.items(), key=lambda kv: -kv[1]))
         lines.append(f"  - {model}: {total:,}{against} - {parts}")
     return "\n".join(lines)

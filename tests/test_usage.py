@@ -55,11 +55,11 @@ def test_ledger() -> None:
     _check("use is summed per model and per agent",
            spent.get(BIG) == {"React": 3500, "Chat": 1500}, str(spent))
     _check("use older than 24 hours no longer counts", sum(spent[BIG].values()) == 5000, str(spent))
-    _check("headroom is the cap minus the last 24 hours", usage.headroom(BIG, NOW) == 195000,
-           str(usage.headroom(BIG, NOW)))
+    _check("headroom counts this hour's spend whole, and what was spent 3 hours ago has refilled",
+           usage.headroom(BIG, NOW) == 196500, str(usage.headroom(BIG, NOW)))
 
     text = usage.summary(NOW)
-    _check("the summary gives the cap where it is measured", "5,000 of 200,000 daily cap" in text, text)
+    _check("the summary gives what was spent and what is free", "5,000, about 196,000 of the 200,000 daily cap free" in text, text)
     _check("and says so where it is not", "800 (daily cap not measured)" in text, text)
     _check("and never invents a cap", "200,000" not in text.split(SMALL)[1], text)
 
@@ -67,6 +67,34 @@ def test_ledger() -> None:
     usage.record(BIG, _response(10), "React", now=later)
     stored = (config.MEMORY_DIR / "token_ledger.json").read_text(encoding="utf-8")
     _check("old hours are pruned from the file, so it stays small", "2026-10-16T15" not in stored, stored[:200])
+
+
+def test_the_cap_refills() -> None:
+    """Hand worked, at 200000/24 = 8333.33 an hour."""
+    import usage
+    # The real 429 bodies this rests on, from the server's log: over by this much, waits this long.
+    _check("a daily 429 waits exactly what a steady refill says",
+           abs((195831 + 4937 - 200000) / 331.776 - 200000 / 86400) < 0.001)
+    _check("and so does a per-minute one", abs((4905 + 6843 - 8000) / 28.11 - 8000 / 60) < 0.01)
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    usage.record(BIG, _response(100000), "React", now=NOW - timedelta(hours=6))
+    _check("six hours give back 50000 of 100000", usage.headroom(BIG, NOW) == 150000, str(usage.headroom(BIG, NOW)))
+    _check("a day later it has all come back", usage.headroom(BIG, NOW + timedelta(hours=18)) == 200000)
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    usage.record(BIG, _response(120000), "Isolated run", now=NOW - timedelta(hours=6))
+    usage.record(BIG, _response(120000), "React", now=NOW - timedelta(hours=1))
+    # 120000 less 5 hours is 78333, plus 120000 is 198333, less an hour is 190000.
+    _check("more than the cap in a day can still leave room, as Groq allowed live",
+           sum(usage.last_24h(NOW)[BIG].values()) == 240000 and usage.headroom(BIG, NOW) == 10000,
+           str(usage.headroom(BIG, NOW)))
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    usage.record(BIG, _response(500000), "React", now=NOW)
+    _check("it never reads below nothing", usage.headroom(BIG, NOW) == 0, str(usage.headroom(BIG, NOW)))
+    (config.MEMORY_DIR / "token_ledger.json").write_text('{"2026-10-16T15": "not a row"}', encoding="utf-8")
+    _check("a bad row reads as no spend", usage.headroom(BIG, NOW) == 200000, str(usage.headroom(BIG, NOW)))
 
 
 def test_ledger_never_breaks_a_reply() -> None:
@@ -118,6 +146,7 @@ def test_spelled_out_times() -> None:
 if __name__ == "__main__":
     print("ledger")
     test_ledger()
+    test_the_cap_refills()
     test_ledger_never_breaks_a_reply()
     print("\nrun-together times")
     test_spelled_out_times()

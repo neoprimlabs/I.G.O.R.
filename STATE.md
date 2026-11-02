@@ -256,11 +256,10 @@ tokens, so one refusal costs that much. Make the tool accept what a model plausi
 Running for real: `host_watch.py`, entry 206f24, hourly with no model, silent unless the disk reaches 85% or
 memory and swap together fall under 300 MB on two checks, or the memory-push or heartbeat timer stops (the case
 GAMEPLAN T.4 left open), once until it clears; each alert path was forced and checked in the real sandbox. The
-script exists only on the server and in the PC's memory backup. **The ledger overstates what is spent.** At 23:00
-UTC 11-01 it read about 206000 of 120b's 200000 over the last 24 hours and Groq still answered, so the daily limit
-is not a plain 24-hour sum; a 3500-token request waiting 25 minutes (10-16) fits a steady refill of 200000/1440, about
-8300 an hour. Inferred, not measured: only a 429 body shows Groq's figure. `usage.headroom` still sums 24 hours, so
-follow-through's 60000 floor holds it off until the ledger clears, the safe side, and it was left.
+script exists only on the server and in the PC's memory backup. **The daily cap is a refilling bucket, measured 11-01** (CLAUDE.md):
+a real 429's wait is exactly the tokens over at 200000/86400 a second. The ledger's 24-hour sum read about 206000 of
+200000 while Groq kept answering, and would have held follow-through off until the next afternoon. `usage.headroom`
+now models the bucket, to the hour, and the usage line says what is free. 20b's cap is still unmeasured.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

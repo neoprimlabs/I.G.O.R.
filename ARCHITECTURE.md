@@ -543,8 +543,8 @@ A 400 on the primary is raised. A turn that used a backup gets a one-line notice
 says so only in a 429 body. `config.DAILY_TOKEN_CAPS` holds the measured ones:
 `gpt-oss-120b` is 200000 (2026-10-16). `usage.record`
 adds every response's token count to `memory/token_ledger.json` hourly, per model
-and agent (from `llm.complete`, React and the router); Monitor reports the last 24h
-against the cap.
+and agent (from `llm.complete`, React and the router); Monitor reports the last 24h. The
+cap refills at cap/86400 a second (`usage.headroom`), as real 429s show.
 
 Every model here reasons, so `max_tokens` covers hidden reasoning plus output;
 under about 1024 returns empty content with a 200 OK.
