@@ -61,6 +61,7 @@ def test_the_snapshot():
     import clock
     _check("labelled in the user's own hours", data["tokens"]["hours"][-1] == datetime.now(timezone.utc).astimezone(clock.USER_TZ).strftime("%H"), str(data["tokens"]["hours"][-3:]))
     _check("the browser row says it once", not str(data["engines"].get("browser", "")).startswith("Browser"), str(data["engines"]))
+    _check("the disk's size, for its gauge", "disk_total_mb" in data["resources"] or "unreadable" in data["resources"])
     _check("an uncapped model says so", data["tokens"]["models"]["openai/gpt-oss-20b"]["cap"] is None and data["tokens"]["models"]["openai/gpt-oss-20b"]["hourly"][-4] == 1200)
     _check("scheduled messages, soonest first, in local time", [s["what"] for s in data["scheduled"]] == ["script host_watch.py", "Practical idea for IGOR"], str(data["scheduled"]))
     _check("Discord connected by the heartbeat", data["process"]["discord"] == "connected")
@@ -109,15 +110,22 @@ def test_over_http():
             async with ClientSession() as s:
                 async with s.get(f"{base}/dashboard") as r:
                     page = await r.text()
-                    _check("the page", r.status == 200 and "<title>IGOR</title>" in page and r.headers["Content-Type"].startswith("text/html"))
+                    _check("the page", r.status == 200 and "<title>I.G.O.R. Console</title>" in page and r.headers["Content-Type"].startswith("text/html"))
                     _check("a strict content policy", "default-src 'none'" in r.headers.get("Content-Security-Policy", "") and r.headers.get("X-Frame-Options") == "DENY")
                 async with s.get(f"{base}/dashboard/app.js") as r:
                     _check("its script", r.status == 200 and "textContent" in await r.text())
                 async with s.get(f"{base}/dashboard/app.css") as r:
                     _check("its style", r.status == 200 and r.headers["Content-Type"].startswith("text/css"))
+                for name, kind in (("fonts/bebas-neue.woff2", "font/woff2"), ("fonts/dm-mono-400.woff2", "font/woff2"), ("igor.jpg", "image/jpeg"), ("npl.jpg", "image/jpeg")):
+                    async with s.get(f"{base}/dashboard/{name}") as r:
+                        body = await r.read()
+                        _check(f"serves {name}, cached a day", r.status == 200 and r.headers["Content-Type"] == kind and len(body) > 1000
+                               and r.headers.get("Cache-Control") == "max-age=86400", f"{r.status} {r.headers.get('Content-Type')}")
+                async with s.get(f"{base}/dashboard/status.json") as r:
+                    _check("data is never cached", r.headers.get("Cache-Control") == "no-store")
                 async with s.get(f"{base}/dashboard/status.json") as r:
                     _check("its data", r.status == 200 and "tokens" in await r.json())
-                for name in ("../dashboard.py", "..%2Fdashboard.py", "index.html", "x.js"):
+                for name in ("../dashboard.py", "..%2Fdashboard.py", "index.html", "x.js", "fonts/OFL-DMMono.txt", "fonts%2F..%2Fapp.js", "fonts%2F..%2F..%2Fdashboard.py"):
                     async with s.get(f"{base}/dashboard/{name}") as r:
                         _check(f"nothing else is served: {name}", r.status in (403, 404) and "import" not in await r.text())
                 async with s.get(f"{base}/dashboard", headers={"Host": "attacker.example:8642"}) as r:

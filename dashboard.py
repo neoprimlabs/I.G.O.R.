@@ -31,12 +31,15 @@ logger = logging.getLogger(__name__)
 _STARTED = time.time()
 _HERE = Path(__file__).resolve().parent / "dashboard_page"
 _ERROR_LINES = 15
+# Everything the page loads, by name: nothing else under the folder is served. The fonts are OFL, licences beside them.
+_ASSETS = {"app.js": "application/javascript", "app.css": "text/css", "igor.jpg": "image/jpeg", "npl.jpg": "image/jpeg",
+           "fonts/bebas-neue.woff2": "font/woff2", "fonts/dm-mono-400.woff2": "font/woff2", "fonts/dm-mono-500.woff2": "font/woff2"}
 _HEARTBEAT_STALE_S = 180
 # Hermes' resource banner: elevated below 128 MiB or 15% free, critical below 64 MiB or 5%; disk below 512 and 256 MB.
 _MEMORY_LEVELS = ((64, 0.05, "critical"), (128, 0.15, "elevated"))
 _DISK_LEVELS = ((256, "critical"), (512, "elevated"))
 _HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'",
+    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:",
     "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
 }
@@ -84,10 +87,12 @@ def _resources():
         info[name] = int(value.split()[0]) // 1024
     total, available = info.get("MemTotal", 0), info.get("MemAvailable", 0)
     memory = next((level for mb, share, level in _MEMORY_LEVELS if available < mb or (total and available / total < share)), "ok")
-    free_mb = shutil.disk_usage(config.MEMORY_DIR).free // (1024 * 1024)
+    disk_usage = shutil.disk_usage(config.MEMORY_DIR)
+    free_mb = disk_usage.free // (1024 * 1024)
     disk = next((level for mb, level in _DISK_LEVELS if free_mb < mb), "ok")
     return {"memory_total_mb": total, "memory_available_mb": available, "memory": memory,
-            "swap_used_mb": info.get("SwapTotal", 0) - info.get("SwapFree", 0), "disk_free_mb": free_mb, "disk": disk}
+            "swap_used_mb": info.get("SwapTotal", 0) - info.get("SwapFree", 0), "disk_free_mb": free_mb,
+            "disk_total_mb": disk_usage.total // (1024 * 1024), "disk": disk}
 
 
 def _tokens():
@@ -184,7 +189,10 @@ def _guarded(handler):
             logger.warning("Dashboard refused a request for host %r", request.headers.get("Host", "")[:80])
             return web.Response(status=403, text="Forbidden")
         response = await handler(request)
+        cached = response.headers.get("Cache-Control")
         response.headers.update(_HEADERS)
+        if cached:
+            response.headers["Cache-Control"] = cached
         return response
     return guarded
 
@@ -197,10 +205,14 @@ async def _page(request):
 async def _asset(request):
     from aiohttp import web
     name = request.match_info["name"]
-    kinds = {"app.js": "application/javascript", "app.css": "text/css"}
-    if name not in kinds:
+    kind = _ASSETS.get(name)
+    if kind is None:
         return web.Response(status=404, text="Not found")
-    return web.Response(body=(_HERE / name).read_bytes(), content_type=kinds[name], charset="utf-8")
+    text = kind.startswith(("text/", "application/"))
+    response = web.Response(body=(_HERE / name).read_bytes(), content_type=kind, charset="utf-8" if text else None)
+    if not text:
+        response.headers["Cache-Control"] = "max-age=86400"
+    return response
 
 
 async def _status(request):
@@ -212,4 +224,4 @@ async def _status(request):
 def add_routes(application) -> None:
     application.router.add_get("/dashboard", _guarded(_page))
     application.router.add_get("/dashboard/status.json", _guarded(_status))
-    application.router.add_get("/dashboard/{name}", _guarded(_asset))
+    application.router.add_get("/dashboard/{name:(fonts/)?[A-Za-z0-9._-]+}", _guarded(_asset))
