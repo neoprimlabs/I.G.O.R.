@@ -92,6 +92,10 @@ def command(argv: list[str], hide_memory: bool = False, network: bool = False,
     base = str(config.BASE_DIR)
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp"]
+    # A copy of IGOR under /tmp, as the live tests make, vanished under the empty /tmp, and bwrap could not
+    # even change into it: every sandboxed command failed in those copies (found 2026-11-02).
+    if Path(base).is_relative_to("/tmp"):
+        args += ["--ro-bind", base, base]
     for rel in _WRITABLE:
         p = _path(rel)
         if p.is_dir():

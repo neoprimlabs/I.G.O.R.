@@ -41,8 +41,6 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _TOOL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _COMMAND_RE = re.compile(r"^\s*/([A-Za-z0-9_-]{1,32})(?:\s+(.*))?$", re.DOTALL)
 _INSIDE = "/tmp/plugin"
-# Mounted rather than run where it lies: a copy of IGOR under /tmp, as the live tests use, is under the
-# sandbox's own empty /tmp. Found live 2026-11-02, after every test had passed.
 _RUNNER_INSIDE = "/tmp/plugin_runner.py"
 _STATE_INSIDE = "/tmp/state"
 _MAX_TOOLS = 12
