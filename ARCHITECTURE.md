@@ -23,11 +23,11 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
   replies; voice notes, images and videos the user sends are read.
 
-**React's 24 tools, in full:** `search` (web or job boards), `memory_read`, `search_memory`,
+**React's 25 tools, in full:** `search` (web, jobs), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
-`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`. No others. Sixteen load on
-request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV files.
+`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Seventeen load on
+request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
@@ -221,7 +221,7 @@ System prompt rebuilt each call: `clock.time_line()` and the next seven dates, t
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
 `memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
-sixteen (it returns their rules too; a direct call loads the tool and retries; a request for a
+seventeen (it returns their rules too; a direct call loads the tool and retries; a request for a
 file opens `send_file` at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
@@ -235,17 +235,15 @@ plus the repo, memory, sudoers, the deploy machinery and force-push. Unparseable
 Hermes' middle tier (`approvals.py`): recursive
 deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
 and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
-`scheduled_message` is switched off after a web read, like the other tools that
-change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
+`scheduled_message` and `goal` close after a web read too.
 
 **Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. `aoostar.com`
 blocks Oracle's IPs, so fetches fall back to the `r.jina.ai` relay (public URLs only).
 
 **Watch history** (`history.py`, `memory/history.db`) keeps every successful observation. React's `watch_history` returns changes only.
 
-**Checkpoints** (Hermes' rollback) are taken once per React turn, in
-`memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
-`rollback N [all|<file>]` restores, keeping files edited since unless `all`.
+**Checkpoints** (Hermes' rollback), once per React turn: `rollback` lists, `rollback diff N` previews,
+`rollback N [all|<file>]` restores.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones; an ambiguous `done`
 is refused with the candidates.
@@ -288,12 +286,10 @@ On iteration exhaustion, one final tool-free call forces a real answer.
 **Budget guard.** Before every request, `_trim_to_budget` estimates prompt plus
 `max_tokens` and, above 7000, blanks the oldest tool results (protecting the
 newest two), then shortens or blanks the history before this message, oldest
-first. If it still does not fit, the loop breaks to the forced-final-answer path, which trims with
-`keep_recent=0`.
+first, then forces the final answer.
 
-**Search behaviour.** A date in a recency query is stripped (the model writes its
-training-era year). A recency query with no `recency_days` gets a 180-day window
-automatically. These models make one tool call a step, so
+**Search behaviour.** Dates are stripped from queries; a recency query gets a 180-day window by
+default. These models make one tool call a step, so
 `queries` takes up to 8 lookups in one call. `fetch_url` returns a page's text a window at
 a time, or with `question` what it says on one thing; a page it cannot read goes through
 Exa. A failed search says so, rather than reading as no results; DDGS backs Exa, with one
@@ -386,11 +382,15 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
 sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
 
-### Plugins and the board
+### Plugins, the board and the browser
 
 **Plugins** (`plugins.py`, `plugin_runner.py`): Hermes' format, `register(ctx)` with tools, commands and hooks,
 in the sealed `memory/private/cron_scripts/plugins/`, off until `enable plugin x`. Each call is a fresh process in
 the sandbox: network, no memory, no key but what it names, never IGOR's. Tools count as web tools. None is placed.
+
+**Browser** (`browser.py`, Hermes' browser on its Lightpanda engine): one session over CDP, in the sandbox with
+`--block-private-networks`, closed after 2 idle minutes or past 400 MB. A call is a list of steps. No password
+fields, no non-GET form or script request. A web tool. Lightpanda is not installed yet.
 
 **Board** (`board.py`, `memory/board.db`, Hermes' Kanban): tasks wait on parents. A 60-second dispatcher runs one
 at a time on 20b with read-only tools, 8 a day. A parent's result reaches a child as untrusted text. Two failures

@@ -1289,6 +1289,8 @@ def status_block() -> str:
         on_the_board = board.status()
         if on_the_board:
             status_lines.append(on_the_board)
+        import browser
+        status_lines.append(browser.status())
     except Exception as e:
         logger.error("Could not read the board - %s: %s", type(e).__name__, e)
     try:

@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 _HIDDEN_FILES = (".env", "memory/corrections.md", "memory/drafts.md", "memory/resume.md")
 _HIDDEN_DIRS = ("memory/private", "/usr/local/lib/igor-deploy")
 _WRITABLE = (".git",)
-# Per command: 1 GiB of address space, 64 MiB per file written, no core dumps.
-_LIMITS = ("--as=1073741824", "--fsize=67108864", "--core=0")
+# Per command: 1 GiB of address space unless the caller says otherwise, 64 MiB per file written, no core dumps.
+_LIMITS = ("--fsize=67108864", "--core=0")
 
 _WORKSPACE_DAYS = 7
 _WORKSPACE_BYTES = 200 * 1024 * 1024
@@ -82,13 +82,16 @@ def _tidy_workspace(now: Optional[float] = None) -> None:
 
 
 def command(argv: list[str], hide_memory: bool = False, network: bool = False,
-            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False) -> list[str]:
+            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False,
+            address_space_mb: int = 1024) -> list[str]:
     """argv wrapped in bubblewrap with the mounts and limits above. Paths that do not
     exist are skipped: bubblewrap cannot mount over a file that is not there.
     hide_memory empties the whole memory folder, for a script that reaches tools only
     through the rules of script_tool's caller. network and mounts are for prerun.py's
     scripts alone, which only the user or Claude Code can write, and which never get the
-    workspace: a script with the network could leave a page's words where React trusts them."""
+    workspace: a script with the network could leave a page's words where React trusts them.
+    address_space_mb is for the browser alone: V8 reserves far more address space than it uses, and
+    browser.py watches what it really holds instead."""
     base = str(config.BASE_DIR)
     args = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
             "--tmpfs", "/tmp"]
@@ -126,7 +129,7 @@ def command(argv: list[str], hide_memory: bool = False, network: bool = False,
     for name, value in (env or {}).items():
         args += ["--setenv", name, value]
     args += ["--chdir", base,
-             "--", "prlimit", *_LIMITS, "--", *argv]
+             "--", "prlimit", f"--as={address_space_mb * 1048576}", *_LIMITS, "--", *argv]
     return args
 
 
@@ -144,7 +147,8 @@ def _probe() -> str:
 
 
 def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
-            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False) -> list[str]:
+            mounts: tuple = (), env: Optional[dict] = None, workspace: bool = False,
+            address_space_mb: int = 1024) -> list[str]:
     """The sandboxed argv, or Unavailable. A success is remembered; a failure is
     probed again next time, so one bad moment does not disable the tools until a
     restart."""
@@ -161,7 +165,7 @@ def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
     if workspace:
         workspace_folder().mkdir(parents=True, exist_ok=True)
         _tidy_workspace()
-    return command(argv, hide_memory, network, mounts, env, workspace)
+    return command(argv, hide_memory, network, mounts, env, workspace, address_space_mb)
 
 
 def git_read_only() -> tuple:

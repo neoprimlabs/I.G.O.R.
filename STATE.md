@@ -289,6 +289,11 @@ tokens; a plugin loaded in the real sandbox, answered its command, and 120b call
 load_tools (one refused direct call first) and gave the right answer. That run found the sandbox could not
 start inside any copy of IGOR under /tmp, which every live test uses; fixed in sandbox.py. About 26000 tokens
 in all, more than planned, because one script re-ran another by importing it.
+
+**Browser** (`browser.py`, same day): Hermes' Lightpanda engine, steps over CDP, read-only by rule. Built and offline-tested
+against a fake CDP server; the real-engine half of tests/test_browser.py runs where Lightpanda is installed. It is not
+yet: `sudo curl -fL -o /usr/local/bin/lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && sudo chmod 755 /usr/local/bin/lightpanda`
+on the server, which the auto-mode classifier will not let Claude Code run. Nightly, so the flag spelling is read from `lightpanda help`.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

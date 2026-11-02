@@ -43,6 +43,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
 | `video_analyze` | `agents/inbound.py` | No model on this key can watch a video, so ffmpeg gives Whisper the sound and the vision model 3 still frames, in the sandbox: a clip's motion is not seen. A file sent in chat only, not a link. One a message, up to 50 MB. Waits on ffmpeg on the host; without it, IGOR says so. |
+| Browser, Lightpanda engine | `browser.py`, `browser` | Lightpanda only: Chromium does not fit. Steps in one call instead of model-written Python, so nothing the model writes runs on the host. Reads, clicks, types and searches, and refuses password fields and anything but GET, so no logins, purchases or posts; Hermes' vault and real-profile logins are left out with them. Private networks blocked by the engine. No screenshots, one page. Waits on Lightpanda on the host. |
 | Kanban | `board.py`, `board` | One board and one worker, on 20b, 8 runs a day, with read-only tools: no profiles, tenants, review column, parallel fan-out or workspaces. Parents, comments, restart recovery and blocking on two failures are all there. A worker ends with its reply or `[BLOCKED: why]`, not a tool call, for the budget. |
 | Plugins, `register(ctx)` | `plugins.py`, `plugin_runner.py` | The same folder format, off until enabled. `register_tool`, `register_command` and `register_hook` work; `plugins` names what else one asked for. Each call is a sandboxed process rather than in the agent with its keys, so a plugin that imports Hermes' own modules, or needs its `ctx.llm`, does not load or run here. No installer or catalog: Claude Code or the user places it. None is placed yet. |
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. PowerPoint, EPUB and OpenDocument with the standard library, where Hermes installs a converter, so no old `.doc` or `.ppt`, RTF or SQLite. A file that unpacks past 100 MB is refused. |
@@ -74,7 +75,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## The host rules these out
 
-- **Browser automation and computer use.** Chromium does not fit in 956 MB.
+- **Computer use, and a browser with screenshots.** Chromium does not fit in 956 MB.
 - **Local models.** There is no GPU.
 
 ## Waiting on the user
@@ -82,7 +83,8 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 Nothing left on the ledger can be built without one of these.
 
 - **ffmpeg on the host.** Video analysis is built and waits for it.
+- **Lightpanda on the host.** The browser is built and waits for it.
 - **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.
 - **Accounts.** X search (xAI), Google Workspace and Spotify (each needs a sign-in flow the MCP client does not have yet), memory providers, secrets managers.
 - **IGOR's own app.** Live voice, desktop and terminal apps, a dashboard, buttons and spoken replies, all parked above.
-- **A larger host.** Browser automation. The user declined paid hosting on 2026-08-01.
+- **A larger host.** Oracle's free Arm allowance is now 2 OCPU and 12 GB (halved in 2026), twelve times this host's memory; it would fit Chromium and screenshots. Capacity is often exhausted, and moving IGOR is the largest job on this list.
