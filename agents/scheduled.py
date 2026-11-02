@@ -224,6 +224,13 @@ def _repeat_words(repeat: str) -> str:
     return f"every {minutes // 60} hours" if minutes % 60 == 0 else f"every {minutes} minutes"
 
 
+def _with_until(brief: str, until: Optional[str]) -> str:
+    """Hermes' --until, said where the run reads it. Live 2026-11-01, "and stop once it has" was
+    left out of a brief by a model told it could say so there; a field of its own is harder to skip."""
+    until = (until or "").strip().rstrip(".")
+    return f"{brief} Stop repeating once this has happened: {until}." if brief and until else brief
+
+
 def _next_occurrence(due: datetime, repeat: str, now: datetime) -> datetime:
     """The next local-clock occurrence after now. Stepping the local calendar, not
     adding 24h in UTC, keeps 9:00 at 9:00 across a daylight-saving change, and
@@ -346,10 +353,10 @@ def add(content: str = "", at: Optional[str] = None, in_minutes: Optional[int] =
         now: Optional[datetime] = None, repeat: Optional[str] = None,
         script: Optional[str] = None, script_only: Optional[bool] = False,
         context_from: Optional[list] = None, keep_only: Optional[bool] = False,
-        times: Optional[int] = None) -> str:
+        times: Optional[int] = None, until: Optional[str] = None) -> str:
     now = now or datetime.now(timezone.utc)
     content = (content or "").strip()
-    brief = (brief or "").strip()
+    brief = _with_until((brief or "").strip(), until)
     # With no brief there is nothing for a model to write. Refusing this, live, drew a made-up
     # brief, and with it a model call on a job meant to cost nothing.
     script_only = script_only or bool(script and not brief and not content)
@@ -477,7 +484,7 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
            now: Optional[datetime] = None, repeat: Optional[str] = None,
            script: Optional[str] = None, script_only: Optional[bool] = None,
            context_from: Optional[list] = None, keep_only: Optional[bool] = None,
-           times: Optional[int] = None) -> str:
+           times: Optional[int] = None, until: Optional[str] = None) -> str:
     """Change a pending message in place: its time, its brief, its job settings, or a mix.
 
     A correction used to be cancel-then-add, two calls, and React did the add and
@@ -487,7 +494,7 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     """
     now = now or datetime.now(timezone.utc)
     entry_id = (entry_id or "").strip()
-    brief = (brief or "").strip()
+    brief = _with_until((brief or "").strip(), until)
     moved = sum(x is not None for x in (at, in_minutes, window))
     if moved > 1:
         return "Not updated: give at most one of at, in_minutes or window."
@@ -496,7 +503,7 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
         return f"Not updated: {problem}"
     job = {k: v for k, v in (("script", script), ("script_only", script_only),
                              ("context_from", context_from), ("keep_only", keep_only)) if v is not None}
-    if not moved and not brief and repeat is None and not job and not times:
+    if not moved and not brief and repeat is None and not job and not times and not until:
         return "Not updated: give a new time, a new brief, a repeat, or a mix."
     due = None
     if moved:
@@ -511,6 +518,8 @@ def update(entry_id: str, at: Optional[str] = None, in_minutes: Optional[int] = 
     entry = next((e for e in entries if e["id"] == entry_id), None)
     if entry is None:
         return f"Not updated: no scheduled message with id {entry_id!r}. List them to find it."
+    if until and not brief:
+        brief = _with_until(entry.get("brief") or "", until)
     after = {**entry, **job, **({"brief": brief, "content": ""} if brief else {}),
              **({"repeat": repeat} if repeat is not None else {})}
     problem = _job_problem(after, _known_ids(entries))
@@ -740,6 +749,7 @@ def run_tool(inputs: dict) -> str:
                "context_from": _ids(inputs.get("context_from")), "keep_only": _flag(inputs.get("keep_only"))}
         times = inputs.get("times")
         job["times"] = int(times) if isinstance(times, (int, str)) and str(times).strip().isdigit() and int(times) > 0 else None
+        job["until"] = inputs.get("until") or None
         if action == "update":
             return update(inputs.get("id", ""), at=at, in_minutes=in_minutes,
                           window=window, brief=brief, repeat=repeat, **job)

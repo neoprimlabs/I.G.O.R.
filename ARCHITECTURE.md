@@ -5,8 +5,8 @@ reachable with `offset`. Describe nothing unread.
 
 ## The whole system, in one page
 
-A Discord bot, DMs only, one authorized user. Python 3.10 on an Oracle
-`VM.Standard.E2.1.Micro` (956 MB), systemd. Groq free tier
+A Discord bot, DMs only, one authorized user. Python 3.10 on a 956 MB Oracle host,
+systemd. Groq free tier
 via the `openai` SDK, Exa for search, markdown plus SQLite.
 
 ## What does NOT exist
@@ -51,16 +51,14 @@ local), job watch (11:30), gig watch (11:45), price watch (2-hourly), stock watc
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
 
-**Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed and
-log to `history.db`.
+**Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed.
 
 **Scheduled messages**: `scheduled_message` keeps timed messages in
 `memory/scheduled.json`; one can run a script first or read another's output.
 **Presence** is separate: one check-in
 a day behind code gates, off unless `memory/presence_config.md` says `state: on`.
 
-**Overnight loop**: hourly 00:00-06:59 local, a fixed pipeline (20b researches, 120b
-writes) with no acting tools works the standing goals in `memory/goals.md` into sourced
+**Overnight loop**: hourly 00:00-06:59 local, a fixed pipeline with no acting tools works the standing goals in `memory/goals.md` into sourced
 papers, proposals and skill drafts in `memory/work/`, reported in the digest. Nothing is applied
 without the user's yes.
 
@@ -71,7 +69,7 @@ days, `search_history`); messages leaving the window fold into a running summary
 with no web content, and reading one closes the web for that turn.
 
 **Checkpoints**: `write_file`, `patch_file` and `memory_write` keep a file's old copy
-first (`checkpoints.py`, newest 20); the user's `rollback` restores them.
+first (`checkpoints.py`); the user's `rollback` restores them.
 
 **Follow-through** (`followthrough.py`, Hermes' /goal, but IGOR decides): a React
 reply that ran out of steps or offers to go on is judged by 20b. On `continue`, up to
@@ -85,6 +83,8 @@ shared by Direct and React. `usage.py` counts spend.
 Discord and rolls back on failure.
 
 **MCP**: `mcp_server.py` serves six read-only tools over SSH on stdio. `mcp_client.py` uses servers the user lists.
+
+**Off until configured**: `http_server.py` (OpenAI-style API, webhooks), `hooks.py`.
 
 <!-- END SELF SUMMARY -->
 
@@ -187,14 +187,10 @@ A Discord DM travels this path every time:
 
 ### llm.complete - the shared text-completion wrapper
 
-`llm.py` holds the only copy of "how a Groq text completion fails". Two failures
-arrive as a 200 OK and are invisible to the caller: empty content, and non-empty
-content with `finish_reason` `length`, which reads as a complete answer but was cut
-mid-sentence. Both retry once at double budget (cap 4096), then return whatever came
-back. A caller already at the cap makes one request, not two.
+`llm.py` holds how a Groq text completion fails: empty content, or `finish_reason` `length`, cut
+mid-sentence, both as a 200 OK. Both retry once at double budget (cap 4096), then return what came back.
 
-It also owns `llm.model_params`, which attaches the per-model request parameters
-that fail as a 200 OK when omitted, keyed by model so no call site has to remember:
+It also owns `llm.model_params`, the per-model parameters that fail as a 200 OK when omitted:
 `reasoning_format` `hidden` for qwen, `reasoning_effort` `low` for both gpt-oss
 models. An explicit caller value still wins, so ResearchLoop keeps the `low` it
 measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
@@ -215,9 +211,8 @@ One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
 ends with `memory/user.md` (Hermes' USER.md) and how full it is; `memory_write` refuses
 a write past 1500 characters, judged on a batch's result, and lists the entries.
 
-Its prompt forbids claims about IGOR's state, features or performance it cannot
-check (it names the check that would answer), saying IGOR lacks a capability, and
-promising a future action.
+Its prompt forbids claims about IGOR's state it cannot check, saying IGOR lacks a capability,
+and promising a future action.
 
 ### React
 
@@ -370,8 +365,6 @@ Edits exactly three files:
 filename, validates digest section names against the set the digest actually
 reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
 
-**If its output matches the current file, it writes nothing and says so.**
-
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
 whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
 
@@ -392,7 +385,16 @@ Every model call goes through `_call`, a wrapper over `llm.complete`. **Both cal
 Findings go out as a raw file attachment with no model pass, then an offer to synthesize, which
 routes to React with an instruction to read the file and not search.
 
-This is also the Dual LLM pattern: the context that sees web content holds no tools.
+### Hooks and HTTP
+
+**Hooks** (`hooks.py`, Hermes' shell hooks): scripts in `memory/private/cron_scripts/hooks/`, sealed, run
+in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anything else fails open),
+`post_tool_call` and `agent_end`, with JSON on stdin. What they print goes to the user. None is placed.
+
+**HTTP** (`http_server.py`, Hermes' API server and webhooks), on loopback, off until configured:
+`API_SERVER_KEY` opens `/v1/chat/completions`, the newest user message going through
+`orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
+sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
 
 ### MCP client
 
@@ -527,8 +529,7 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | `speech` | `whisper-large-v3-turbo` | audio seconds, not tokens |
 
 `chat` and `react` share a bucket deliberately: the router sends each message to
-one, never both, so they alternate instead of stacking. qwen is the only model that
-answers inside the router's 10-token budget; a router outage falls back to React.
+one, never both, so they alternate instead of stacking.
 
 **Fallback chain** (Hermes' `fallback_providers`). `llm.create` makes every chat
 completion for `llm.complete` and React. A 429 after retries benches the model to
@@ -646,5 +647,4 @@ Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** Absorbed into React.
 - **Any UI beyond Discord.** Spec Phase 2.
-- **Spoken replies.** Speech waits for IGOR's own app.
 - **Multi-user anything.**

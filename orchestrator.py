@@ -627,6 +627,8 @@ class Orchestrator:
         if config.ENABLE_CRITIC:
             skill_captured = await self._critic_pass(destination, task, response)
         self._update_context(self._with_notes(task, carry), response)
+        import hooks
+        hooks.fire("agent_end", route=destination, message=task[:500], response=response[:500])
         if file_mode:
             return response, file_mode
         if destination == "React" and seq == self._seq:

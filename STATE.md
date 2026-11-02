@@ -266,7 +266,13 @@ the host has none of Hermes' libraries and a model writing a document as tool ar
 as a PDF" takes no model. Opened in python-docx, openpyxl and PyMuPDF, and the PDF looked at: it reads like a real
 document. Not yet seen: one through Discord on a phone, or Word's own opening of a .docx. `steer` and `btw` (Hermes'
 /steer, /btw), `moa.py` for `second opinion`, `every 6 hours`-style repeats with `times` and `[DONE]`, `background.py`
-and `memory/workspace` (ARCHITECTURE). All offline-tested, failure paths included.
+and `memory/workspace` (ARCHITECTURE). All offline-tested, failure paths included. Live on the real models in the
+throwaway copy, 20296 tokens: a Word file in one step, heeding a steered note; a second opinion from both models in
+under a second each. That run dropped "and stop once it has" from a brief, so `until` is now a field, code puts it where
+the run reads it; a model's null for an unused time field cost a refused call, so those three accept null. **Built after
+it, off until configured:** `hooks.py` (Hermes' shell hooks, none placed) and `http_server.py` (its API server and
+webhooks, on loopback, with no key and no routes set). The API key is `API_SERVER_KEY` in `/opt/igor/.env`; a route goes in
+`memory/private/webhooks.json`. Reaching one from outside takes an SSH tunnel or a step on Oracle's firewall.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

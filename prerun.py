@@ -84,38 +84,58 @@ async def _read(stream, cap: int) -> str:
     return text[:cap] + f"\n[cut at {cap} characters]" if len(kept) > cap else text
 
 
+async def _feed(stream, text: str) -> None:
+    try:
+        stream.write(text.encode("utf-8"))
+        await stream.drain()
+    except (BrokenPipeError, ConnectionResetError):
+        pass
+    finally:
+        stream.close()
+
+
+async def spawn(script: Path, label: str, stdin: Optional[str] = None,
+                timeout: int = _TIMEOUT_S) -> tuple[Optional[int], str, str]:
+    """(exit code, what it printed, its errors), or (None, "", why it never finished). Never raises."""
+    suffix = script.suffix
+    inside = f"/tmp/job{suffix}"
+    # Not named like a script: the deploy gate once tried to compile a folder called host_watch.py.
+    state = _folder() / ".state" / script.name.replace(".", "_")
+    process = None
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        argv = sandbox.prepare([sys.executable if suffix == ".py" else "bash", inside], network=True,
+                               mounts=[("--ro-bind", script, inside),
+                                       ("--bind", state, _STATE_INSIDE)],
+                               env={"IGOR_STATE": _STATE_INSIDE})
+        process = await asyncio.create_subprocess_exec(
+            *argv, stdin=asyncio.subprocess.DEVNULL if stdin is None else asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        readers = [_read(process.stdout, _OUTPUT_CAP), _read(process.stderr, _ERROR_CAP)]
+        if stdin is not None:
+            readers.append(_feed(process.stdin, stdin))
+        printed, errors, *_ = await asyncio.wait_for(asyncio.gather(*readers), timeout)
+        code = await asyncio.wait_for(process.wait(), 5)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        logger.error("%s ran past %d seconds and was killed", label, timeout)
+        return None, "", f"it ran past {timeout} seconds"
+    except Exception as e:
+        logger.error("%s could not run - %s: %s", label, type(e).__name__, e)
+        return None, "", f"it could not start ({type(e).__name__})"
+    return code, printed, errors
+
+
 async def run(name: str) -> tuple[Optional[str], str]:
     """(what it printed, "") or (None, why it failed). Never raises."""
     why = problem(name)
     if why:
         logger.error("Scheduled script %s not run - %s", name, why)
         return None, why
-    suffix = Path(name).suffix
-    inside = f"/tmp/job{suffix}"
-    # Not named like a script: the deploy gate once tried to compile a folder called host_watch.py.
-    state = _folder() / ".state" / name.replace(".", "_")
-    process = None
-    try:
-        state.mkdir(parents=True, exist_ok=True)
-        argv = sandbox.prepare([sys.executable if suffix == ".py" else "bash", inside], network=True,
-                               mounts=[("--ro-bind", _folder() / name, inside),
-                                       ("--bind", state, _STATE_INSIDE)],
-                               env={"IGOR_STATE": _STATE_INSIDE})
-        process = await asyncio.create_subprocess_exec(
-            *argv, stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        printed, errors = await asyncio.wait_for(
-            asyncio.gather(_read(process.stdout, _OUTPUT_CAP), _read(process.stderr, _ERROR_CAP)),
-            _TIMEOUT_S)
-        code = await asyncio.wait_for(process.wait(), 5)
-    except asyncio.TimeoutError:
-        process.kill()
-        await process.wait()
-        logger.error("Scheduled script %s ran past %d seconds and was killed", name, _TIMEOUT_S)
-        return None, f"it ran past {_TIMEOUT_S} seconds"
-    except Exception as e:
-        logger.error("Scheduled script %s could not run - %s: %s", name, type(e).__name__, e)
-        return None, f"it could not start ({type(e).__name__})"
+    code, printed, errors = await spawn(_folder() / name, f"Scheduled script {name}", timeout=_TIMEOUT_S)
+    if code is None:
+        return None, errors
     if code != 0:
         logger.error("Scheduled script %s failed, exit code %d - %s", name, code, errors)
         return None, f"exit code {code}. {errors}".strip()

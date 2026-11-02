@@ -346,12 +346,13 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "update", "pause", "resume", "list", "cancel"]},
-                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If it should stop repeating once something happens, say that too. If the user dictated exact words, put them in double quotes"},
-                "at": {"type": "string", "description": "add, update: local time, YYYY-MM-DD HH:MM, or HH:MM for the next time the clock reads that"},
-                "in_minutes": {"type": "integer", "description": "add, update: minutes from now"},
-                "window": {"type": "string", "enum": ["morning", "afternoon", "evening", "tomorrow"], "description": "add, update: let IGOR pick a varied time inside this window"},
+                "brief": {"type": "string", "description": "add, update: what the user wants this message to do. An agent with no conversation history writes it when it sends, so make it self-contained: the topic, depth and tone they asked for, and anything they said to avoid. Describe the message, do not write it. If they want it only if something is so, say that, and it stays silent otherwise. If the user dictated exact words, put them in double quotes"},
+                "at": {"type": ["string", "null"], "description": "add, update: local time, YYYY-MM-DD HH:MM, or HH:MM for the next time the clock reads that"},
+                "in_minutes": {"type": ["integer", "null"], "description": "add, update: minutes from now"},
+                "window": {"type": ["string", "null"], "description": "add, update: morning, afternoon, evening or tomorrow: let IGOR pick a varied time inside it"},
                 "repeat": {"type": "string", "description": "add, update: daily, weekdays or weekly, at the same local time; or an interval, such as every 6 hours; none stops repeating. Every 3 hours is the shortest without a script, every 5 minutes with one"},
                 "times": {"type": "integer", "description": "add, update: stop after this many runs"},
+                "until": {"type": "string", "description": "add, update: stop repeating once this has happened, in their words, such as: the shop has restocked"},
                 "script": {"type": "string", "description": "add, update: a script from list, run first. If it prints nothing, nothing is written or sent. With no brief, what it prints is the message. none removes it"},
                 "script_only": {"type": "boolean", "description": "add, update: no model, just what the script prints"},
                 "context_from": {"type": "array", "items": {"type": "string"}, "description": "add, update: ids of up to 3 other messages whose latest output this one reads"},
@@ -742,9 +743,10 @@ _PRIVATE_MEMORY = frozenset({"resume.md"})
 _SECRET_NAMES = frozenset({"id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials", "credentials.json",
                            "secrets.json", "webhook.txt", ".netrc", ".npmrc", ".pypirc",
                            # Which MCP servers exist decides where data can go: the user's choice alone.
-                           "mcp_servers.json", "mcp_tools.json"})
+                           "mcp_servers.json", "mcp_tools.json", "webhooks.json"})
 _SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 # cron_scripts: a script runs with the network, so IGOR must not be able to write one (prerun.py).
+# Its hooks folder is inside it. webhooks.json holds the secrets and says who may start a run.
 _SECRET_FOLDERS = frozenset({".ssh", ".git", ".gnupg", "cron_scripts"})
 
 
@@ -2235,6 +2237,11 @@ async def _handle(
                 # A worker must not reach the user, and a background command's end would.
                 if _depth and tc.function.name == "shell":
                     args.pop("background", None)
+                import hooks
+                refused = await hooks.pre_tool(tc.function.name, args)
+                if refused:
+                    _record_receipt(tc.function.name, args, refused)
+                    return refused
                 # Judged as a batch: gather gives no ordering guarantee, so a batch
                 # holding both a web call and a private read closes both.
                 blocked = _quarantine_check(
@@ -2269,6 +2276,7 @@ async def _handle(
                     _record_receipt(tc.function.name, args, result)
                 from sanitize import redact
                 result = redact(result)
+                hooks.fire("post_tool_call", tool_name=tc.function.name, tool_input=args, tool_result=result[:2000])
                 if len(result) > _TOOL_RESULT_CAP:
                     result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
                 return result

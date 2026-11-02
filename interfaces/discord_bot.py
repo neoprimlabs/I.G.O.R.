@@ -54,6 +54,11 @@ class IgorBot(discord.Client):
         lost = background.lost_in_restart()
         if lost:
             await self.send_to_user(lost)
+        import hooks
+        hooks.set_sender(self.send_to_user)
+        hooks.fire_startup()
+        import http_server
+        await http_server.start(lambda: self._orchestrator, self.send_to_user)
 
     async def on_message(self, message: discord.Message) -> None:
         if self.user is None or message.author.id == self.user.id:

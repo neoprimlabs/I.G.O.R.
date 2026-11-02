@@ -19,7 +19,7 @@ _KEY_SHAPES = re.compile(
     r"|https://(?:canary\.|ptb\.)?discord(?:app)?\.com/api/webhooks/\S+")
 _NAMED_VALUES = re.compile(
     r"(?i)\b(api[_-]?key|secret|token|password|passwd|bearer)(\s*[=:]\s*|\s+)(['\"]?)([A-Za-z0-9_\-.+/]{12,})")
-_KEY_VARIABLES = ("GROQ_API_KEY", "EXA_API_KEY", "DISCORD_BOT_TOKEN", "CEREBRAS_API_KEY", "ANTHROPIC_API_KEY")
+_KEY_VARIABLES = ("GROQ_API_KEY", "EXA_API_KEY", "DISCORD_BOT_TOKEN", "CEREBRAS_API_KEY", "ANTHROPIC_API_KEY", "API_SERVER_KEY")
 _REDACTED = "[REDACTED]"
 
 

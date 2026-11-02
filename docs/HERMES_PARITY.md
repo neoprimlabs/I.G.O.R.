@@ -46,6 +46,9 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Syntax checks on `write_file` and `patch` | `_syntax_note` | Python only: IGOR's file tools write nothing but `.py` and `.md`. Kept and reported, and only what the edit broke, as Hermes does for Python. |
 | URL safety | `url_safety.py` | |
 | MCP server | `mcp_server.py` | Read-only, over SSH. |
+| Shell hooks | `hooks.py` | The same JSON on stdin, exit 2 or a block decision, failing open. In the sandbox, where Hermes' run with its keys, and sealed from every tool. Four events, not Hermes' dozens: `startup`, `pre_tool_call`, `post_tool_call`, `agent_end`. What one prints goes to the user. It cannot change a tool's arguments or add to a prompt, and cannot fail closed. None is placed yet. |
+| API server, `/v1/chat/completions` | `http_server.py` | Off until a key is set, and on loopback. One conversation, so only the newest user message is taken; no images, tool progress, `/v1/responses` or runs API. The way in for IGOR's own app. |
+| Webhooks | `http_server.py` | Off until a route is set, and on loopback: reaching it from outside takes a step on Oracle's firewall, the user's call. GitHub, GitLab and timestamped signatures only; 30 a minute, 1 MB, seen once, as Hermes. Runs are read-only and capped at 24 a day, then delivered plainly. No script filters, coalescing or delivery elsewhere. |
 | MCP client, `mcp_servers` | `mcp_client.py` | Read-only tools only, where Hermes can ask before a write. Keys through headers, with no OAuth sign-in, so services that require it cannot connect. No resources, prompts or sampling. One connection a call rather than one held open, for memory. No Node on the host, so no npx servers. Results count as web text. Nothing is configured yet. |
 
 ## Different on purpose
@@ -61,6 +64,10 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 - **Spoken replies, buttons, a dashboard.** These wait for IGOR's own app.
 - **Clones.** GAMEPLAN Phase K.
+
+## Left out, and why
+
+- **Key rotation.** Groq's limits are by organisation, so a second key on this account adds nothing, and a second account is a question for Groq's terms.
 
 ## The host rules these out
 

@@ -587,6 +587,19 @@ async def test_times_and_done() -> None:
     _check("and the mark never reaches the user", sent[-1] == "The parcel has come.", str(sent))
 
     _fresh()
+    reply = scheduled.run_tool({"action": "add", "in_minutes": 5, "brief": "check the shop", "repeat": "every 6 hours", "until": "the shop has restocked."})
+    _check("until is said where the run reads it", "Stop repeating once this has happened: the shop has restocked." in _stored()[0]["brief"], str(_stored()))
+    entry_id = _stored()[0]["id"]
+    scheduled.run_tool({"action": "update", "id": entry_id, "until": "the parcel has come"})
+    _check("an update adds it to what is there", "check the shop" in _stored()[0]["brief"] and "the parcel has come" in _stored()[0]["brief"], str(_stored()))
+    _fresh("check.py")
+    reply = scheduled.run_tool({"action": "add", "in_minutes": 5, "script": "check.py", "repeat": "every 6 hours", "until": "x"})
+    _check("with no model to read it, it does not make one up", _stored()[0].get("script_only") and not _stored()[0]["brief"], str(_stored()))
+    _fresh()
+    reply = scheduled.run_tool({"action": "add", "in_minutes": None, "at": None, "window": "evening", "brief": "x"})
+    _check("a model's nulls for the fields it did not use are fine", reply.startswith("Okay"), reply)
+
+    _fresh()
     scheduled.add(brief="x", in_minutes=5, repeat="every 3 hours", now=NOW)
     sent.clear()
 
