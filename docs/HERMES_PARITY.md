@@ -1,6 +1,6 @@
 # IGOR and Hermes Agent, feature by feature
 
-Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source, last on 2026-11-01. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
+Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source, last on 2026-11-02. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
 
 Update this file when a row changes. ARCHITECTURE.md describes how each thing works; this only says whether it exists.
 
@@ -42,6 +42,9 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Background memory review, `memory.write_approval` on | `memory_review.py` | Always on approval, never a model's call; Hermes defaults to saving freely. Once a night on 20b rather than after each turn, for the budget. A fact must quote the user's own first-person words, checked in code. |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
+| `video_analyze` | `agents/inbound.py` | No model on this key can watch a video, so ffmpeg gives Whisper the sound and the vision model 3 still frames, in the sandbox: a clip's motion is not seen. A file sent in chat only, not a link. One a message, up to 50 MB. Waits on ffmpeg on the host; without it, IGOR says so. |
+| Kanban | `board.py`, `board` | One board and one worker, on 20b, 8 runs a day, with read-only tools: no profiles, tenants, review column, parallel fan-out or workspaces. Parents, comments, restart recovery and blocking on two failures are all there. A worker ends with its reply or `[BLOCKED: why]`, not a tool call, for the budget. |
+| Plugins, `register(ctx)` | `plugins.py`, `plugin_runner.py` | The same folder format, off until enabled. `register_tool`, `register_command` and `register_hook` work; `plugins` names what else one asked for. Each call is a sandboxed process rather than in the agent with its keys, so a plugin that imports Hermes' own modules, or needs its `ctx.llm`, does not load or run here. No installer or catalog: Claude Code or the user places it. None is placed yet. |
 | Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. PowerPoint, EPUB and OpenDocument with the standard library, where Hermes installs a converter, so no old `.doc` or `.ppt`, RTF or SQLite. A file that unpacks past 100 MB is refused. |
 | Syntax checks on `write_file` and `patch` | `_syntax_note` | Python only: IGOR's file tools write nothing but `.py` and `.md`. Kept and reported, and only what the edit broke, as Hermes does for Python. |
 | URL safety | `url_safety.py` | |
@@ -74,11 +77,12 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 - **Browser automation and computer use.** Chromium does not fit in 956 MB.
 - **Local models.** There is no GPU.
 
-## Still open, most useful first
-
-1. **Video analysis.** Needs ffmpeg on the host, not installed. Whisper and qwen could then read a clip's sound and frames, though Discord's upload limit leaves little room for a phone's video.
-2. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
-
 ## Waiting on the user
 
+Nothing left on the ledger can be built without one of these.
+
+- **ffmpeg on the host.** Video analysis is built and waits for it.
 - **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.
+- **Accounts.** X search (xAI), Google Workspace and Spotify (each needs a sign-in flow the MCP client does not have yet), memory providers, secrets managers.
+- **IGOR's own app.** Live voice, desktop and terminal apps, a dashboard, buttons and spoken replies, all parked above.
+- **A larger host.** Browser automation. The user declined paid hosting on 2026-08-01.

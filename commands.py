@@ -9,7 +9,8 @@ holds the turn they act on.
 import re
 from typing import Optional
 
-_COMMAND = re.compile(r"^\s*/?(stop|retry|undo|usage|status|help|skills)\s*[.!?]*\s*$", re.IGNORECASE)
+_COMMAND = re.compile(r"^\s*/?(stop|retry|undo|usage|status|help|skills|plugins)\s*[.!?]*\s*$", re.IGNORECASE)
+_PLUGIN_ACTION = re.compile(r"^\s*/?(enable|disable)\s+plugin\s+([\w-]+)\s*[.!?]*\s*$", re.IGNORECASE)
 _SKILL_ACTION = re.compile(r"^\s*/?(archive|restore|pin|unpin)\s+skill\s+([\w-]+)\s*[.!?]*\s*$", re.IGNORECASE)
 # "skills" alone is a common word in this user's job searches, so "what skills does this
 # role need" must stay an ordinary request. Only a question about IGOR's own matches.
@@ -30,7 +31,10 @@ HELP = ("These take no model call. stop ends what I am working on. retry runs yo
         "with its name changes one. save that as a skill drafts one from the last task, for you "
         "to approve. send that as a PDF, or Word, Excel or CSV, puts my last message in a file. While I am "
         "working, steer with a note adds it at my next step, and btw with a question answers it on the "
-        "side. second opinion, with a question, also asks my other models: that one spends tokens.")
+        "side. second opinion, with a question, also asks my other models: that one spends tokens. board lists "
+        "the task board; board add, with a task, puts work on it for a background worker, and show, comment, block, "
+        "unblock, done, archive and link, with a task's id, change it. plugins lists plugins; enable plugin or "
+        "disable plugin, with a name, changes one.")
 
 
 # Hermes' /steer and /btw. A bare word first, so "steering wheel" and "btwn" stay ordinary.
@@ -57,6 +61,10 @@ _WANTS_FILE = re.compile(
     r"\b(word (?:doc|document|file)|docx|pdf|excel|xlsx|spreadsheet|csv)\b", re.IGNORECASE | re.DOTALL)
 
 
+# "board add" too: a voice note arrives with a label in front, so it never reaches the command itself.
+_WANTS_BOARD = re.compile(r"\b(?:on|to|onto)\s+(?:the|my)\s+(?:task\s+|work\s+)?board\b|\bkanban\b|\bboard\s+add\b", re.IGNORECASE)
+
+
 def parse(text: str) -> Optional[str]:
     m = _COMMAND.match(text or "")
     if m:
@@ -67,6 +75,15 @@ def parse(text: str) -> Optional[str]:
 def skill_action(text: str) -> Optional[tuple[str, str]]:
     m = _SKILL_ACTION.match(text or "")
     return (m.group(1).lower(), m.group(2)) if m else None
+
+
+def plugin_action(text: str) -> Optional[tuple[str, str]]:
+    m = _PLUGIN_ACTION.match(text or "")
+    return (m.group(1).lower(), m.group(2)) if m else None
+
+
+def wants_board(text: str) -> bool:
+    return bool(_WANTS_BOARD.search(text or ""))
 
 
 def saves_skill(text: str) -> bool:

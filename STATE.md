@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-01**
+Last updated: **2026-11-02**
 
 ---
 
@@ -277,6 +277,13 @@ real on a spare loopback port in the throwaway copy: the API answered through th
 streamed; a webhook delivered once, refused no signature and skipped a repeat; a hook blocked a tool in the real sandbox;
 `until` reached the brief on 120b, 5125 tokens. The real service's port stays closed. Not yet seen: a real outside
 sender, or an app on the API.
+
+**2026-11-02: the user kept Hermes level as the goal** when asked, so the last things buildable without them went in:
+video (`agents/inbound.py`, waits on `sudo apt-get install -y --no-install-recommends ffmpeg`, which the auto-mode
+classifier will not let Claude Code run; `tests/test_inbound.py` tests the real thing once it is there), plugins
+(`plugins.py`, none placed) and the board (`board.py`). See ARCHITECTURE. docs/HERMES_PARITY.md lists what is left, and all
+of it needs the user: ffmpeg, a Cerebras key, accounts, the app, or a larger host. Scoring is stricter than the count
+suggests: built and unseen, or built and off, is "part way" in the artifact.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

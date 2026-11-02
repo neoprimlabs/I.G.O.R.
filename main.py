@@ -106,7 +106,7 @@ def _smoke_test() -> None:
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
                    "agents.inbound", "approvals", "clock", "sandbox", "checkpoints",
-                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "mcp_client", "prerun", "proof", "memory_review", "skills", "deliver", "moa", "background", "hooks", "http_server"):
+                   "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "mcp_client", "prerun", "proof", "memory_review", "skills", "deliver", "moa", "background", "hooks", "http_server", "plugins", "board"):
         try:
             __import__(module)
         except Exception as e:
@@ -147,11 +147,16 @@ def _smoke_test() -> None:
 
 async def _connect_mcp() -> None:
     import mcp_client
+    import plugins
     from agents import react
     await mcp_client.discover()
     count = react.register_mcp()
     if count:
         logging.getLogger(__name__).info("MCP: %d outside tools available", count)
+    await plugins.discover()
+    count = react.sync_plugins()
+    if count:
+        logging.getLogger(__name__).info("Plugins: %d tools available", count)
 
 
 def main() -> None:

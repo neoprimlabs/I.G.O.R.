@@ -1,4 +1,4 @@
-"""Reading what the user sends: voice notes, images and documents.
+"""Reading what the user sends: voice notes, images, documents and videos.
 
 Hermes (checked 2026-10-19): voice messages are transcribed on arrival and go to the
 agent as ordinary text; an image goes to the main model when it can see, otherwise
@@ -18,14 +18,23 @@ A voice note is the user's own words, so its transcript goes in as plain text. I
 descriptions and document text can carry anyone's words - a screenshot of a web page,
 a forwarded PDF - so they go in inside the untrusted markers web pages get, and
 reading an inbox file closes state-changing tools for the turn like a web read.
+
+A video goes through the same door as a document. Hermes' video_analyze hands the clip to a model
+that can watch it; none on this key can, so ffmpeg takes the sound for Whisper and three frames for
+the vision model, and what they report is the text. It is anyone's file and a decoder parses it, so
+ffmpeg runs in the sandbox with no network, no memory folder and only the clip's own folder to write.
 """
 
+import asyncio
+import base64
 import html
 import io
 import logging
 import os
 import posixpath
 import re
+import shutil
+import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -41,6 +50,13 @@ _MAX_VOICE_BYTES = 25 * _MB    # Groq's free-tier transcription limit
 _MAX_IMAGE_BYTES = 20 * _MB    # Groq's limit for an image passed by URL
 _MAX_BASE64_BYTES = 4 * _MB
 _MAX_DOC_BYTES = 10 * _MB      # Hermes refuses 50 MB; this box has 1 GB
+_MAX_VIDEO_BYTES = 50 * _MB    # Held in memory while it is written out, on 956 MB
+_MAX_VIDEOS = 1
+_VIDEO_FRAMES = 3              # The vision model's limit for one request
+_VIDEO_SOUND_SECONDS = 900
+_VIDEO_TIMEOUT_S = 60
+_VIDEO_INSIDE = "/tmp/video"
+_VIDEO_TEXT_CHARS = 4000       # Three descriptions and a short clip's words, with no extra summary call
 _MAX_UNPACKED = 100 * _MB
 _MAX_IMAGES = 3
 _MAX_VOICE_NOTES = 2
@@ -57,6 +73,8 @@ _VISION_BUDGET = 1024
 
 _AUDIO_EXT = (".ogg", ".oga", ".opus", ".mp3", ".m4a", ".wav", ".webm", ".flac", ".mpeg", ".mpga")
 _IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+# Not .webm: with no type to go on it stays a voice note, as it always was.
+_VIDEO_EXT = (".mp4", ".mov", ".m4v", ".mkv", ".avi")
 _TEXT_EXT = (".txt", ".md", ".csv", ".tsv", ".json", ".log", ".py", ".js", ".ts", ".html", ".htm",
              ".xml", ".yaml", ".yml", ".ini", ".toml", ".sql")
 
@@ -89,8 +107,12 @@ Style:
 def _kind(filename: str, content_type: Optional[str]) -> str:
     ct = (content_type or "").lower()
     name = (filename or "").lower()
+    if ct.startswith("video/"):
+        return "video"
     if ct.startswith("audio/") or name.endswith(_AUDIO_EXT):
         return "voice"
+    if name.endswith(_VIDEO_EXT):
+        return "video"
     if ct.startswith("image/") or name.endswith(_IMAGE_EXT):
         return "image"
     if ct == "application/pdf" or name.endswith(".pdf"):
@@ -432,6 +454,86 @@ async def _transcribe(data: bytes, filename: str) -> str:
     return (getattr(result, "text", "") or "").strip()
 
 
+async def _ffmpeg(folder: Path, program: str, *args: str) -> tuple[Optional[int], str]:
+    """(exit code, what it printed), or (None, "") if it ran past the limit."""
+    import sandbox
+    argv = sandbox.prepare(["nice", "-n", "10", program, "-v", "error", *args], hide_memory=True,
+                           mounts=(("--bind", folder, _VIDEO_INSIDE), *sandbox.git_read_only()))
+    process = await asyncio.create_subprocess_exec(*argv, stdin=asyncio.subprocess.DEVNULL,
+                                                   stdout=asyncio.subprocess.PIPE,
+                                                   stderr=asyncio.subprocess.DEVNULL)
+    try:
+        printed, _ = await asyncio.wait_for(process.communicate(), _VIDEO_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        logger.error("%s ran past %d seconds on a video and was killed", program, _VIDEO_TIMEOUT_S)
+        return None, ""
+    return process.returncode, printed.decode("utf-8", "replace").strip()
+
+
+def _clock(seconds: float) -> str:
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+async def _video_text(data: bytes, transcribe, describe) -> tuple[str, str]:
+    """(what the sound and the frames say, facts). Each half can fail alone, and the text says so."""
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        logger.warning("A video arrived and ffmpeg is not installed")
+        return "", "not read, because ffmpeg is not installed on the server"
+    with tempfile.TemporaryDirectory(prefix="igor-video-") as held:
+        folder = Path(held)
+        (folder / "clip").write_bytes(data)
+        clip = f"{_VIDEO_INSIDE}/clip"
+        code, printed = await _ffmpeg(folder, "ffprobe", "-show_entries", "format=duration", "-of", "csv=p=0", clip)
+        try:
+            length = float(printed)
+        except ValueError:
+            length = 0.0
+        if code != 0:
+            return "", "could not be read as a video"
+
+        lines, frames, stamps = [], [], []
+        # An exact end has no frame to give, so the last is taken short of it.
+        for i in range(_VIDEO_FRAMES if length >= 1 else 1):
+            at = length * (i + 0.5) / _VIDEO_FRAMES
+            name = f"frame{i}.jpg"
+            code, _ = await _ffmpeg(folder, "ffmpeg", "-ss", f"{at:.2f}", "-i", clip, "-frames:v", "1",
+                                    "-vf", "scale='min(768,iw)':-2", "-q:v", "5", "-y", f"{_VIDEO_INSIDE}/{name}")
+            path = folder / name
+            if code == 0 and path.is_file() and path.stat().st_size:
+                frames.append(f"data:image/jpeg;base64,{base64.b64encode(path.read_bytes()).decode()}")
+                stamps.append(at)
+
+        code, _ = await _ffmpeg(folder, "ffmpeg", "-t", str(_VIDEO_SOUND_SECONDS), "-i", clip, "-vn", "-ac", "1", "-ar", "16000",
+                                "-c:a", "libopus", "-b:a", "24k", "-y", f"{_VIDEO_INSIDE}/sound.ogg")
+        sound_path = folder / "sound.ogg"
+        sound = sound_path.read_bytes() if code == 0 and sound_path.is_file() else b""
+
+    if sound:
+        try:
+            words = await transcribe(sound, "sound.ogg")
+            lines.append(f"Sound: {words}" if words else "Sound: no speech in it.")
+        except Exception as e:
+            logger.error("A video's sound could not be transcribed - %s: %s", type(e).__name__, e)
+            lines.append(f"Sound: it could not be transcribed ({type(e).__name__}).")
+    else:
+        lines.append("Sound: none.")
+    if frames:
+        try:
+            for at, description in zip(stamps, await describe(frames)):
+                lines.append(f"Frame at {_clock(at)}: {description}")
+        except Exception as e:
+            logger.error("A video's frames could not be read - %s: %s", type(e).__name__, e)
+            lines.append(f"Frames: they could not be read ({type(e).__name__}).")
+    else:
+        lines.append("Frames: none could be taken from it.")
+    facts = f"a video, {_clock(length)} long, of which only {len(frames)} still frame{'s' if len(frames) != 1 else ''} and the sound were read"
+    if length > _VIDEO_SOUND_SECONDS:
+        facts += f", the sound only to {_clock(_VIDEO_SOUND_SECONDS)}"
+    return "\n".join(lines), facts
+
+
 async def _digest(text: str, ask: str = "") -> str:
     from agents.react import _get_client
     head = f"The person's message: {ask.strip()[:500]}\n\n" if ask.strip() else ""
@@ -519,23 +621,35 @@ async def read(attachments, transcribe=None, describe=None,
         if len(readable) > _MAX_IMAGES:
             parts.append(f"[{len(readable) - _MAX_IMAGES} more images were not read - three per message]")
 
+    videos = 0
     for a, kind in docs:
         if kind == "other":
-            parts.append(f"[An attachment, {a.filename}, was not read: IGOR reads voice notes, images, "
+            parts.append(f"[An attachment, {a.filename}, was not read: IGOR reads voice notes, images, videos, "
                          f"PDFs, Word .docx, Excel .xlsx, PowerPoint .pptx, EPUB, OpenDocument, Jupyter notebooks and plain text]")
             continue
-        if (a.size or 0) > _MAX_DOC_BYTES:
+        video = kind == "video"
+        if video:
+            videos += 1
+            if videos > _MAX_VIDEOS:
+                parts.append(f"[A video, {a.filename}, was not read - one per message]")
+                continue
+            if (a.size or 0) > _MAX_VIDEO_BYTES:
+                parts.append(f"[A video, {a.filename}, is {_size(a.size)}, over the 50 MB that can be read]")
+                continue
+        elif (a.size or 0) > _MAX_DOC_BYTES:
             parts.append(f"[A document, {a.filename}, is {_size(a.size)}, over the 10 MB that can be read]")
             continue
         try:
-            text, facts = _extract(kind, await a.read())
+            text, facts = (await _video_text(await a.read(), transcribe, describe) if video
+                           else _extract(kind, await a.read()))
         except Exception as e:
             logger.error("Document read failed - %s: %s", type(e).__name__, e)
             text, facts = "", f"could not be read ({type(e).__name__})"
         if not text:
-            parts.append(f"[A document, {a.filename}: {facts}. No text could be taken from it]")
+            parts.append(f"[{'A video' if video else 'A document'}, {a.filename}: {facts}. No text could be taken from it]")
             continue
-        long = len(text) > _EXCERPT_CHARS
+        shown = _VIDEO_TEXT_CHARS if video else _EXCERPT_CHARS
+        long = len(text) > shown
         prefer_tools = prefer_tools or long
         saved = _save(a.filename, text, now)
         open_, close = _markers()
@@ -556,7 +670,7 @@ async def read(attachments, transcribe=None, describe=None,
         else:
             tail = "; the opening is below, and read_file pages through the rest" if long else ""
         parts.append(f"[Document the user sent: {a.filename} - {facts}, {len(text):,} characters. "
-                     f"Saved as {saved}{tail}.]\n{open_}\n{summary or text[:_EXCERPT_CHARS]}\n{close}")
+                     f"Saved as {saved}{tail}.]\n{open_}\n{summary or text[:shown]}\n{close}")
     return parts, prefer_tools
 
 

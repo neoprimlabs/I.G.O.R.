@@ -1,4 +1,4 @@
-"""Tests for agents/inbound.py - reading voice notes, images and documents the user sends.
+"""Tests for agents/inbound.py - reading voice notes, images, documents and videos the user sends.
 
 Run: python tests/test_inbound.py   (repo root, no network; needs pypdf)
 
@@ -104,7 +104,7 @@ def test_kinds() -> None:
     from agents import inbound
     cases = {("voice-message.ogg", "audio/ogg"): "voice", ("photo.JPG", None): "image",
              ("shot", "image/png"): "image", ("report.pdf", None): "pdf", ("cv.docx", None): "docx",
-             ("notes.md", None): "text", ("data", "text/csv"): "text", ("clip.mp4", "video/mp4"): "other",
+             ("notes.md", None): "text", ("data", "text/csv"): "text", ("clip.mp4", "video/mp4"): "video",
              ("app.exe", "application/octet-stream"): "other"}
     for (name, ct), kind in cases.items():
         _check(f"{name} is {kind}", inbound._kind(name, ct) == kind, inbound._kind(name, ct))
@@ -235,7 +235,7 @@ def test_documents() -> None:
     _run(many, digest=summarise)
     _check("at most two summaries a message", len(asked) == 2, str(len(asked)))
 
-    parts, _ = _run([_Att("clip.mp4", "video/mp4", b"x")])
+    parts, _ = _run([_Att("game.exe", "application/octet-stream", b"x")])
     _check("an unsupported file is named, not ignored", "was not read" in parts[0], parts[0])
     huge = _Att("big.pdf", "application/pdf", size=11 * 1024 * 1024)
     _check("an oversized document is refused before download", "over the 10 MB" in _run([huge])[0][0] and huge.reads == 0)
@@ -474,6 +474,172 @@ def test_long_document_skips_the_router() -> None:
     _check("prefer_tools goes straight to React", routed == ["React"] and classified == [], f"{routed} {classified}")
     asyncio.run(o.process(config.AUTHORIZED_USER_ID, "hello"))
     _check("without it the router still decides", routed[-1] == "Direct" and classified == ["hello"], str(routed))
+
+
+def test_video_kinds():
+    from agents import inbound
+    _check("a video type", inbound._kind("a.mp4", "video/mp4") == "video")
+    _check("a phone's mov with no type", inbound._kind("a.MOV", None) == "video")
+    _check("a video type wins over an extension that could be sound", inbound._kind("a.webm", "video/webm") == "video")
+    _check("webm that says audio stays a voice note", inbound._kind("a.webm", "audio/webm") == "voice")
+    _check("webm with no type stays a voice note", inbound._kind("a.webm", None) == "voice")
+
+
+def _fake_ffmpeg(duration="42.5", sound=True, frames=True, probe_code=0):
+    calls = []
+
+    async def fake(folder, program, *args):
+        calls.append((program, args))
+        if program == "ffprobe":
+            return probe_code, duration if probe_code == 0 else ""
+        out = args[-1].rsplit("/", 1)[-1]
+        wanted = sound if out == "sound.ogg" else frames
+        if not wanted:
+            return 1, ""
+        (folder / out).write_bytes(b"made")
+        return 0, ""
+
+    return fake, calls
+
+
+def _run_video(fake, transcribe=None, describe=None, digest=None, attachments=None):
+    from agents import inbound
+    import shutil
+    held = inbound._ffmpeg, shutil.which
+    inbound._ffmpeg = fake
+    shutil.which = lambda name, *a, **k: f"/usr/bin/{name}"
+
+    async def words(data, name):
+        return "the kettle is back in stock"
+
+    async def sees(images):
+        return [f"view {i + 1}" for i in range(len(images))]
+
+    async def short(text, ask=""):
+        return "a summary of it"
+
+    try:
+        return asyncio.run(inbound.read(attachments or [_Att("clip.mp4", "video/mp4", b"bytes")], transcribe=transcribe or words,
+                                        describe=describe or sees, digest=digest or short, now=NOW))
+    finally:
+        inbound._ffmpeg, shutil.which = held
+
+
+def test_video_reads_the_sound_and_three_frames():
+    fake, calls = _fake_ffmpeg()
+    parts, prefer = _run_video(fake)
+    text = parts[0]
+    _check("the words are there", "Sound: the kettle is back in stock" in text, text)
+    _check("each frame is stamped", all(f"Frame at {t}: view {i}" in text for i, t in ((1, "0:07"), (2, "0:21"), (3, "0:35"))), text)
+    _check("it says how little was read", "3 still frames and the sound were read" in text and "0:42 long" in text, text)
+    _check("inside the untrusted markers", "[UNTRUSTED EXTERNAL CONTENT" in text and text.index("[UNTRUSTED") < text.index("Sound:"), text)
+    _check("saved like a document", "Saved as " in text and list((config.MEMORY_DIR / "inbox").glob("*-clip.txt")), text)
+    _check("a short clip needs no tool agent", prefer is False)
+    _check("frames, then the sound", [c[0] for c in calls] == ["ffprobe", "ffmpeg", "ffmpeg", "ffmpeg", "ffmpeg"], str(calls))
+    _check("the sound is capped", "900" in calls[-1][1], str(calls[-1]))
+
+
+def test_video_each_half_fails_alone():
+    fake, _ = _fake_ffmpeg(sound=False)
+    parts, _ = _run_video(fake)
+    _check("no sound track is said plainly", "Sound: none." in parts[0] and "Frame at" in parts[0], parts[0])
+
+    async def bad_words(data, name):
+        raise RuntimeError("whisper is down")
+
+    fake, _ = _fake_ffmpeg()
+    parts, _ = _run_video(fake, transcribe=bad_words)
+    _check("Whisper down leaves the frames", "could not be transcribed (RuntimeError)" in parts[0] and "Frame at" in parts[0], parts[0])
+
+    async def bad_eyes(images):
+        raise RuntimeError("vision is down")
+
+    fake, _ = _fake_ffmpeg()
+    parts, _ = _run_video(fake, describe=bad_eyes)
+    _check("vision down leaves the sound", "could not be read (RuntimeError)" in parts[0] and "kettle" in parts[0], parts[0])
+
+    fake, _ = _fake_ffmpeg(frames=False)
+    parts, _ = _run_video(fake)
+    _check("no frames is said plainly", "Frames: none" in parts[0] and "only 0 still frames" in parts[0], parts[0])
+
+
+def test_video_that_cannot_be_read():
+    from agents import inbound
+    import shutil
+    fake, _ = _fake_ffmpeg(probe_code=1)
+    parts, _ = _run_video(fake)
+    _check("not a video", "could not be read as a video" in parts[0] and parts[0].startswith("[A video"), parts[0])
+    fake, calls = _fake_ffmpeg(probe_code=None)
+    parts, _ = _run_video(fake)
+    _check("a decoder that hangs ends there", "could not be read as a video" in parts[0] and len(calls) == 1, parts[0])
+
+    fake, calls = _fake_ffmpeg()
+    parts, _ = _run_video(fake, attachments=[_Att("big.mp4", "video/mp4", size=60 * 1024 * 1024)])
+    _check("too big is refused before anything runs", "over the 50 MB" in parts[0] and not calls, parts[0])
+
+    fake, calls = _fake_ffmpeg()
+    parts, _ = _run_video(fake, attachments=[_Att("a.mp4", "video/mp4", b"x"), _Att("b.mp4", "video/mp4", b"y")])
+    _check("one video a message", len(parts) == 2 and "b.mp4, was not read - one per message" in parts[1], str(parts))
+
+    held = shutil.which
+    shutil.which = lambda name, *a, **k: None
+    try:
+        parts, _ = asyncio.run(inbound.read([_Att("clip.mp4", "video/mp4", b"bytes")], now=NOW))
+    finally:
+        shutil.which = held
+    _check("without ffmpeg it says so", "ffmpeg is not installed" in parts[0] and "No text could be taken" in parts[0], parts[0])
+
+    async def boom(folder, program, *args):
+        raise inbound.sandbox_error("NOT RUN")
+
+    inbound.sandbox_error = RuntimeError
+    parts, _ = _run_video(boom)
+    del inbound.sandbox_error
+    _check("a sandbox that will not start is reported, not raised", "could not be read (RuntimeError)" in parts[0], parts[0])
+
+
+def test_long_video_goes_through_the_summary():
+    fake, _ = _fake_ffmpeg()
+
+    async def talks(data, name):
+        return "word " * 2000
+
+    parts, prefer = _run_video(fake, transcribe=talks)
+    _check("a long talk is summarised", "a summary of it" in parts[0] and "word word" not in parts[0], parts[0][:300])
+    _check("and gets the tool agent", prefer is True)
+
+
+def test_video_with_the_real_ffmpeg():
+    """Only where ffmpeg is installed: the deploy gate, once it is there. A generated clip, the real sandbox."""
+    from agents import inbound
+    import shutil
+    import subprocess
+    if not (shutil.which("ffmpeg") and shutil.which("bwrap")):
+        print("  skip  ffmpeg or bubblewrap is not here")
+        return
+    held = tempfile.mkdtemp()
+    clip = Path(held) / "made.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=duration=4:size=320x240:rate=5", "-f", "lavfi", "-i",
+                    "sine=frequency=440:duration=4", "-shortest", "-pix_fmt", "yuv420p", "-y", str(clip)], check=True, timeout=60)
+    heard, seen = [], []
+
+    async def words(data, name):
+        heard.append((len(data), name))
+        return "a tone"
+
+    async def sees(images):
+        seen.extend(images)
+        return ["a test card" for _ in images]
+
+    parts, _ = asyncio.run(inbound.read([_Att("made.mp4", "video/mp4", clip.read_bytes())], transcribe=words, describe=sees, now=NOW))
+    _check("the sound came out", heard and heard[0][0] > 0, str(heard))
+    _check("three frames came out as jpegs", len(seen) == 3 and all(s.startswith("data:image/jpeg;base64,") for s in seen), str(len(seen)))
+    _check("the length was read", "0:04 long" in parts[0], parts[0])
+
+    (Path(held) / "not.mp4").write_bytes(b"this is not a video at all")
+    parts, _ = asyncio.run(inbound.read([_Att("not.mp4", "video/mp4", b"this is not a video at all")], transcribe=words, describe=sees, now=NOW))
+    _check("rubbish is refused by the real decoder", "could not be read as a video" in parts[0], parts[0])
+    shutil.rmtree(held, ignore_errors=True)
 
 
 if __name__ == "__main__":

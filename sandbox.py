@@ -160,6 +160,13 @@ def prepare(argv: list[str], hide_memory: bool = False, network: bool = False,
     return command(argv, hide_memory, network, mounts, env, workspace)
 
 
+def git_read_only() -> tuple:
+    """Mounts for what parses or runs other people's files: .git is the one writable path left, and
+    a hook written there would run outside the sandbox at the next commit."""
+    git = _path(".git")
+    return (("--ro-bind", git, str(git)),) if git.is_dir() else ()
+
+
 def startup_check() -> str:
     """For main.py: "" when the sandbox works, otherwise why not."""
     why = _probe()

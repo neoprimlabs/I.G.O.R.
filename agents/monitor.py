@@ -283,6 +283,9 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     _scheduler.add_job(_page_heartbeat, "interval", seconds=60, id="page_heartbeat",
                        max_instances=1)
 
+    # Hermes' dispatcher runs every 60 seconds too. With nothing on the board this looks for a file.
+    _scheduler.add_job(_board_tick, "interval", seconds=60, id="board", max_instances=1)
+
     # Presence decides whether to speak on its own. Ten minutes rather than sixty
     # because a lull is a 25-90 minute window and a coarser tick would step over it.
     # The gates and the daily call budget bound the cost, not the tick rate: most
@@ -437,6 +440,13 @@ async def _deliver_scheduled() -> None:
         return
     from agents import scheduled
     await scheduled.deliver_due(_send_fn)
+
+
+async def _board_tick() -> None:
+    if _send_fn is None:
+        return
+    import board
+    board.start_tick(_send_fn)
 
 
 async def _presence_tick() -> None:
@@ -1274,6 +1284,13 @@ def status_block() -> str:
         status_lines.append("Messages scheduled for the user: could not be read, so this is unknown.")
     import usage
     status_lines.append(usage.summary())
+    try:
+        import board
+        on_the_board = board.status()
+        if on_the_board:
+            status_lines.append(on_the_board)
+    except Exception as e:
+        logger.error("Could not read the board - %s: %s", type(e).__name__, e)
     try:
         from agents import stock
         status_lines.append(stock.status())

@@ -19,20 +19,20 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
 - **No container.** `shell` and `python_run` run in bubblewrap (`sandbox.py`): no
   network, secrets or sealed memory, read-only but `/tmp`, `.git` and
   `memory/workspace`; refused if it cannot start. The shell also refuses a blocklist and DMs the user for a yes
-  before risky ones (`approvals.py`).
+  before risky ones (approvals).
 - **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
-  replies; voice notes and images the user sends are read.
+  replies; voice notes, images and videos the user sends are read.
 
-**React's 23 tools, the complete list:** `search` (web or job boards), `memory_read`, `search_memory`,
+**React's 24 tools, in full:** `search` (web or job boards), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
-`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`. No others. Fifteen load on
-request through `load_tools` (Hermes' Tool Search). `send_file` sends real Word, PDF, Excel or CSV files.
+`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`. No others. Sixteen load on
+request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV files.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
 until Groq's stated reset, and the reply says so.
 
-**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`, `steer`, `btw`.
+**Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`, `steer`, `btw`, `board`, `plugins`.
 
 **Routing.** Thirteen fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
@@ -113,7 +113,8 @@ A Discord DM travels this path every time:
    attachments go through `agents/inbound.py` first: voice notes become text
    (Whisper), up to 3 images are described by qwen inside untrusted markers, and
    PDFs, Word, Excel, PowerPoint, EPUB, OpenDocument, notebooks and text are saved to `memory/inbox/` (untrusted)
-   with the text in the message; a long one goes to React with a 20b summary instead.
+   with the text in the message; a long one goes to React with a 20b summary instead. A video goes the same way:
+   ffmpeg, sandboxed, gives Whisper its sound and qwen 3 frames. Without ffmpeg it says so.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`: silent drop, no reply, no acknowledgment. This is the only
    auth check in the system; everything downstream trusts it. A yes or no to a
@@ -220,7 +221,7 @@ System prompt rebuilt each call: `clock.time_line()` and the next seven dates, t
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
 `memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
-fifteen (it returns their rules too; a direct call loads the tool and retries; a request for a
+sixteen (it returns their rules too; a direct call loads the tool and retries; a request for a
 file opens `send_file` at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier).
 
@@ -230,31 +231,24 @@ numbered, dated excerpts, newest first; `around` reads two either side of a numb
 
 `shell` checks `_hardline_refusal` before anything runs: Hermes' floor (root or
 home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell)
-plus the repo, memory, sudoers, the deploy machinery and force-push. Commands are
-split on `; && || |` and quote-stripped with `shlex`, `sh -c` strings are checked
-too, and unparseable quoting fails closed. Any part blocked means nothing runs.
+plus the repo, memory, sudoers, the deploy machinery and force-push. Unparseable quoting fails closed.
 Hermes' middle tier (`approvals.py`): recursive
 deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
 and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
 `scheduled_message` is switched off after a web read, like the other tools that
 change state (`agents/scheduled.py`). `goal` (`goals.py`) is too.
 
-**Price watch, in full.** Rejected listings are marked seen; a failed judge fails
-open and sends unfiltered (an unreadable 200 OK would otherwise swallow a real drop).
+**Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. `aoostar.com`
+blocks Oracle's IPs, so fetches fall back to the `r.jina.ai` relay (public URLs only).
 
-**Stock watch, in full.** Shopify's `/products/<handle>.js`: keyless, no model call. `aoostar.com`
-blocks Oracle's IPs, so fetches fall back to the `r.jina.ai` relay (public URLs only). A failed
-fetch carries the old state forward (or the next success fakes a restock).
-
-**Watch history** (`history.py`, `memory/history.db`) keeps every successful observation, about
-130 rows a day; a failed fetch writes nothing. React's `watch_history` returns changes only, newest first.
+**Watch history** (`history.py`, `memory/history.db`) keeps every successful observation. React's `watch_history` returns changes only.
 
 **Checkpoints** (Hermes' rollback) are taken once per React turn, in
 `memory/.checkpoints/`. In code: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores, keeping files edited since unless `all`.
 
 `task_update` adds a task to `tasks.md`, marks one done, or lists the open ones; an ambiguous `done`
-is refused with the candidates, and it shares `monitor._parse_tasks` with the digest.
+is refused with the candidates.
 
 `delegate_task` runs one isolated worker: `handle()` with an empty context, a restricted tool list,
 8 iterations and `MODELS["worker"]` (20b), one at a time, depth 1, 3 a turn. Its tools are intersected
@@ -265,10 +259,7 @@ with what the parent still holds and never include `_WORKER_FORBIDDEN`; granting
 memory hidden. It calls 8 read-only tools over stdin and stdout, under the turn's rules, 12
 lookups and 60s at most; only what it prints returns, as untrusted. No private files or user.md.
 
-`search_files` greps IGOR's own source for a regex and returns `path:line: text`,
-with up to 6 lines of `context`. It skips private files, `.git` and the venv.
-
-`write_file` and `patch_file` parse a `.py` as they save it and say if the edit broke it (Hermes).
+`search_files` greps IGOR's own source, skipping private files, `.git` and the venv.
 
 **Files** (`deliver.py`, Hermes' deliverable mode): `send_file` takes Markdown, a server file or the
 last reply, and the name's extension picks Word, PDF, Excel, CSV, Markdown or text, rendered in code
@@ -281,7 +272,7 @@ ends. `process` lists, polls, reads or kills. A restart ends them; the next star
 `python_run` can write `memory/workspace`, kept a week up to 200 MB. Prerun scripts cannot.
 
 **Second opinion** (`moa.py`, Hermes' /moa): on request, 20b and qwen each answer from the conversation's
-user and assistant text, no tools, and React gets that as a private trailing message. One failing stops nothing.
+user and assistant text, no tools, and React gets that as a private trailing message.
 
 Up to 8 iterations:
 
@@ -302,8 +293,7 @@ first. If it still does not fit, the loop breaks to the forced-final-answer path
 
 **Search behaviour.** A date in a recency query is stripped (the model writes its
 training-era year). A recency query with no `recency_days` gets a 180-day window
-automatically. Each result is Exa's answer to the query from that page, not its first
-500 characters, which were mostly navigation. These models make one tool call a step, so
+automatically. These models make one tool call a step, so
 `queries` takes up to 8 lookups in one call. `fetch_url` returns a page's text a window at
 a time, or with `question` what it says on one thing; a page it cannot read goes through
 Exa. A failed search says so, rather than reading as no results; DDGS backs Exa, with one
@@ -395,6 +385,16 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 `API_SERVER_KEY` opens `/v1/chat/completions`, the newest user message going through
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
 sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
+
+### Plugins and the board
+
+**Plugins** (`plugins.py`, `plugin_runner.py`): Hermes' format, `register(ctx)` with tools, commands and hooks,
+in the sealed `memory/private/cron_scripts/plugins/`, off until `enable plugin x`. Each call is a fresh process in
+the sandbox: network, no memory, no key but what it names, never IGOR's. Tools count as web tools. None is placed.
+
+**Board** (`board.py`, `memory/board.db`, Hermes' Kanban): tasks wait on parents. A 60-second dispatcher runs one
+at a time on 20b with read-only tools, 8 a day. A parent's result reaches a child as untrusted text. Two failures
+or `[BLOCKED: why]` stop a task and say so; the user hears when a chain ends. The `board` tool closes after a web read.
 
 ### MCP client
 

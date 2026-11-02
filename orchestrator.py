@@ -475,6 +475,18 @@ class Orchestrator:
         # carry it past the rules a turn applies to such text. It waits its turn like anything else.
         from agents.react import _UNTRUSTED_OPEN
         if _UNTRUSTED_OPEN not in content:
+            plugin_action = commands.plugin_action(content)
+            if plugin_action:
+                import plugins
+                return await plugins.act(*plugin_action), False
+            import plugins
+            said = await plugins.command(content)
+            if said is not None:
+                return said, False
+            import board
+            said = board.command(content)
+            if said is not None:
+                return said, False
             note = commands.steer_text(content)
             if note is not None:
                 carry = self._live_carry
@@ -513,6 +525,9 @@ class Orchestrator:
         if command == "skills":
             import skills
             return skills.listing()
+        if command == "plugins":
+            import plugins
+            return plugins.listing()
         if command == "status":
             from agents import monitor
             running = ("Working on a message." if self._stop_turn
@@ -681,7 +696,7 @@ class Orchestrator:
             return "Remember"
         if _MORE_ABOUT.search(content) or (_JOB_WORD.search(content) and _ABOUT_FOUND.search(content)):
             return "React"
-        if commands.wants_file(content):
+        if commands.wants_file(content) or commands.wants_board(content):
             return "React"
         if self._last_route == "Remember" and _CORRECTING.search(lower) and len(lower) < 120:
             return "Remember"

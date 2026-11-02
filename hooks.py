@@ -69,9 +69,7 @@ def _block_reason(printed: str) -> Optional[str]:
 async def pre_tool(tool_name: str, tool_input: dict) -> Optional[str]:
     """What to tell the model if a hook blocks this call, or None. Never raises."""
     placed = scripts("pre_tool_call")
-    if not placed:
-        return None
-    payload = _payload("pre_tool_call", {"tool_name": tool_name, "tool_input": tool_input})
+    payload = _payload("pre_tool_call", {"tool_name": tool_name, "tool_input": tool_input}) if placed else ""
     for script in placed:
         code, printed, errors = await prerun.spawn(script, f"hook {script.name}", payload, _TIMEOUT_S)
         if code is None:
@@ -86,7 +84,8 @@ async def pre_tool(tool_name: str, tool_input: dict) -> Optional[str]:
                     "you wanted to do.]")
         if code != 0:
             logger.warning("Hook %s failed, exit code %s, so the call goes ahead - %s", script.name, code, errors)
-    return None
+    import plugins
+    return await plugins.pre_tool(tool_name, tool_input)
 
 
 async def _run(event: str, payload: str, placed: list[Path]) -> None:
@@ -104,6 +103,8 @@ async def _run(event: str, payload: str, placed: list[Path]) -> None:
 
 def fire(event: str, **fields) -> None:
     """Not waited for: an observer never holds up a reply. Never raises."""
+    import plugins
+    plugins.fire(event, **fields)
     placed = scripts(event)
     if not placed:
         return
