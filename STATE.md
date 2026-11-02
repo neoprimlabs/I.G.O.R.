@@ -298,8 +298,10 @@ on the server, which the auto-mode classifier will not let Claude Code run. Nigh
 **Dashboard** (`dashboard.py`, 2026-11-02): status and chat, at `/dashboard` on the HTTP server, which always listens on
 loopback, in the NeoPrimLabs look the user approved. The user opens it with `IGOR Dashboard` on the PC's desktop, which
 runs `igor-dashboard.ps1` in the keys folder: an SSH tunnel on local port 8642, the chat key read over SSH from
-`memory/private/dashboard.key`, then the browser with the key after the #. Chat is offline-tested; a live message from
-the page is not yet seen. Not reachable from the phone: that needs a private network such as Tailscale. The first step
+`memory/private/dashboard.key`, then the browser with the key after the #. Live 11-02 (681aeff): the key file is
+igor's, mode 600; no key gets 401; `status` sent through the chat came back as a note. The page's send flow was
+checked in headless Edge against a local copy. Not yet seen: a model turn sent from the page, which the user will
+make from the PC. Not reachable from the phone: that needs a private network such as Tailscale. The first step
 of IGOR's own app (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
