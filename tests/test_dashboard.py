@@ -58,6 +58,9 @@ def test_the_snapshot():
     _check("tokens per model, with the biggest label first", react["total"] == 6000 and list(react["by_label"]) == ["React", "Chat"], str(react))
     _check("headroom against the cap", react["cap"] == config.DAILY_TOKEN_CAPS["openai/gpt-oss-120b"] and react["headroom"] == react["cap"] - 6000, str(react))
     _check("24 hourly bars, the newest last", len(react["hourly"]) == 24 and react["hourly"][-1] == 6000, str(react["hourly"]))
+    import clock
+    _check("labelled in the user's own hours", data["tokens"]["hours"][-1] == datetime.now(timezone.utc).astimezone(clock.USER_TZ).strftime("%H"), str(data["tokens"]["hours"][-3:]))
+    _check("the browser row says it once", not str(data["engines"].get("browser", "")).startswith("Browser"), str(data["engines"]))
     _check("an uncapped model says so", data["tokens"]["models"]["openai/gpt-oss-20b"]["cap"] is None and data["tokens"]["models"]["openai/gpt-oss-20b"]["hourly"][-4] == 1200)
     _check("scheduled messages, soonest first, in local time", [s["what"] for s in data["scheduled"]] == ["script host_watch.py", "Practical idea for IGOR"], str(data["scheduled"]))
     _check("Discord connected by the heartbeat", data["process"]["discord"] == "connected")

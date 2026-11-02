@@ -63,19 +63,19 @@ function tokens(data) {
   for (const [name, m] of models) {
     const card = el("div", null, "model");
     card.append(el("h3", name));
-    const left = m.cap ? m.headroom.toLocaleString() + " of " + m.cap.toLocaleString() + " free now" : "no daily cap measured";
+    const left = m.cap ? m.headroom.toLocaleString() + " of " + m.cap.toLocaleString() + " free now" : "No daily cap measured";
     card.append(el("p", m.total.toLocaleString() + " tokens spent. " + left + ".", m.cap && m.headroom < m.cap * 0.2 ? "warn" : "muted"));
     const bars = el("div", null, "bars");
     const most = Math.max(1, ...m.hourly);
     m.hourly.forEach((n, i) => {
       const bar = el("span");
       bar.style.height = Math.round((n / most) * 100) + "%";
-      bar.title = (t.hours[i] || "") + ":00 UTC, " + n.toLocaleString() + " tokens";
+      bar.title = (t.hours[i] || "") + ":00, " + n.toLocaleString() + " tokens";
       bars.append(bar);
     });
     card.append(bars);
     const hours = el("div", null, "hours");
-    hours.append(el("span", (t.hours[0] || "") + ":00 UTC"), el("span", "now"));
+    hours.append(el("span", (t.hours[0] || "") + ":00"), el("span", "now"));
     card.append(hours);
     const labels = Object.entries(m.by_label).slice(0, 6).map(([k, v]) => k + " " + v.toLocaleString()).join(", ");
     card.append(el("p", "Most went on: " + labels + ".", "muted"));

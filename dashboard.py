@@ -91,16 +91,18 @@ def _resources():
 
 
 def _tokens():
+    import clock
     import usage
     now = datetime.now(timezone.utc)
     ledger = usage._load()
-    hours = [usage._hour(now - timedelta(hours=back)) for back in range(23, -1, -1)]
+    moments = [now - timedelta(hours=back) for back in range(23, -1, -1)]
+    hours = [usage._hour(moment) for moment in moments]
     models = {}
     for model, labels in usage.last_24h(now).items():
         models[model] = {"total": sum(labels.values()), "by_label": dict(sorted(labels.items(), key=lambda kv: -kv[1])),
                          "cap": config.DAILY_TOKEN_CAPS.get(model), "headroom": usage.headroom(model, now),
                          "hourly": [sum((ledger.get(h, {}).get(model) or {}).values()) for h in hours]}
-    return {"hours": [h[-2:] for h in hours], "models": models}
+    return {"hours": [moment.astimezone(clock.USER_TZ).strftime("%H") for moment in moments], "models": models}
 
 
 def _scheduled():
@@ -116,11 +118,12 @@ def _scheduled():
 
 
 def _jobs():
+    import clock
     from agents import monitor
     scheduler = monitor._scheduler
     if scheduler is None or not scheduler.running:
         return []
-    return [{"id": j.id, "next": j.next_run_time.strftime("%a %H:%M UTC") if j.next_run_time else "not scheduled"}
+    return [{"id": j.id, "next": j.next_run_time.astimezone(clock.USER_TZ).strftime("%a %H:%M") if j.next_run_time else "not scheduled"}
             for j in sorted(scheduler.get_jobs(), key=lambda j: j.next_run_time or datetime.max.replace(tzinfo=timezone.utc))]
 
 
@@ -151,7 +154,7 @@ def _proposals():
 def _engines():
     import browser
     return {"sandbox": bool(shutil.which("bwrap")), "ffmpeg": bool(shutil.which("ffmpeg")),
-            "lightpanda": bool(shutil.which("lightpanda")), "browser": browser.status()}
+            "lightpanda": bool(shutil.which("lightpanda")), "browser": browser.status().removeprefix("Browser: ").rstrip(".")}
 
 
 def _errors():
