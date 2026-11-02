@@ -1,0 +1,43 @@
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #16181d; --muted: #4f5561; --line: #d9d6cc;
+  --accent: #1f5fa8; --ok: #1d7a46; --warn: #9a5b00; --bad: #b3261e; --bar: #1f5fa8; --bar-bg: #e7e4da;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121418; --panel: #1b1e24; --ink: #eef0f3; --muted: #aab1bd; --line: #2e333c;
+    --accent: #7fb2ef; --ok: #5fcf8f; --warn: #f0b45a; --bad: #ff8a80; --bar: #7fb2ef; --bar-bg: #2a2f38;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 19px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-inline: max(16px, 3vw); padding-block: 24px 48px;
+}
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; margin-bottom: 16px; }
+h1 { margin: 0; font-size: 2rem; letter-spacing: 0.08em; }
+h2 { margin: 0 0 12px; font-size: 1.15rem; }
+#summary { margin: 0; color: var(--muted); font-size: 1.1rem; }
+#banner { padding: 14px 18px; border-radius: 10px; margin-bottom: 18px; font-weight: 600; border: 2px solid var(--bad); color: var(--bad); }
+main { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; min-width: 0; }
+section.wide { grid-column: 1 / -1; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { padding: 6px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+li:last-child { border-bottom: 0; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.model { margin-bottom: 18px; }
+.model h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 70px; background: var(--bar-bg); border-radius: 6px; padding: 4px; margin: 8px 0 4px; }
+.bars span { flex: 1; background: var(--bar); border-radius: 2px 2px 0 0; min-height: 1px; }
+.hours { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.8rem; }
+footer { margin-top: 24px; color: var(--muted); font-size: 0.95rem; }

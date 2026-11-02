@@ -1,4 +1,5 @@
-"""IGOR over HTTP, off until configured: Hermes' API server and webhook adapter.
+"""IGOR over HTTP: Hermes' API server and webhook adapter, off until configured, and its web dashboard
+(dashboard.py), on unless IGOR_DASHBOARD=off.
 
 The API (Hermes' /v1/chat/completions) is what any OpenAI-style front end speaks, and what IGOR's own
 app will. It is on once API_SERVER_KEY is set. Hermes' version is stateless, the client sending the
@@ -372,6 +373,9 @@ def app():
         application.router.add_post("/v1/chat/completions", _chat)
         application.router.add_get("/v1/models", _models)
     application.router.add_post("/webhooks/{name}", _webhook)
+    import dashboard
+    if dashboard.on():
+        dashboard.add_routes(application)
     return application
 
 
@@ -387,7 +391,8 @@ async def start(get_orchestrator: Callable, send: Callable[[str], Awaitable[obje
     set_targets(get_orchestrator, send)
     if _runner is not None:
         return True
-    if not enabled():
+    import dashboard
+    if not (enabled() or dashboard.on()):
         return False
     from aiohttp import web
     host = os.getenv("IGOR_HTTP_HOST", "127.0.0.1")
@@ -400,6 +405,6 @@ async def start(get_orchestrator: Callable, send: Callable[[str], Awaitable[obje
         logger.error("The HTTP server could not start - %s: %s", type(e).__name__, e)
         return False
     _runner = runner
-    logger.info("HTTP server listening on %s:%d (API %s, %d webhook routes)", host, port,
-                "on" if _api_key() else "off", len(_routes()))
+    logger.info("HTTP server listening on %s:%d (API %s, %d webhook routes, dashboard %s)", host, port,
+                "on" if _api_key() else "off", len(_routes()), "on" if dashboard.on() else "off")
     return True

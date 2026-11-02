@@ -288,7 +288,11 @@ def test_off_by_default() -> None:
     async def start():
         return await http_server.start(lambda: None, None)
 
-    _check("start stays off too", asyncio.run(start()) is False and http_server._runner is None)
+    os.environ["IGOR_DASHBOARD"] = "off"
+    try:
+        _check("start stays off too, with the dashboard off", asyncio.run(start()) is False and http_server._runner is None)
+    finally:
+        del os.environ["IGOR_DASHBOARD"]
 
 
 def test_api() -> None:

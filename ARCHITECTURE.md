@@ -20,7 +20,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
   network, secrets or sealed memory, read-only but `/tmp`, `.git` and
   `memory/workspace`; refused if it cannot start. The shell also refuses a blocklist and DMs the user for a yes
   before risky ones (approvals).
-- **No `scheduler.yaml`, `run_agent()`, `igor` module or admin UI.** No spoken
+- **No `scheduler.yaml`, `run_agent()` or `igor` module.** No spoken
   replies; voice notes, images and videos the user sends are read.
 
 **React's 25 tools, in full:** `search` (web, jobs), `memory_read`, `search_memory`,
@@ -30,7 +30,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
 request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
-until Groq's stated reset, and the reply says so.
+until Groq's stated reset.
 
 **Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`, `steer`, `btw`, `board`, `plugins`.
 
@@ -82,9 +82,11 @@ shared by Direct and React. `usage.py` counts spend.
 **Deployment**: a root-owned script outside `/opt/igor` tests, restarts, waits for
 Discord and rolls back on failure.
 
-**MCP**: `mcp_server.py` serves six read-only tools over SSH on stdio. `mcp_client.py` uses servers the user lists.
+**MCP**: `mcp_server.py` serves six read-only tools over SSH; `mcp_client.py` uses the user's servers.
 
-**Off until configured**: `http_server.py` (OpenAI-style API, webhooks), `hooks.py`.
+**Dashboard**: read-only, at `/dashboard` on loopback.
+
+**Off until configured**: `http_server.py`'s API and webhooks, `hooks.py`.
 
 <!-- END SELF SUMMARY -->
 
@@ -237,16 +239,15 @@ deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c
 and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
 `scheduled_message` and `goal` close after a web read too.
 
-**Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. `aoostar.com`
-blocks Oracle's IPs, so fetches fall back to the `r.jina.ai` relay (public URLs only).
+**Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. Blocked
+fetches fall back to the `r.jina.ai` relay (public URLs only).
 
-**Watch history** (`history.py`, `memory/history.db`) keeps every successful observation. React's `watch_history` returns changes only.
+**Watch history** (`history.py`, `memory/history.db`): React's `watch_history` returns changes only.
 
 **Checkpoints** (Hermes' rollback), once per React turn: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores.
 
-`task_update` adds a task to `tasks.md`, marks one done, or lists the open ones; an ambiguous `done`
-is refused with the candidates.
+`task_update` adds, finishes or lists tasks in `tasks.md`.
 
 `delegate_task` runs one isolated worker: `handle()` with an empty context, a restricted tool list,
 8 iterations and `MODELS["worker"]` (20b), one at a time, depth 1, 3 a turn. Its tools are intersected
@@ -257,7 +258,7 @@ with what the parent still holds and never include `_WORKER_FORBIDDEN`; granting
 memory hidden. It calls 8 read-only tools over stdin and stdout, under the turn's rules, 12
 lookups and 60s at most; only what it prints returns, as untrusted. No private files or user.md.
 
-`search_files` greps IGOR's own source, skipping private files, `.git` and the venv.
+`search_files` greps IGOR's own source, skipping private files.
 
 **Files** (`deliver.py`, Hermes' deliverable mode): `send_file` takes Markdown, a server file or the
 last reply, and the name's extension picks Word, PDF, Excel, CSV, Markdown or text, rendered in code
@@ -269,8 +270,8 @@ reply does. "Send that as a PDF" needs no model. No HTML, and a CSV cell cannot 
 ends. `process` lists, polls, reads or kills. A restart ends them; the next start says so. `shell` and
 `python_run` can write `memory/workspace`, kept a week up to 200 MB. Prerun scripts cannot.
 
-**Second opinion** (`moa.py`, Hermes' /moa): on request, 20b and qwen each answer from the conversation's
-user and assistant text, no tools, and React gets that as a private trailing message.
+**Second opinion** (`moa.py`, Hermes' /moa): 20b and qwen answer from the conversation's text, no tools, and
+React gets that as a private trailing message.
 
 Up to 8 iterations:
 
@@ -382,6 +383,9 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
 sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
 
+**Dashboard** (`dashboard.py`, `dashboard_page/`, Hermes' web dashboard): on unless `IGOR_DASHBOARD=off`, read-only,
+no login on loopback as Hermes', refusing any other Host name. Errors are redacted.
+
 ### Plugins, the board and the browser
 
 **Plugins** (`plugins.py`, `plugin_runner.py`): Hermes' format, `register(ctx)` with tools, commands and hooks,
@@ -390,7 +394,7 @@ the sandbox: network, no memory, no key but what it names, never IGOR's. Tools c
 
 **Browser** (`browser.py`, Hermes' browser on its Lightpanda engine): one session over CDP, in the sandbox with
 `--block-private-networks`, closed after 2 idle minutes or past 400 MB. A call is a list of steps. No password
-fields, no non-GET form or script request. A web tool. Lightpanda is not installed yet.
+fields, no non-GET form or script request. A web tool.
 
 **Board** (`board.py`, `memory/board.db`, Hermes' Kanban): tasks wait on parents. A 60-second dispatcher runs one
 at a time on 20b with read-only tools, 8 a day. A parent's result reaches a child as untrusted text. Two failures
@@ -646,5 +650,5 @@ Below the host, the PC's `scripts/backup_memory.ps1` and the hourly `memory-push
 Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** Absorbed into React.
-- **Any UI beyond Discord.** Spec Phase 2.
+- **Any UI beyond Discord and the read-only dashboard.** Spec Phase 2.
 - **Multi-user anything.**
