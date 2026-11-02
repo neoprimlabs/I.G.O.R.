@@ -41,6 +41,9 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _TOOL_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 _COMMAND_RE = re.compile(r"^\s*/([A-Za-z0-9_-]{1,32})(?:\s+(.*))?$", re.DOTALL)
 _INSIDE = "/tmp/plugin"
+# Mounted rather than run where it lies: a copy of IGOR under /tmp, as the live tests use, is under the
+# sandbox's own empty /tmp. Found live 2026-11-02, after every test had passed.
+_RUNNER_INSIDE = "/tmp/plugin_runner.py"
 _STATE_INSIDE = "/tmp/state"
 _MAX_TOOLS = 12
 _DESCRIPTION_CAP = 300
@@ -149,15 +152,17 @@ async def _run(name: str, action: str, request: dict, timeout: int = _TIMEOUT_S)
     process = None
     try:
         state.mkdir(parents=True, exist_ok=True)
-        argv = sandbox.prepare([sys.executable, str(config.BASE_DIR / "plugin_runner.py"), _INSIDE, action],
+        argv = sandbox.prepare([sys.executable, _RUNNER_INSIDE, _INSIDE, action],
                                hide_memory=True, network=True,
-                               mounts=(("--ro-bind", folder, _INSIDE), ("--bind", state, _STATE_INSIDE),
+                               mounts=(("--ro-bind", config.BASE_DIR / "plugin_runner.py", _RUNNER_INSIDE),
+                                       ("--ro-bind", folder, _INSIDE), ("--bind", state, _STATE_INSIDE),
                                        *sandbox.git_read_only()),
                                env={"IGOR_STATE": _STATE_INSIDE, **env})
         process = await asyncio.create_subprocess_exec(*argv, stdin=asyncio.subprocess.PIPE,
-                                                       stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
-        printed, _ = await asyncio.wait_for(asyncio.gather(prerun._read(process.stdout, _READ_CAP),
-                                                           prerun._feed(process.stdin, json.dumps(request, default=str))), timeout)
+                                                       stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        printed, errors, _ = await asyncio.wait_for(asyncio.gather(
+            prerun._read(process.stdout, _READ_CAP), prerun._read(process.stderr, 2000),
+            prerun._feed(process.stdin, json.dumps(request, default=str))), timeout)
         await asyncio.wait_for(process.wait(), 5)
     except asyncio.TimeoutError:
         process.kill()
@@ -167,13 +172,22 @@ async def _run(name: str, action: str, request: dict, timeout: int = _TIMEOUT_S)
     except Exception as e:
         logger.error("Plugin %s could not run - %s: %s", name, type(e).__name__, e)
         return None, f"it could not start ({type(e).__name__})"
-    return _answer(printed, env)
+    data, why = _answer(printed, env)
+    if data is None and errors:
+        # For the log only: what a plugin prints can hold anything it was given.
+        logger.warning("Plugin %s, %s: %s - %s", name, action, why, _masked(errors, env)[-300:].replace("\n", " | "))
+    return data, why
+
+
+def _masked(text: str, env: dict) -> str:
+    for value in env.values():
+        if len(value) >= 8:
+            text = text.replace(value, "[REDACTED]")
+    return text
 
 
 def _answer(printed: str, env: dict) -> tuple[Optional[dict], str]:
-    for value in env.values():
-        if len(value) >= 8:
-            printed = printed.replace(value, "[REDACTED]")
+    printed = _masked(printed, env)
     try:
         data = json.loads(printed)
     except ValueError:

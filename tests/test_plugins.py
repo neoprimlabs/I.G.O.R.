@@ -41,8 +41,9 @@ def _check(name: str, condition: bool, detail: str = "") -> None:
 def _stand_in(argv, hide_memory=False, network=False, mounts=(), env=None, **kw):
     """The plugin's folder is the first mount's source. Runs anywhere."""
     for key, value in (env or {}).items():
-        os.environ[key] = str(mounts[1][1]) if key == "IGOR_STATE" else value
-    return [str(mounts[0][1]) if a == plugins._INSIDE else a for a in argv]
+        os.environ[key] = str(mounts[2][1]) if key == "IGOR_STATE" else value
+    inside = {plugins._RUNNER_INSIDE: str(mounts[0][1]), plugins._INSIDE: str(mounts[1][1])}
+    return [inside.get(a, a) for a in argv]
 
 
 _HELLO = '''
@@ -448,6 +449,19 @@ def register(ctx):
     _check("no write to .git", seen["git"] in ("OSError", "PermissionError"), str(seen))
     _check("its own folder writes", isinstance(seen["state"], int), str(seen))
     _check("its code is read-only", seen["own"] in ("OSError", "PermissionError"), str(seen))
+
+    # The live tests run a copy of IGOR from under /tmp, which the sandbox replaces with an empty one.
+    held = config.BASE_DIR
+    config.BASE_DIR = Path(tempfile.mkdtemp())
+    shutil.copy(held / "plugin_runner.py", config.BASE_DIR / "plugin_runner.py")
+    try:
+        seen = json.loads(asyncio.run(plugins.call("look", {})))
+        _check("a copy of IGOR under /tmp still runs it", seen["env_key"] == "", str(seen))
+    except ValueError as e:
+        _check("a copy of IGOR under /tmp still runs it", False, str(e))
+    finally:
+        shutil.rmtree(config.BASE_DIR, ignore_errors=True)
+        config.BASE_DIR = held
     sandbox.prepare = _stand_in
 
 

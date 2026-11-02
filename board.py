@@ -128,7 +128,8 @@ def _promote(conn) -> None:
 
 
 def create(title: str, body: str = "", parents=None) -> str:
-    title = " ".join(str(title or "").split())
+    # "Answer with no tools." read "...tools.., after t1" in every message that named it.
+    title = " ".join(str(title or "").split()).rstrip(".").strip()
     if not title:
         return "[the board needs a title: say what the task is]"
     parents = [parents] if isinstance(parents, str) else parents if isinstance(parents, list) else []
