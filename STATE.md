@@ -284,6 +284,11 @@ classifier will not let Claude Code run; `tests/test_inbound.py` tests the real 
 (`plugins.py`, none placed) and the board (`board.py`). See ARCHITECTURE. docs/HERMES_PARITY.md lists what is left, and all
 of it needs the user: ffmpeg, a Cerebras key, accounts, the app, or a larger host. Scoring is stricter than the count
 suggests: built and unseen, or built and off, is "part way" in the artifact.
+Live in the throwaway copy: a two-task board chain on 20b handed its result on and sent one message, 2569
+tokens; a plugin loaded in the real sandbox, answered its command, and 120b called its tool through
+load_tools (one refused direct call first) and gave the right answer. That run found the sandbox could not
+start inside any copy of IGOR under /tmp, which every live test uses; fixed in sandbox.py. About 26000 tokens
+in all, more than planned, because one script re-ran another by importing it.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead
