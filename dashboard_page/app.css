@@ -15,6 +15,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { background: var(--bg); }
 body {
   margin: 0; min-height: 100vh; color: var(--text); cursor: crosshair;
@@ -126,6 +127,46 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .hours { display: flex; justify-content: space-between; color: var(--stone); font-size: 13px; letter-spacing: 2px; }
 .labels { margin: 8px 0 0; color: var(--stone); font-size: 15px; }
 
+/* Chat: IGOR's lines carry the green bar, the user's the stone one. */
+.chatlog { max-height: min(62vh, 640px); overflow-y: auto; padding-right: 8px; scrollbar-color: var(--accent2) transparent; }
+.chatlog li.msg { padding: 14px 4px 14px 20px; }
+.chatlog li.msg::before { top: 27px; width: 8px; }
+.chatlog li.msg:hover { padding-left: 20px; }
+.chatlog li.msg:hover::before { width: 8px; }
+.msg.you::before { background: var(--stone-dark); }
+.msg.igor::before { background: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.msg.pending { opacity: 0.55; }
+.msg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 4px; }
+.msg-head b { font: 400 21px/1 var(--display); letter-spacing: 2px; color: var(--stone); }
+.msg.igor .msg-head b { color: var(--accent); }
+.msg-head span { font-size: 13px; letter-spacing: 1px; color: var(--stone); }
+.msg-head .tag { padding: 0 7px; border: 1px solid var(--stone-dark); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; }
+.msg-body { font-size: 17px; line-height: 1.6; }
+.msg-body p { margin: 0; min-height: 0.8em; }
+.msg-body p.h { margin-top: 6px; color: var(--neon); font-weight: 500; }
+.msg-body strong { color: var(--neon); font-weight: 500; }
+.msg-body code { padding: 0 6px; background: #0c0d0c; border: 1px solid var(--line); font-size: 0.92em; }
+.working { display: flex; align-items: center; gap: 16px; margin-top: 14px; color: var(--accent); font-size: 14px; letter-spacing: 3px; text-transform: uppercase; }
+.working i { flex: 1; height: 2px; background: linear-gradient(90deg, transparent, var(--neon), transparent) no-repeat; background-size: 35% 100%; animation: sweep 1.6s linear infinite; }
+@keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.composer { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; margin-top: 16px; }
+.composer textarea {
+  min-width: 0; min-height: 56px; max-height: 40vh; resize: vertical; padding: 13px 15px; cursor: text;
+  font: 17px/1.5 var(--mono); color: var(--text); background: #0c0d0c; border: 1px solid var(--border); outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 22px rgba(109, 179, 63, 0.2); }
+.composer textarea::placeholder { color: var(--stone-dark); }
+.composer button {
+  padding: 0 24px; border: 0; cursor: pointer; font: 500 14px/1 var(--mono); letter-spacing: 3px; text-transform: uppercase;
+  color: var(--bg); background: var(--accent); transition: background 0.2s, box-shadow 0.2s;
+}
+.composer button:hover:not(:disabled) { background: var(--neon); box-shadow: 0 0 22px var(--glow); }
+.composer button:disabled { opacity: 0.4; cursor: not-allowed; }
+.composer button.stop { color: var(--bad); background: transparent; border: 1px solid var(--bad); }
+.composer button.stop:hover { background: rgba(255, 107, 94, 0.12); box-shadow: none; }
+.chat-error { margin: 10px 0 0; color: var(--warn); font-size: 15px; }
+
 footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--stone); font-size: 13px; letter-spacing: 3px; text-transform: uppercase; }
 footer img { border-radius: 50%; }
 footer b { color: var(--accent); font-weight: 400; }
@@ -136,6 +177,10 @@ footer b { color: var(--accent); font-weight: 400; }
   .portrait { width: 84px; height: 84px; }
   dl { grid-template-columns: 1fr; gap: 2px; }
   dd { margin-bottom: 10px; }
+  .composer { grid-template-columns: 1fr 1fr; }
+  .composer textarea { grid-column: 1 / -1; }
+  .composer button { min-height: 48px; }
+  .composer:has(#stop[hidden]) #send { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

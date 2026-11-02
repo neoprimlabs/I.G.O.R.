@@ -786,8 +786,8 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 
 ## Phase I - Interface
 
-- [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** PARKED until the user
-  starts IGOR's own app; interface features wait for it (2026-10-19). Spec Phase 2. Decided
+- [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** STARTED 2026-11-02: `/dashboard`
+  shows IGOR's state and carries chat (ARCHITECTURE, Dashboard). Voice is next in it. Spec Phase 2. Decided
   with the user 2026-10-16: a desktop dashboard application, coming soon, that takes
   over from Discord as the main interface - more control and quality-of-life
   improvements. Its first data source is A.4's work folder and status. Separate

@@ -1,5 +1,5 @@
-// Fills the page from /dashboard/status.json every 15 seconds. Text only through textContent: what IGOR
-// shows can hold words from a web page.
+// Fills the page from /dashboard/status.json every 15 seconds, and runs the chat. Text only through
+// textContent: what IGOR shows can hold words from a web page.
 "use strict";
 
 const REFRESH_MS = 15000;
@@ -169,7 +169,162 @@ async function refresh() {
   }
 }
 
+// Chat: the conversation as the store holds it, Discord's turns included, plus notes for replies it does
+// not keep. The key arrives from the launcher after the #, which the browser never sends to a server.
+const KEY_NAME = "igor-chat-key";
+const chat = {key: "", after: -1, notes: 0, boot: "", pending: new Map(), timer: 0, since: 0, clock: 0};
+
+try { chat.key = localStorage.getItem(KEY_NAME) || ""; } catch (e) { /* storage refused: the # still works */ }
+const handed = /^#key=([A-Za-z0-9_-]{32,})$/.exec(location.hash);
+if (handed) {
+  chat.key = handed[1];
+  try { localStorage.setItem(KEY_NAME, chat.key); } catch (e) { /* kept for this visit only */ }
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+function prose(text) {
+  const body = el("div", null, "msg-body");
+  for (const line of String(text).split("\n")) {
+    const heading = /^#{1,4}\s+/.exec(line);
+    const p = el("p", null, heading ? "h" : "");
+    for (const part of (heading ? line.slice(heading[0].length) : line).split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/)) {
+      if (!part) continue;
+      if (part.length > 4 && part.startsWith("**") && part.endsWith("**")) p.append(el("strong", part.slice(2, -2)));
+      else if (part.length > 2 && part.startsWith("`") && part.endsWith("`")) p.append(el("code", part.slice(1, -1)));
+      else p.append(document.createTextNode(part));
+    }
+    body.append(p);
+  }
+  return body;
+}
+
+function message(role, text, at, extra) {
+  const item = el("li", null, "msg " + role + (extra ? " " + extra : ""));
+  const head = el("div", null, "msg-head");
+  head.append(el("b", role === "you" ? "You" : "I.G.O.R."), el("span", at));
+  if (extra === "unprompted") head.append(el("span", "unprompted", "tag"));
+  item.append(head, prose(text));
+  return item;
+}
+
+function append(node, force) {
+  const log = $("chatlog");
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  log.querySelector(".empty")?.remove();
+  log.append(node);
+  if (atBottom || force) log.scrollTop = log.scrollHeight;
+}
+
+function chatError(text) {
+  const line = $("chat-error");
+  line.hidden = !text;
+  line.textContent = text || "";
+}
+
+function lockChat(why) {
+  chat.key = "";
+  try { localStorage.removeItem(KEY_NAME); } catch (e) { /* nothing kept */ }
+  $("say").disabled = true;
+  $("send").disabled = true;
+  $("say").placeholder = why;
+  if (!$("chatlog").children.length) $("chatlog").append(el("li", why, "muted empty"));
+}
+
+function setWorking(on) {
+  const box = $("working");
+  $("stop").hidden = !on;
+  if (on && box.hidden) {
+    chat.since = Date.now();
+    clearInterval(chat.clock);
+    const show = () => {
+      const s = Math.floor((Date.now() - chat.since) / 1000);
+      $("working-text").textContent = "I.G.O.R. is working  " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    };
+    show();
+    chat.clock = setInterval(show, 1000);
+  }
+  if (!on) clearInterval(chat.clock);
+  box.hidden = !on;
+}
+
+async function chatPoll() {
+  clearTimeout(chat.timer);
+  if (!chat.key) return;
+  let next = 8000;
+  try {
+    const query = "?after=" + chat.after + "&notes=" + chat.notes + "&boot=" + encodeURIComponent(chat.boot);
+    const response = await fetch("/dashboard/chat.json" + query, {cache: "no-store", headers: {"X-IGOR-Key": chat.key}});
+    if (response.status === 401) { lockChat("The chat key has changed. Open the dashboard from the IGOR Dashboard shortcut again."); return; }
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    const first = chat.after < 0;
+    // The user's own words coming back mean the oldest message still marked as sending has landed.
+    const landed = (role) => {
+      const [turn, node] = chat.pending.entries().next().value || [];
+      if (role === "you" && node) { node.remove(); chat.pending.delete(turn); }
+    };
+    for (const row of data.rows) { landed(row.role); append(message(row.role, row.text, row.at, row.unprompted ? "unprompted" : ""), first); }
+    for (const note of data.notes) { landed(note.role); append(message(note.role, note.text, note.at, "")); }
+    if (first && !data.rows.length) $("chatlog").append(el("li", "No messages yet.", "muted empty"));
+    chat.after = data.last;
+    chat.notes = data.notes_last;
+    chat.boot = data.boot;
+    for (const [turn, node] of chat.pending) {
+      if (!data.waiting.includes(turn)) { node.remove(); chat.pending.delete(turn); }
+    }
+    setWorking(data.working || chat.pending.size > 0);
+    if (data.working || chat.pending.size) next = 2000;
+  } catch (e) {
+    next = 15000;
+  }
+  chat.timer = setTimeout(chatPoll, next);
+}
+
+async function say(text) {
+  chatError("");
+  let response, data = {};
+  try {
+    response = await fetch("/dashboard/chat", {method: "POST", cache: "no-store",
+      headers: {"Content-Type": "application/json", "X-IGOR-Key": chat.key}, body: JSON.stringify({text})});
+    data = await response.json().catch(() => ({}));
+  } catch (e) {
+    chatError("Not sent: the link is down. Is the tunnel open?");
+    return false;
+  }
+  if (!response.ok) {
+    chatError(data.error || "Not sent (HTTP " + response.status + ").");
+    if (response.status === 401) lockChat(data.error || "Chat is locked.");
+    return false;
+  }
+  const node = message("you", text, "sending", "pending");
+  chat.pending.set(data.turn, node);
+  append(node, true);
+  setWorking(true);
+  chatPoll();
+  return true;
+}
+
+$("composer").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const box = $("say");
+  const text = box.value.trim();
+  if (!text || !chat.key) return;
+  $("send").disabled = true;
+  if (await say(text)) box.value = "";
+  $("send").disabled = !chat.key;
+  box.focus();
+});
+$("say").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $("composer").requestSubmit();
+  }
+});
+$("stop").addEventListener("click", () => say("stop"));
+
 tick();
 setInterval(tick, 1000);
 refresh();
 setInterval(refresh, REFRESH_MS);
+if (chat.key) chatPoll();
+else lockChat("Chat opens from the IGOR Dashboard shortcut on your PC.");

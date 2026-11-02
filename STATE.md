@@ -295,9 +295,12 @@ against a fake CDP server; the real-engine half of tests/test_browser.py runs wh
 yet: `sudo curl -fL -o /usr/local/bin/lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && sudo chmod 755 /usr/local/bin/lightpanda`
 on the server, which the auto-mode classifier will not let Claude Code run. Nightly, so the flag spelling is read from `lightpanda help`.
 
-**Dashboard** (`dashboard.py`, 2026-11-02): read-only, at `/dashboard` on the HTTP server, which now always listens on
-loopback. The user opens it with `IGOR Dashboard` on the PC's desktop, which runs `igor-dashboard.ps1` in the keys folder:
-an SSH tunnel on local port 8642, then the browser. The first step of IGOR's own app (GAMEPLAN I.1).
+**Dashboard** (`dashboard.py`, 2026-11-02): status and chat, at `/dashboard` on the HTTP server, which always listens on
+loopback, in the NeoPrimLabs look the user approved. The user opens it with `IGOR Dashboard` on the PC's desktop, which
+runs `igor-dashboard.ps1` in the keys folder: an SSH tunnel on local port 8642, the chat key read over SSH from
+`memory/private/dashboard.key`, then the browser with the key after the #. Chat is offline-tested; a live message from
+the page is not yet seen. Not reachable from the phone: that needs a private network such as Tailscale. The first step
+of IGOR's own app (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

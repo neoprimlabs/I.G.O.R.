@@ -84,7 +84,7 @@ Discord and rolls back on failure.
 
 **MCP**: `mcp_server.py` serves six read-only tools over SSH; `mcp_client.py` uses the user's servers.
 
-**Dashboard**: read-only, at `/dashboard` on loopback.
+**Dashboard**: status and keyed chat, `/dashboard` on loopback.
 
 **Off until configured**: `http_server.py`'s API and webhooks, `hooks.py`.
 
@@ -347,10 +347,8 @@ screen holds the gigs; picks go out in the post's own words.
 
 ### ConfigEdit
 
-Edits exactly three files:
-`digest_config.md`, `schedule_config.md`, `watchlist.md`. Rejects any other
-filename, validates digest section names against the set the digest actually
-reads, keeps one rolling `.bak` per file, and reports whether a restart is needed.
+Edits only `digest_config.md`, `schedule_config.md` and `watchlist.md`, checks digest section names against
+the ones the digest reads, keeps one rolling `.bak` per file, and says whether a restart is needed.
 
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
 whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
@@ -361,9 +359,8 @@ whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
 
 1. **PLAN** - sees the question and prior findings, returns one search query
 2. **SEARCH** - no model, `research._run_search`
-3. **DISTILL** - sees only this one search's raw results, returns 3-5 sourced
-   findings plus a `Next:` thread. The raw results are discarded here and never
-   enter another context
+3. **DISTILL** - sees only this search's raw results, returns 3-5 sourced
+   findings and a `Next:` thread; the raw results go no further
 4. **APPEND** - code, not a model, writes to `research.md`
 
 Every model call goes through `_call`, a wrapper over `llm.complete`. **Both calls run at `reasoning_effort` low**,
@@ -383,8 +380,9 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
 sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
 
-**Dashboard** (`dashboard.py`, `dashboard_page/`, Hermes' web dashboard): on unless `IGOR_DASHBOARD=off`, read-only,
-no login on loopback as Hermes', refusing any other Host name. Errors are redacted.
+**Dashboard** (`dashboard.py`, Hermes' web dashboard): status with no login on loopback, other Host names refused;
+chat through `orchestrator.process`, needing the key in `memory/private/dashboard.key`, which no tool or sandbox
+reads. The PC launcher fetches it over SSH.
 
 ### Plugins, the board and the browser
 
@@ -617,18 +615,16 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
 
 ### Health-gated deploy (S.1, built 2026-08-10)
 
-`/usr/local/lib/igor-deploy/deploy.sh`, root-owned and deliberately outside
-`/opt/igor` so `write_file` cannot reach it. Logs every attempt to
-`/var/log/igor-deploy.log`, which the `igor` user also cannot write.
+`/usr/local/lib/igor-deploy/deploy.sh`, root-owned, outside `/opt/igor` so `write_file` cannot reach it,
+logs every attempt to `/var/log/igor-deploy.log`, which `igor` cannot write either.
 
-Four gates in order. The first three run before any restart, so a change that fails
-them never takes IGOR down:
+Four gates. The first three run before any restart, so failing them never takes IGOR down:
 
 | Gate | Catches | On failure |
 |---|---|---|
 | syntax | compiles every `.py` outside `memory/` | reset to previous commit, no restart |
 | imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
-| tests | every offline `tests/test_*.py`, as igor, ~150s | reset to previous commit, no restart |
+| tests | every offline `tests/test_*.py`, as igor, ~5 min | reset to previous commit, no restart |
 | **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the heartbeat above.
@@ -650,5 +646,5 @@ Below the host, the PC's `scripts/backup_memory.ps1` and the hourly `memory-push
 Described in `IGOR_SPEC.md` or `GAMEPLAN.md`, absent from the code:
 
 - **Dev and Comms as separate specialists.** Absorbed into React.
-- **Any UI beyond Discord and the read-only dashboard.** Spec Phase 2.
+- **Any UI beyond Discord and the dashboard.** Spec Phase 2.
 - **Multi-user anything.**

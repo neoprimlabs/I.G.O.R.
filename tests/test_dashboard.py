@@ -19,6 +19,7 @@ import config
 config.MEMORY_DIR = Path(tempfile.mkdtemp())
 config.LOG_FILE = config.MEMORY_DIR / "igor.log"
 
+import context_store
 import dashboard
 import http_server
 import usage
@@ -145,6 +146,148 @@ def test_over_http():
         _check("off when switched off", not any(r.startswith("/dashboard") for r in routes), str(routes))
     finally:
         del os.environ["IGOR_DASHBOARD"]
+
+
+class _Orchestrator:
+    """The parts of the real one the chat touches. Stores what a real turn stores; a command's reply is not stored."""
+
+    def __init__(self):
+        self._stop_turn = None
+        self._stop_follow = None
+        self.gate = asyncio.Event()
+        self.users = set()
+        self.pending = False
+
+    async def process(self, user_id, content, prefer_tools=False):
+        self.users.add(user_id)
+        if content in ("status", "stop"):
+            return ("Nothing is running." if content == "status" else "Stopping at the next step."), False
+        if content == "boom":
+            raise RuntimeError("the model fell over")
+        self._stop_turn = asyncio.Event()
+        await self.gate.wait()
+        self._stop_turn = None
+        context_store.append("user", content)
+        context_store.append("assistant", f"Answer to {content} with **bold**")
+        self.pending = True
+        return f"Answer to {content} with **bold**\n\n`[Monitor]`", False
+
+    async def follow_through(self, send):
+        if not self.pending:
+            return 0
+        self.pending = False
+        context_store.append("assistant", "A further round")
+        await send("A further round")
+        await send("A notice the store never kept")
+        return 1
+
+
+def test_the_chat():
+    async def go():
+        from aiohttp import web, ClientSession
+        fake = _Orchestrator()
+        http_server.set_targets(lambda: fake, None)
+        app = http_server.app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "127.0.0.1", 0)
+        await site.start()
+        base = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        key_file = config.MEMORY_DIR / "private" / "dashboard.key"
+        key = key_file.read_text(encoding="utf-8").strip()
+        good = {"X-IGOR-Key": key}
+
+        async def done():
+            for _ in range(200):
+                if not dashboard._open_turns and not dashboard._tasks:
+                    return
+                await asyncio.sleep(0.02)
+
+        try:
+            _check("a key was made at start, long and private", len(key) >= 32 and (os.name != "posix" or key_file.stat().st_mode & 0o777 == 0o600))
+            _check("kept, not remade", dashboard.chat_key() == key)
+            async with ClientSession() as s:
+                async with s.get(f"{base}/dashboard/chat.json") as r:
+                    _check("no key, no conversation", r.status == 401 and "shortcut" in (await r.json())["error"])
+                async with s.get(f"{base}/dashboard/chat.json", headers={"X-IGOR-Key": key[:-1] + "x"}) as r:
+                    _check("a wrong key, no conversation", r.status == 401)
+                async with s.get(f"{base}/dashboard/chat.json", headers={**good, "Host": "attacker.example"}) as r:
+                    _check("the key does not get past the Host check", r.status == 403)
+                async with s.post(f"{base}/dashboard/chat", json={"text": "hi"}) as r:
+                    _check("no key, no message", r.status == 401)
+                for origin in ("http://evil.example", "null", "http://127.0.0.1.evil.example:8642"):
+                    async with s.post(f"{base}/dashboard/chat", json={"text": "hi"}, headers={**good, "Origin": origin}) as r:
+                        _check(f"another page may not post: {origin}", r.status == 403)
+                for body, why in (({"text": "  "}, "empty"), ({"text": "x" * 4001}, "too long"), (["hi"], "not an object")):
+                    async with s.post(f"{base}/dashboard/chat", json=body, headers=good) as r:
+                        _check(f"refused: {why}", r.status == 400)
+                _check("nothing reached IGOR yet", not fake.users)
+
+                async with s.get(f"{base}/dashboard/chat.json", headers=good) as r:
+                    first = await r.json()
+                _check("a first look at an empty store", first["rows"] == [] and first["notes"] == [] and first["waiting"] == [] and not first["working"], str(first))
+                after, boot = first["last"], first["boot"]
+
+                async with s.post(f"{base}/dashboard/chat", json={"text": "hello"}, headers={**good, "Origin": base}) as r:
+                    turn = (await r.json())["turn"]
+                    _check("the page's own post is taken", r.status == 202)
+                await asyncio.sleep(0.05)
+                async with s.get(f"{base}/dashboard/chat.json?after={after}&notes=0&boot={boot}", headers=good) as r:
+                    mid = await r.json()
+                _check("waiting while it works", mid["waiting"] == [turn] and mid["working"] and mid["rows"] == [], str(mid))
+                fake.gate.set()
+                await done()
+                async with s.get(f"{base}/dashboard/chat.json?after={after}&notes=0&boot={boot}", headers=good) as r:
+                    data = await r.json()
+                texts = [(row["role"], row["text"]) for row in data["rows"]]
+                _check("as the user", fake.users == {config.AUTHORIZED_USER_ID})
+                _check("the exchange and the round come from the store", texts == [("you", "hello"), ("igor", "Answer to hello with **bold**"), ("igor", "A further round")], str(texts))
+                _check("only what the store never kept is a note", [n["text"] for n in data["notes"]] == ["A notice the store never kept"], str(data["notes"]))
+                _check("nothing waiting after", data["waiting"] == [] and not data["working"])
+                after, seen = data["last"], data["notes_last"]
+
+                for text in ("status", "boom"):
+                    async with s.post(f"{base}/dashboard/chat", json={"text": text}, headers=good) as r:
+                        _check(f"{text} taken", r.status == 202)
+                    await done()
+                async with s.get(f"{base}/dashboard/chat.json?after={after}&notes={seen}&boot={boot}", headers=good) as r:
+                    data = await r.json()
+                notes = [(n["role"], n["text"]) for n in data["notes"]]
+                _check("a command's reply, which the store never keeps, comes with its question",
+                       notes[:2] == [("you", "status"), ("igor", "Nothing is running.")], str(notes))
+                _check("a failure says so, and nothing more", notes[2:] == [("you", "boom"), ("igor", "Something went wrong. Details have been logged.")], str(notes))
+                _check("no rows for either", data["rows"] == [])
+                async with s.get(f"{base}/dashboard/chat.json?after={data['last']}&notes={data['notes_last']}&boot=other", headers=good) as r:
+                    _check("after a restart the notes start again", len((await r.json())["notes"]) == len(dashboard._notes))
+
+                fake.gate.clear()
+                for text in ("one", "two", "three"):
+                    async with s.post(f"{base}/dashboard/chat", json={"text": text}, headers=good) as r:
+                        _check(f"queued {text}", r.status == 202)
+                async with s.post(f"{base}/dashboard/chat", json={"text": "four"}, headers=good) as r:
+                    _check("three waiting is the most", r.status == 429)
+                async with s.post(f"{base}/dashboard/chat", json={"text": "stop"}, headers=good) as r:
+                    _check("but stop always gets through", r.status == 202)
+                fake.gate.set()
+                await done()
+
+                context_store.append("assistant", "[sent proactively] The morning digest")
+                async with s.get(f"{base}/dashboard/chat.json?after=-1", headers=good) as r:
+                    data = await r.json()
+                last = data["rows"][-1]
+                _check("a post IGOR sent unprompted is marked, without the marker", last["unprompted"] and last["text"] == "The morning digest", str(last))
+                _check("a first look is the newest few", len(data["rows"]) <= dashboard._CHAT_ROWS and data["notes"] == [])
+
+                http_server.set_targets(lambda: None, None)
+                async with s.post(f"{base}/dashboard/chat", json={"text": "early"}, headers=good) as r:
+                    _check("taken while IGOR starts", r.status == 202)
+                await done()
+                _check("and told to send again", dashboard._notes[-1]["text"].startswith("I.G.O.R. is still starting"))
+        finally:
+            await runner.cleanup()
+            http_server.set_targets(None, None)
+
+    asyncio.run(go())
 
 
 def test_the_page_never_writes_html_from_data():

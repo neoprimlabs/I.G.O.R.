@@ -25,11 +25,22 @@
 <section class="gauges" id="gauges" aria-label="Vital signs"></section>
 
 <main>
-  <section class="panel"><h2><b>01</b> Vitals</h2><dl id="health"></dl></section>
-  <section class="panel"><h2><b>02</b> Scheduled messages</h2><ul id="scheduled"></ul><h2 class="next"><b>03</b> Task board</h2><ul id="board"></ul></section>
-  <section class="panel wide"><h2><b>04</b> Token flow, last 24 hours</h2><div id="tokens"></div></section>
-  <section class="panel"><h2><b>05</b> Jobs</h2><ul id="jobs"></ul></section>
-  <section class="panel"><h2><b>06</b> Plugins and background</h2><ul id="plugins"></ul><ul id="background"></ul><h2 class="next"><b>07</b> Error log</h2><ul id="errors" class="log"></ul></section>
+  <section class="panel wide chat">
+    <h2><b>01</b> Talk to I.G.O.R.</h2>
+    <ul id="chatlog" class="chatlog" aria-live="polite"></ul>
+    <div id="working" class="working" hidden><span id="working-text">Working</span><i></i></div>
+    <form id="composer" class="composer">
+      <textarea id="say" rows="2" maxlength="4000" placeholder="Message I.G.O.R." aria-label="Message I.G.O.R."></textarea>
+      <button type="submit" id="send">Send</button>
+      <button type="button" id="stop" class="stop" hidden>Stop</button>
+    </form>
+    <p id="chat-error" class="chat-error" hidden></p>
+  </section>
+  <section class="panel"><h2><b>02</b> Vitals</h2><dl id="health"></dl></section>
+  <section class="panel"><h2><b>03</b> Scheduled messages</h2><ul id="scheduled"></ul><h2 class="next"><b>04</b> Task board</h2><ul id="board"></ul></section>
+  <section class="panel wide"><h2><b>05</b> Token flow, last 24 hours</h2><div id="tokens"></div></section>
+  <section class="panel"><h2><b>06</b> Jobs</h2><ul id="jobs"></ul></section>
+  <section class="panel"><h2><b>07</b> Plugins and background</h2><ul id="plugins"></ul><ul id="background"></ul><h2 class="next"><b>08</b> Error log</h2><ul id="errors" class="log"></ul></section>
 </main>
 
 <footer>
