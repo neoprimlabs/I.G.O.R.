@@ -77,8 +77,12 @@ def test_the_snapshot():
     _check("a run of one message with its numbers changing is one row", errors[0]["where"] == "discord.client" and errors[0]["count"] == 3
            and errors[0]["what"] == "Attempting a reconnect in 2.5s", str(errors[0]))
     _check("each with when and where", errors[1]["what"] == "problem l" and errors[1]["where"] == "y" and errors[1]["when"] and errors[1]["count"] == 1, str(errors[1]))
-    config.LOG_FILE.write_text(f"2026-11-02 03:00:00,000 ERROR x: failure 1 key={secret}\n", encoding="utf-8")
-    _check("keys in errors are redacted", secret not in json.dumps(dashboard._errors()))
+    config.LOG_FILE.write_text(f"2026-11-02 03:00:00,000 ERROR x: failure 1 key={secret}\n"
+                               "2026-11-02 04:00:00,000 ERROR react: ReAct failed - RateLimitError: Error code: 429 - {'error': {'message': 'org_abc'}}\n",
+                               encoding="utf-8")
+    shown = dashboard._errors()
+    _check("keys in errors are redacted", secret not in json.dumps(shown) and shown[1]["what"] == "failure 1 key=[REDACTED]", str(shown))
+    _check("an API's error body is left off", shown[0]["what"] == "ReAct failed - RateLimitError: Error code: 429", str(shown[0]))
     _check("no proposals file is zero waiting, or says why", data["proposals"] == 0 or "unreadable" in data["proposals"], str(data["proposals"]))
     _check("an empty board and no plugins are empty lists, not instructions", data["board"] == [] and data["plugins"] == [] and data["background"] == [],
            str((data["board"], data["plugins"], data["background"])))

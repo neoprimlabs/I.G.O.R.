@@ -263,7 +263,8 @@ def _errors():
             when = _when(datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").astimezone())
         else:
             when, where, what = "", "", line
-        what = sanitize.redact(what)
+        # An API's error body follows its status code: the JSON says it again, with account ids.
+        what = sanitize.redact(what).split("{", 1)[0].rstrip(" -:") or what[:80]
         shape = (where, re.sub(r"\d+(\.\d+)?", "#", what))
         if groups and groups[-1]["shape"] == shape:
             groups[-1]["count"] += 1
@@ -320,9 +321,7 @@ def _origin_ok(request) -> bool:
 
 
 def _local_time(ts: float) -> str:
-    import clock
-    moment = datetime.fromtimestamp(ts, timezone.utc).astimezone(clock.USER_TZ)
-    return moment.strftime("%H:%M" if moment.date() == datetime.now(clock.USER_TZ).date() else "%a %d %b, %H:%M")
+    return _when(datetime.fromtimestamp(ts, timezone.utc)).removeprefix("today ")
 
 
 def _note(role: str, text: str) -> None:

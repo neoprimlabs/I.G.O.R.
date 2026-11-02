@@ -212,6 +212,7 @@ footer b { color: var(--accent); font-weight: 400; }
   .model h3 { font-size: 22px; }
   .bars { height: 70px; gap: 3px; }
   .msg-body { font-size: 16px; }
+  .chatlog { max-height: 66vh; }
   footer { gap: 10px 12px; font-size: 12px; letter-spacing: 2px; }
   .stamp { margin-left: 0; flex-basis: 100%; }
   .composer { grid-template-columns: 1fr 1fr; }

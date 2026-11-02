@@ -181,13 +181,14 @@ function render(data) {
   $("often").textContent = "Also running every few minutes: " + often.join(", ") + ".";
   fill("plugins", data.plugins, "No plugins installed.");
   fill("background", data.background, "");
-  fill("errors", data.errors, "No errors logged.", (e) => twoLine(e.what, [e.when, PLACES[e.where] || e.where, e.count > 1 ? e.count + " times" : ""]));
+  const place = (where) => PLACES[where] || (where ? where[0].toUpperCase() + where.slice(1) : "");
+  fill("errors", data.errors, "No errors logged.", (e) => twoLine(e.what, [e.when, place(e.where), e.count > 1 ? e.count + " times" : ""]));
   $("footer").textContent = "Synced " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
 }
 
 function tick() {
   const now = new Date();
-  $("clock").textContent = now.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  $("clock").textContent = now.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
   $("date").textContent = now.toLocaleDateString([], {weekday: "long", month: "short", day: "numeric"});
 }
 
@@ -301,6 +302,8 @@ async function chatPoll() {
     for (const row of data.rows) { landed(row.role); append(message(row.role, row.text, row.at, row.unprompted ? "unprompted" : ""), first); }
     for (const note of data.notes) { landed(note.role); append(message(note.role, note.text, note.at, "")); }
     if (first && !data.rows.length) $("chatlog").append(el("li", "No messages yet.", "muted empty"));
+    // The fonts arrive after the first rows and make them taller, which leaves the newest out of view.
+    if (first && document.fonts) document.fonts.ready.then(() => { $("chatlog").scrollTop = $("chatlog").scrollHeight; });
     chat.after = data.last;
     chat.notes = data.notes_last;
     chat.boot = data.boot;
