@@ -272,7 +272,11 @@ under a second each. That run dropped "and stop once it has" from a brief, so `u
 the run reads it; a model's null for an unused time field cost a refused call, so those three accept null. **Built after
 it, off until configured:** `hooks.py` (Hermes' shell hooks, none placed) and `http_server.py` (its API server and
 webhooks, on loopback, with no key and no routes set). The API key is `API_SERVER_KEY` in `/opt/igor/.env`; a route goes in
-`memory/private/webhooks.json`. Reaching one from outside takes an SSH tunnel or a step on Oracle's firewall.
+`memory/private/webhooks.json`. Reaching one from outside takes an SSH tunnel or a step on Oracle's firewall. Checked for
+real on a spare loopback port in the throwaway copy: the API answered through the whole orchestrator, refused no key, and
+streamed; a webhook delivered once, refused no signature and skipped a repeat; a hook blocked a tool in the real sandbox;
+`until` reached the brief on 120b, 5125 tokens. The real service's port stays closed. Not yet seen: a real outside
+sender, or an app on the API.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

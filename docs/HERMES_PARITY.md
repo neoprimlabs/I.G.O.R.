@@ -1,6 +1,6 @@
 # IGOR and Hermes Agent, feature by feature
 
-Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation (v0.22.5) and IGOR's source on 2026-10-30. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
+Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source, last on 2026-11-01. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
 
 Update this file when a row changes. ARCHITECTURE.md describes how each thing works; this only says whether it exists.
 
@@ -76,7 +76,8 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Still open, most useful first
 
-1. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
+1. **Video analysis.** Needs ffmpeg on the host, not installed. Whisper and qwen could then read a clip's sound and frames, though Discord's upload limit leaves little room for a phone's video.
+2. **Kanban.** Several agents sharing a board. Little use with one worker at a time.
 
 ## Waiting on the user
 
