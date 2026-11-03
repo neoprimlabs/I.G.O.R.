@@ -313,6 +313,20 @@ def test_a_pick_shows_the_posts_own_words() -> None:
     _check("an opening stops at a word, and says it was cut", shown.endswith("word...") and len(shown) < 240, shown)
     _check("links are left out", "http" not in asks({"body": "See https://x.example/job for our chatbot build."}))
     _check("a post with no body says so", asks({"body": None}) == "The post gives no detail." == asks({}))
+
+    # 2026-11-03: the right to work, the post's only "must", stood in for what the work was.
+    header = ("Example Co | Agent Developer + Linux Admin | REMOTE (US only) | US work authorization "
+              "required, no sponsorship | Full-time | $70k to $90k | No agencies")
+    hn = {"title": header[:140].rsplit(" ", 1)[0], "body": header + " | We build agents for small firms. "
+          "The role is about half agent development and half Linux administration. "
+          "Must be legally authorized to work in the US without visa sponsorship."}
+    shown = asks(hn)
+    _check("the line saying what the role is beats a right-to-work rule",
+           shown == "The post says: The role is about half agent development and half Linux administration.", shown)
+    hn["body"] = header + " | We build agents for small firms and pay weekly."
+    shown = asks(hn)
+    _check("and an opening does not repeat the heading already shown as the title",
+           shown == "The post says: No agencies | We build agents for small firms and pay weekly.", shown)
     _check("the screen is told to write nothing after a pick's number",
            "with nothing after it" in gigs._RANK_SYSTEM and "Fits because" not in gigs._RANK_SYSTEM)
     tmp.cleanup()

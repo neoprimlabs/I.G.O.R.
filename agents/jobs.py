@@ -516,6 +516,10 @@ _ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:wi
                       r"|\brequired (?:skills|experience|qualifications)\b|\bexperience required\b",
                       re.IGNORECASE)
 _ASKS_HEADING = re.compile(r"(?:required|requirements?)\b.{0,30}$", re.IGNORECASE)
+# Who may be hired, not what the work needs. 2026-11-03 an agent developer post showed
+# "Must be legally authorized to work in the US without visa sponsorship" as all it asked.
+_ELIGIBILITY = re.compile(r"\bauthori[sz](?:ed|ation) to work\b|\bwork (?:authori[sz]ation|permit)\b"
+                          r"|\bvisa sponsorship\b|\bsponsorship\b", re.IGNORECASE)
 _BLOCK_TAG = re.compile(r"</?(?:p|div|li|ul|ol|br|h[1-6]|tr|td|th|table|section|article|blockquote|hr)\b[^>]*>",
                         re.IGNORECASE)
 _ASKS_CHARS = 240
@@ -536,7 +540,8 @@ def _asks(description: str) -> str:
     text = re.sub(r"<[^>]+>", "", text).replace("\u00ad", "")
     parts = [re.sub(r"\s+", " ", p).strip(" .;") for p in re.split(r"\n|(?<=[.!?;])\s+", _repair(text))]
     hits = [p for p in parts if 8 < len(p) < 200 and not p.endswith(":")
-            and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)]
+            and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)
+            and not (_ELIGIBILITY.search(p) and not _YEARS_RE.search(p))]
     hits.sort(key=lambda p: not _YEARS_RE.search(p))
     out = ""
     for hit in hits:

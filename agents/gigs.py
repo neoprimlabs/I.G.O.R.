@@ -426,6 +426,7 @@ def collect(now: Optional[datetime] = None, fetchers=None, topic_fetch=None) -> 
 
 
 _OPENING_CHARS = 200
+_ROLE_LINE = re.compile(r"\b(?:the|this) (?:role|job|position) (?:is|involves|includes|covers)\b", re.IGNORECASE)
 
 _RANK_SYSTEM = """You screen freelance gig postings for one person and pick the ones worth pitching.
 
@@ -554,6 +555,16 @@ def _what_it_asks(gig: dict) -> str:
     asks = jobs._asks(body)
     if asks:
         return f"Asks for: {asks}."
+    # 2026-11-03 a post whose only "must" was the right to work hid the line saying what the
+    # work was: "The role is about 60% agent development ... and 40% Ubuntu administration".
+    role = next((s for s in re.split(r"(?<=[.!?])\s+", _clean(body, 4000))
+                 if _ROLE_LINE.search(s) and len(s) <= _OPENING_CHARS), "")
+    if role:
+        return f"The post says: {role}"
+    # A Hacker News post's title is its own first 140 characters, so its opening repeats it.
+    title = gig.get("title") or ""
+    if title and body.startswith(title):
+        body = body[len(title):].lstrip(" |-,:;")
     opening = _clean(body, _OPENING_CHARS + 1)
     if len(opening) > _OPENING_CHARS:
         opening = opening.rsplit(" ", 1)[0] + "..."

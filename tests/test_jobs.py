@@ -650,6 +650,12 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("a soft hyphen from a feed is removed", "customer facing" in jobs._asks("<li>1+ years of customer \u00adfacing work.</li>").replace("  ", " "))
     _check("a range of years counts", "3\u20136+ years" in jobs._asks("<li>3\u20136+ years of Acme CRM development</li>"))
     _check("a posting that asks nothing gives nothing", jobs._asks("<p>We are a great team.</p>") == "")
+    _check("the right to work is not what the work asks",
+           jobs._asks("<p>Must be legally authorized to work in the US without visa sponsorship.</p>") == "")
+    kept = jobs._asks("<p>Must be legally authorized to work in the US.</p><p>Must have 2+ years of Python.</p>")
+    _check("so the skill beside it is what is shown", kept == "Must have 2+ years of Python", kept)
+    _check("but years asked in the same sentence are kept",
+           "5+ years" in jobs._asks("<p>Must have 5+ years of experience and be authorized to work in the US.</p>"))
     _check("nor does a posting with no description", jobs._asks("") == "" and jobs._asks(None) == "")
     _check("it stays short whatever the posting",
            len(jobs._asks("".join(f"<li>{n} years of skill number {n}.</li>" for n in range(90)))) <= jobs._ASKS_CHARS)
