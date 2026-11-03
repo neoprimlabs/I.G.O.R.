@@ -52,7 +52,8 @@ def _orch(context):
 
 ANSWERED = [
     {"role": "user", "content": "Will you message me at some random times tomorrow?"},
-    {"role": "assistant", "content": "Your random check-in for tomorrow is set. I'll message you at 09:15 EDT."},
+    {"role": "assistant", "content": "Your random check-in for tomorrow is set. I'll message you at 09:15 EDT.",
+     "route": "Schedule"},
 ]
 
 
@@ -79,13 +80,13 @@ def test_reformulation_detection() -> None:
 
 def test_explicit_corrections_are_labelled_separately() -> None:
     orch, path = _orch(ANSWERED)
-    orch._log_correction("no, that's wrong - it goes out at 9", "Direct", signal="explicit")
+    orch._log_correction("no, that's wrong - it goes out at 9", signal="explicit")
     text = path.read_text(encoding="utf-8")
     _check("an explicit correction is written", "User corrected:" in text, text[:120])
     _check("and labelled explicit", "Signal: explicit" in text, text[:200])
 
     orch, path = _orch(ANSWERED)
-    orch._log_correction("Do it later.. around 11:40", "ConfigEdit", signal="reformulation")
+    orch._log_correction("Do it later.. around 11:40", signal="reformulation")
     text = path.read_text(encoding="utf-8")
     _check("a reformulation is written", "Do it later" in text, text[:200])
     _check("and labelled as the weaker signal", "Signal: reformulation" in text, text[:200])
@@ -95,8 +96,40 @@ def test_explicit_corrections_are_labelled_separately() -> None:
 
 def test_nothing_is_logged_without_something_to_correct() -> None:
     orch, path = _orch([{"role": "user", "content": "Do it later.. around 11:40"}])
-    orch._log_correction("Do it later.. around 11:40", "ConfigEdit", signal="reformulation")
+    orch._log_correction("Do it later.. around 11:40", signal="reformulation")
     _check("no assistant turn means nothing is captured", not path.exists())
+
+
+def test_the_reply_being_corrected_is_named() -> None:
+    """2026-11-03: a request for the proposal list, typed 98 seconds after Direct had guessed
+    about a watch, was logged as answered by ProposalList - where the new message went."""
+    import context_store
+    real = context_store._DB_PATH
+    orch, path = _orch([])
+    context_store._DB_PATH = config.MEMORY_DIR / "context.db"
+    try:
+        orch._update_context("is the kettle watch working?", "The watch is most likely not active.",
+                             route="Direct")
+        orch._log_correction("Show me the waiting proposals", signal="reformulation")
+        text = path.read_text(encoding="utf-8")
+        _check("the route that wrote the reply is named", "Answered by: Direct" in text, text[:200])
+
+        fresh = orchestrator.Orchestrator(notify=_noop)
+        fresh._log_correction("no, that's wrong - it was the kettle", signal="explicit")
+        text = path.read_text(encoding="utf-8")
+        _check("after a restart the route is not known, and says so",
+               "Answered by: unknown" in text, text[-400:])
+    finally:
+        context_store._DB_PATH = real
+
+    post = [{"role": "assistant", "content": "[sent proactively]\nNew remote postings worth a look"}]
+    orch, path = _orch(post)
+    orch._log_correction("Tell me more about the first one", signal="reformulation")
+    _check("answering an unprompted post is not restating a request", not path.exists())
+    orch._log_correction("no, that's wrong - those are not remote", signal="explicit")
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    _check("but an explicit correction of one is kept, and says what it corrected",
+           "Answered by: a message sent unprompted" in text, text[:200])
 
 
 def test_the_september_14_sequence() -> None:
@@ -121,6 +154,8 @@ if __name__ == "__main__":
     test_explicit_corrections_are_labelled_separately()
     print("\nnothing to correct")
     test_nothing_is_logged_without_something_to_correct()
+    print("\nwhat was corrected")
+    test_the_reply_being_corrected_is_named()
     print("\nthe 2026-09-14 sequence")
     test_the_september_14_sequence()
 

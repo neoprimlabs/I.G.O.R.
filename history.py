@@ -102,4 +102,11 @@ def describe(query: str, days: int = 30) -> str:
         note = " (keyword match, not checked as the right product)" if field == "cheapest_match" else ""
         out.append(f"{when:%a %Y-%m-%d %H:%M}  {source}  {item}  {field}={shown}{note}"
                    + (f"  {url}" if url and source != "stock" else ""))
+    # So a quiet watch can be explained from the rows instead of guessed at: on 2026-11-03 a
+    # dock in stock at one price for three weeks, alerted once, read as a watch gone wrong.
+    if any(row[1] in ("stock", "price") for row in rows):
+        out.append("When they message the user: the stock watch only when an item becomes buyable "
+                   "within its price ceiling, so availability that has stayed yes has sent nothing "
+                   "since it turned yes. The price watch for a posting under target from the last 14 "
+                   "days; the cheapest match here can be older than that.")
     return "\n".join(out)

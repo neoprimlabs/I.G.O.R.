@@ -70,6 +70,8 @@ def test_stock_history() -> None:
 
     text = history.describe("ag01")
     _check("the tool reads yes/no for availability", "available=yes" in text and "available=no" in text, text)
+    _check("and says when the watch messages, so a quiet one can be explained",
+           "only when an item becomes buyable" in text, text)
     _check("and says plainly when nothing matches",
            history.describe("zebra").startswith("No watch history"))
 
@@ -94,6 +96,8 @@ def test_price_and_jobs_history() -> None:
     rows = history.changes("engineer", now=NOW + timedelta(minutes=1))
     _check("each new matching job posting is recorded with its source",
            any(r[2] == "AI Support Engineer - Acme" and r[4] == "remoteok" for r in rows), str(rows))
+    _check("job rows alone carry no note about the stock and price watches",
+           "becomes buyable" not in history.describe("engineer"), history.describe("engineer"))
 
 
 def test_never_raises() -> None:

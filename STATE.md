@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-02**
+Last updated: **2026-11-03**
 
 ---
 
@@ -299,10 +299,12 @@ on the server, which the auto-mode classifier will not let Claude Code run. Nigh
 loopback, in the NeoPrimLabs look the user approved. The user opens it with `IGOR Dashboard` on the PC's desktop, which
 runs `igor-dashboard.ps1` in the keys folder: an SSH tunnel on local port 8642, the chat key read over SSH from
 `memory/private/dashboard.key`, then the browser with the key after the #. Live 11-02 (681aeff): the key file is
-igor's, mode 600; no key gets 401; `status` sent through the chat came back as a note. The page's send flow was
-checked in headless Edge against a local copy. Not yet seen: a model turn sent from the page, which the user will
-make from the PC. Not reachable from the phone: that needs a private network such as Tailscale. The first step
-of IGOR's own app (GAMEPLAN I.1).
+igor's, mode 600; no key gets 401; `status` sent through the chat came back as a note. Plain words, 12-hour times
+and a phone layout followed (fbbd9ff, 26fed8a). Live 11-03: the user's first messages from the page reached the
+router, Direct and the proposal list, so the page works end to end. The Direct answer was a guess - a question about
+what the dock watch had found went CHAT - and watch questions now route to React in code, like job questions. Not
+reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
+(GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

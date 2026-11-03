@@ -144,7 +144,7 @@ A Discord DM travels this path every time:
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
    regex       _REMEMBERING, skip a job -> Remember (React, memory_write required)
-   regex       found jobs, "more about" -> React
+   regex       found jobs or watch finds, "more about" -> React
    ```
 
    `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make

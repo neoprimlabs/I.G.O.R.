@@ -96,6 +96,19 @@ async def test_routing() -> None:
         routed.clear()
         got = await o._classify(message)
         _check(f"to React in code: {message[:50]!r}", got == "React" and not routed, f"{got}, router={bool(routed)}")
+    # 2026-11-03: a question about what the dock watch had found went to Direct, which
+    # guessed. watch_history had the answer.
+    for message in ("The kettle watch hasn't found anything in weeks. I know it's a rare one, "
+                    "but are we missing some drops?",
+                    "Has the stock watch seen a restock yet?",
+                    "Did we miss any price drops on the dock?"):
+        routed.clear()
+        got = await o._classify(message)
+        _check(f"to React in code: {message[:50]!r}", got == "React" and not routed, f"{got}, router={bool(routed)}")
+    for message in ("what is on the watchlist?", "is the stock watch running?"):
+        routed.clear()
+        await o._classify(message)
+        _check(f"left to the router: {message!r}", bool(routed))
     routed.clear()
     got = await o._classify("You can skip Mac focused roles. I'm not proficient")
     _check("ruling out a kind of job is a save", got == "Remember" and not routed, got)

@@ -469,7 +469,7 @@ def test_long_document_skips_the_router() -> None:
         routed.append(destination)
         return "ok"
 
-    o._classify, o._route, o._update_context = classify, route, lambda *a: None
+    o._classify, o._route, o._update_context = classify, route, lambda *a, **k: None
     asyncio.run(o.process(config.AUTHORIZED_USER_ID, "summarise this", prefer_tools=True))
     _check("prefer_tools goes straight to React", routed == ["React"] and classified == [], f"{routed} {classified}")
     asyncio.run(o.process(config.AUTHORIZED_USER_ID, "hello"))

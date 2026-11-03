@@ -307,7 +307,14 @@ _REMEMBERING = re.compile(
 # conversation alone, and said it would skip Mac roles without saving anything. "Out
 # of all the jobs you've found" went MONITOR. These need the task agent's files.
 _JOB_WORD = re.compile(r"\b(jobs?|roles?|gigs?|postings?|openings?|positions?)\b", re.IGNORECASE)
-_ABOUT_FOUND = re.compile(r"\b(found|sent|best fit|fits? me|match(es|ed)?|out of all)\b", re.IGNORECASE)
+_ABOUT_FOUND = re.compile(r"\b(found|sent|best fit|fits? me|match(es|ed)?|out of all|miss(ed|ing)?|seen)\b",
+                          re.IGNORECASE)
+# 2026-11-03 a question about why the dock watch had found nothing in weeks went CHAT to
+# Direct, which guessed the watch was off and offered a made-up feed URL. The dock had been
+# in stock at one price every hour since its alert on 10-13. What a watcher found is the
+# same question as what the job watch found.
+_WATCH_WORD = re.compile(r"\b(watch(es|ing)?|watchers?|watchlist|restock(s|ed)?|(in|out of) stock|"
+                         r"price drops?|drops|deals?)\b", re.IGNORECASE)
 _MORE_ABOUT = re.compile(r"\b(tell me more|more about|more on)\b", re.IGNORECASE)
 _JOB_EXCLUDE = re.compile(r"\b(skip|exclude|no more|stop (showing|sending)|don'?t (show|send))\b",
                           re.IGNORECASE)
@@ -566,7 +573,7 @@ class Orchestrator:
         except Exception as e:
             logger.error("A side question failed - %s: %s", type(e).__name__, e)
             return "I could not answer that on the side. Ask again when I have finished."
-        self._update_context(question, reply)
+        self._update_context(question, reply, route="Direct (side question)")
         return reply
 
     def _forget_last_exchange(self) -> str | None:
@@ -591,7 +598,7 @@ class Orchestrator:
         # Before _update_context runs, so the last assistant entry is still the reply
         # being corrected rather than the one about to be written.
         if _looks_like_correction(task):
-            self._log_correction(task, destination, signal="explicit")
+            self._log_correction(task, signal="explicit")
         else:
             # The gap to the previous stored message, which is IGOR's last reply -
             # this runs before _update_context, so the current message is not in yet.
@@ -599,7 +606,7 @@ class Orchestrator:
             previous = last_timestamp()
             gap = (datetime.now(timezone.utc) - previous).total_seconds() if previous else None
             if gap is not None and destination != "FileExport" and _looks_like_reformulation(task, gap):
-                self._log_correction(task, destination, signal="reformulation")
+                self._log_correction(task, signal="reformulation")
         if destination == "StopResearch":
             file_mode = True
 
@@ -632,7 +639,7 @@ class Orchestrator:
                 self._late_notes.clear()
 
         if stop.is_set() and not response.strip():
-            self._update_context(task, "[stopped by the user before answering]")
+            self._update_context(task, "[stopped by the user before answering]", route=destination)
             return None
 
         if destination in ("ResearchLoop", "StopResearch"):
@@ -641,7 +648,7 @@ class Orchestrator:
         skill_captured = False
         if config.ENABLE_CRITIC:
             skill_captured = await self._critic_pass(destination, task, response)
-        self._update_context(self._with_notes(task, carry), response)
+        self._update_context(self._with_notes(task, carry), response, route=destination)
         import hooks
         hooks.fire("agent_end", route=destination, message=task[:500], response=response[:500])
         if file_mode:
@@ -694,7 +701,8 @@ class Orchestrator:
             return "Remember"
         if _JOB_WORD.search(content) and _JOB_EXCLUDE.search(content):
             return "Remember"
-        if _MORE_ABOUT.search(content) or (_JOB_WORD.search(content) and _ABOUT_FOUND.search(content)):
+        if _MORE_ABOUT.search(content) or ((_JOB_WORD.search(content) or _WATCH_WORD.search(content))
+                                           and _ABOUT_FOUND.search(content)):
             return "React"
         if commands.wants_file(content) or commands.wants_board(content):
             return "React"
@@ -1013,7 +1021,7 @@ class Orchestrator:
         message comes before it: the continuation that asked for it was IGOR's own."""
         from context_store import append
         entry = {"role": "assistant", "content": _cap(text.strip(), _STORE_CAP),
-                 "ts": datetime.now(timezone.utc).timestamp()}
+                 "ts": datetime.now(timezone.utc).timestamp(), "route": "React (follow-through)"}
         self._context.append(entry)
         if len(self._context) > _CONTEXT_KEEP:
             self._context = self._context[-_CONTEXT_KEEP:]
@@ -1087,7 +1095,7 @@ class Orchestrator:
         head = "\n\n".join(p for p in ((_TIME_NOTE if stamped else ""), summary or "") if p)
         return [{"role": "system", "content": head}] + out if head else out
 
-    def _update_context(self, user_msg: str, assistant_msg: str) -> None:
+    def _update_context(self, user_msg: str, assistant_msg: str, route: str = "") -> None:
         """Store generously, inject sparingly.
 
         This used to truncate to 1500 chars at write time, which destroyed the text
@@ -1101,7 +1109,8 @@ class Orchestrator:
         assistant_msg = _cap(assistant_msg, _STORE_CAP)
         now = datetime.now(timezone.utc).timestamp()
         self._context.append({"role": "user", "content": user_msg, "ts": now})
-        self._context.append({"role": "assistant", "content": assistant_msg, "ts": now})
+        # The route is kept in memory only, for _log_correction; _window sends role and content.
+        self._context.append({"role": "assistant", "content": assistant_msg, "ts": now, "route": route})
         if len(self._context) > _CONTEXT_KEEP:
             self._context = self._context[-_CONTEXT_KEEP:]
         append("user", user_msg)
@@ -1109,7 +1118,7 @@ class Orchestrator:
         import compression
         compression.schedule()
 
-    def _log_correction(self, user_msg: str, destination: str, signal: str = "explicit") -> None:
+    def _log_correction(self, user_msg: str, signal: str = "explicit") -> None:
         """Append a correction and what it was correcting. Never raises.
 
         Capture only. This file is deliberately NOT in React's memory_read allowlist:
@@ -1119,6 +1128,16 @@ class Orchestrator:
         prior = next((m for m in reversed(self._context) if m.get("role") == "assistant"), None)
         if prior is None:
             return
+        # Named for the reply being corrected, not for where the correction went. 2026-11-03 a
+        # request for the proposal list, typed after Direct had guessed about a watch, was
+        # logged as answered by ProposalList, and the overnight review reads this line.
+        if _is_post(prior):
+            # Answering something sent unprompted restates no request of the user's.
+            if signal == "reformulation":
+                return
+            destination = "a message sent unprompted"
+        else:
+            destination = prior.get("route") or "unknown"
         try:
             path = config.MEMORY_DIR / "corrections.md"
             if path.exists() and path.stat().st_size > _CORRECTIONS_MAX_BYTES:
