@@ -209,11 +209,11 @@ last fixes are tested offline only: selling software is the idea for software id
 takes a figure naming the idea. TrustMRR counts only as "similar product", named in the line, never
 independent: a search-only check of all seven ideas showed its nearest match is often another
 business, and most of those products have earned under $50000 in all. 20b's relevance judgement
-stays weak, so a quote can be real and beside the point. Not yet seen: a real night on the real paper.
-20b read 179034 of its unmeasured daily cap at 00:45 UTC 11-01, mostly these runs, so a night that
-stops on `daily cap 20b` would finally measure it and resumes the next night. Read `work/g3/paper.md`
-after the nights of 11-02 and 11-03, the three ideas left: if nothing independent turns up, tell the user the ideas look
-unprovable from public sources rather than tune further.
+stays weak, so a quote can be real and beside the point. **Verdict 11-03, tuning stopped:** two real
+nights on the real paper found nothing independent - TrustMRR "similar product" lines and "no income
+shown" - and the user was told these ideas cannot be proven from public sources. The paper still runs
+nightly (11-03: 2 writing calls, ~10000 tokens of 120b, and 22 calls, ~45000 of 20b). Left as is: its
+summary claims earnings for ideas its own proof check marks "no income shown".
 **Memory review built 11-01** (`memory_review.py`, Hermes' background review with write approval
 on), the next open parity item: the night's self-improvement session reads the user's own typed
 messages and raises at most 3 proposals. Live once on real messages in the throwaway copy, about
