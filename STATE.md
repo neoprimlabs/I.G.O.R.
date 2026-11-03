@@ -362,7 +362,8 @@ commands; clones parked by the user, design in `docs/superpowers/specs/`):**
   Live on the server: vision described a real image; Whisper transcribed a public
   `.ogg` ("Hello."); Groq lists `opus` as accepted. **Discord tests for the user:**
   a voice note, a screenshot, a PDF. Spoken replies (Orpheus) and Discord buttons are
-  not wanted in Discord: the user wants them in IGOR's own app (I.1), 2026-10-20.
+  not wanted in Discord: the user wants them in IGOR's own app (I.1), 2026-10-20. Buttons
+  are not wanted in the app either, 2026-11-03.
 - **Always-on memory - built.** Hermes puts a capped USER.md (1375 chars) into every
   session and refuses a memory write past the cap. IGOR's `preferences.md` already
   plays MEMORY.md; the gap was Direct (50 of 69 routed messages since 10-01), which

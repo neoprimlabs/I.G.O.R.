@@ -67,7 +67,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 
 ## Parked by the user
 
-- **Spoken replies and buttons.** These wait for IGOR's own app, which the dashboard has started.
+- **Buttons.** Not wanted, in Discord or in the app (the user, 2026-11-03). Spoken replies are built on the dashboard.
 - **Clones.** GAMEPLAN Phase K.
 
 ## Left out, and why
@@ -87,5 +87,5 @@ Nothing left on the ledger can be built without one of these.
 - **Lightpanda on the host.** The browser is built and waits for it.
 - **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.
 - **Accounts.** X search (xAI), Google Workspace and Spotify (each needs a sign-in flow the MCP client does not have yet), memory providers, secrets managers.
-- **IGOR's own app.** Started 2026-11-02 with the dashboard, and chat the same day. Voice 2026-11-03 (`voice.py`): Hermes' push-to-talk and spoken replies, Whisper in, Orpheus out with the browser's voice as fallback. Orpheus waits for the account owner to accept its terms in the Groq console. Buttons come next.
+- **IGOR's own app.** Started 2026-11-02 with the dashboard, and chat the same day. Voice 2026-11-03 (`voice.py`): Hermes' push-to-talk and spoken replies, Whisper in, Orpheus out with the browser's voice as fallback. Orpheus waits for the account owner to accept its terms in the Groq console. Buttons are not wanted (2026-11-03).
 - **A larger host.** Oracle's free Arm allowance is now 2 OCPU and 12 GB (halved in 2026), twelve times this host's memory; it would fit Chromium and screenshots. Capacity is often exhausted, and moving IGOR is the largest job on this list.
