@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 # agent's personality with no undo.
 _CONFIG_EDITABLE = {
     "digest_config.md": False,
-    "watchlist.md": False,
     "schedule_config.md": True,  # read at startup, so a change needs a restart
 }
 
@@ -24,20 +23,19 @@ _VALID_DIGEST_SECTIONS = frozenset({
 
 _CONFIG_SYSTEM_PROMPT = """You edit configuration files for I.G.O.R., a personal assistant. The user describes a change in plain language and you produce the complete new file.
 
-You may edit exactly these three files:
+You may edit exactly these two files:
 
 1. digest_config.md - which sections appear in the morning digest.
    Sections must come from this list, spelled exactly: tasks, projects, daily_forecast, ai_news, unreal_news, overnight.
    Any other name is silently ignored by the digest, so never invent one.
 
-2. watchlist.md - a plain list of things the monitor keeps an eye on. Free text, one item per line, each starting with "- ".
-
-3. schedule_config.md - when scheduled jobs run. Times are on the user's own clock, in the format "time: HH:MM local".
+2. schedule_config.md - when scheduled jobs run. Times are on the user's own clock, in the format "time: HH:MM local".
 
 Rules:
 - Change only what the user asked for. Preserve every other line exactly as it is, including headers, comments and unrelated sections.
 - Pick the single file the request is about. If it genuinely spans two files, pick the one the user emphasised and say so in your reasoning line.
-- If the request is unclear, or is not a change to one of these three files, do not invent an edit. Reply with a single line explaining the problem and nothing else.
+- There is no watchlist file. Adding news to watch means a digest section (ai_news, unreal_news). Watching anything else - a price, a page, a channel - is not a change to these files.
+- If the request is unclear, or is not a change to one of these two files, do not invent an edit. Reply with a single line explaining the problem and nothing else.
 
 Output format, exactly:
 Line 1: the filename and nothing else.
@@ -56,7 +54,7 @@ Style:
 _ALLOWED_FILES = frozenset({
     "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
-    "digest_config.md", "schedule_config.md", "watchlist.md",
+    "digest_config.md", "schedule_config.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
     "research.md", "job_search.md",
 })
@@ -64,7 +62,7 @@ _ALLOWED_FILES = frozenset({
 _OVERWRITABLE_FILES = frozenset({
     "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
-    "digest_config.md", "schedule_config.md", "watchlist.md",
+    "digest_config.md", "schedule_config.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
     "research.md",
 })
@@ -179,8 +177,7 @@ def _invalid_digest_sections(content: str) -> list[str]:
 _SUBJECT_WORDS = {
     "schedule_config.md": ("schedule", "digest", "morning", "briefing"),
     "digest_config.md": ("digest", "section", "weather", "forecast", "news", "task",
-                         "brief", "headline"),
-    "watchlist.md": ("watchlist", "watch", "monitor", "track"),
+                         "brief", "headline", "watchlist"),
 }
 
 

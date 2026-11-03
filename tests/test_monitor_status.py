@@ -149,8 +149,26 @@ def test_the_job_list_is_readable() -> None:
            monitor._job_line("x", None))
 
 
+def test_what_is_watched_comes_from_what_runs() -> None:
+    """2026-11-03: the status block listed a hand-written watchlist.md as the news watchlist.
+    It named Unreal news, switched off in the digest's own file, and positive headlines, which
+    nothing had ever run. The digest's sections are read from the file the digest reads."""
+    from agents import monitor
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (config.MEMORY_DIR / "digest_config.md").write_text(
+        "# Digest Config\n\n## Sections\n- tasks\n- ai_news\n", encoding="utf-8")
+    (config.MEMORY_DIR / "watchlist.md").write_text(
+        "# Monitor Watchlist\n\n- Positive headlines (daily)\n", encoding="utf-8")
+    block = monitor.status_block()
+    _check("the digest's real sections are listed", "Morning digest sections: tasks, ai_news" in block, block)
+    _check("a leftover note is not reported as a watch", "Positive headlines" not in block, block)
+
+
 if __name__ == "__main__":
-    print("the price watch answering for itself")
+    print("what is watched")
+    test_what_is_watched_comes_from_what_runs()
+    print("\nthe price watch answering for itself")
     test_the_price_watch_can_answer_for_itself()
     print("\nnothing configured")
     test_nothing_configured_is_not_a_crash()

@@ -48,8 +48,6 @@ def _fresh():
     config.MEMORY_DIR = Path(tempfile.mkdtemp())
     (config.MEMORY_DIR / "schedule_config.md").write_text(SCHEDULE_NOW, encoding="utf-8")
     (config.MEMORY_DIR / "digest_config.md").write_text(DIGEST_NOW, encoding="utf-8")
-    (config.MEMORY_DIR / "watchlist.md").write_text("# Monitor Watchlist\n\n- System health\n",
-                                                    encoding="utf-8")
     return config.MEMORY_DIR
 
 
@@ -66,7 +64,7 @@ def test_subject_gate() -> None:
         ("change the digest time to 14:00", "schedule_config.md"),
         ("move the morning digest to 8am", "schedule_config.md"),
         ("drop weather from the digest", "digest_config.md"),
-        ("add unreal engine to the watchlist", "watchlist.md"),
+        ("add unreal engine to the watchlist", "digest_config.md"),
     ]
     for message, filename in named:
         _check(f"names the subject: {message[:38]}",
@@ -124,6 +122,18 @@ async def test_unchanged_is_still_treated_as_a_question() -> None:
            out is not None and "already reads" in out, repr(out))
 
 
+async def test_a_watch_that_is_not_news_is_handed_on() -> None:
+    """Until 2026-11-03 a watch request was written to watchlist.md, which nothing ran, and
+    the user was told it was updated. A price, a page or a channel is not a settings change."""
+    from agents import prod_memory
+
+    path = _fresh()
+    out = await prod_memory.handle("watch the kettle's price for me",
+                                   _replies("watchlist.md", "# Monitor Watchlist\n\n- kettle price\n"))
+    _check("the request goes on to React instead of being written", out is None, repr(out))
+    _check("and no watchlist file appears", not (path / "watchlist.md").exists())
+
+
 if __name__ == "__main__":
     print("subject gate")
     test_subject_gate()
@@ -133,6 +143,8 @@ if __name__ == "__main__":
     asyncio.run(test_a_real_change_still_works_and_shows_itself())
     print("\nquestions")
     asyncio.run(test_unchanged_is_still_treated_as_a_question())
+    print("\na watch that is not news")
+    asyncio.run(test_a_watch_that_is_not_news_is_handed_on())
 
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

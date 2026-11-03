@@ -347,7 +347,7 @@ screen holds the gigs; picks go out in the post's own words.
 
 ### ConfigEdit
 
-Edits only `digest_config.md`, `schedule_config.md` and `watchlist.md`, checks digest section names against
+Edits only `digest_config.md` and `schedule_config.md`, checks digest section names against
 the ones the digest reads, keeps one rolling `.bak` per file, and says whether a restart is needed.
 
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
@@ -562,8 +562,9 @@ a failed push.
 
 **Read at startup, restart required:** `schedule_config.md`
 
-**Read per call, immediate effect:** `digest_config.md`, `watchlist.md`,
-`prompt_*.md`
+**Read per call, immediate effect:** `digest_config.md`, `prompt_*.md`. There is no
+watchlist file: Monitor reports what is watched from the jobs, the digest's sections and
+each watch's state.
 
 **Overnight loop files:** `goals.md` and `goals_archive.md`, `preferences.md`
 (approved standing preferences, 1500 character cap, read per call) and `work/`.

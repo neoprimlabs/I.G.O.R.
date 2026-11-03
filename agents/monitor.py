@@ -26,21 +26,6 @@ _setup_done: bool = False
 _connected_fn: Optional[Callable[[], bool]] = None
 _HEARTBEAT = "heartbeat.txt"
 
-_BRIDGEMIND_CHANNEL_ID = "UCwaTGE53GLGC3fDClVl_7TA"
-_BRIDGEMIND_RSS = f"https://www.youtube.com/feeds/videos.xml?channel_id={_BRIDGEMIND_CHANNEL_ID}"
-
-_VIDEO_SUMMARY_PROMPT = """Summarize the following YouTube video transcript for a developer's morning briefing.
-
-Format:
-- 3-5 bullet points covering the key ideas, tools, or techniques discussed
-- One sentence at the end on why it's worth watching
-
-Rules:
-- No emojis
-- No em dashes - use plain hyphens
-- No exclamation points
-- Factual and precise"""
-
 _DEFAULT_SYSTEM_PROMPT = """You are I.G.O.R.'s Monitor agent - proactive system monitoring and scheduled reporting.
 
 Your primary function is scheduled reports that run automatically, not reactive responses to queries.
@@ -49,7 +34,7 @@ FIRST: if the message is not asking about I.G.O.R.'s own jobs, watchlist, schedu
 
 When queried directly, report:
 - Scheduler status (running / not running, next scheduled jobs)
-- Current watchlist (what is being monitored)
+- What is being watched: the scheduled jobs, the digest's sections and each watch's own status, as the status block gives them
 - Messages scheduled for the user, exactly as the status block lists them. You cannot change them; the user can ask I.G.O.R. to change or cancel one
 - Groq token use over the last 24 hours against the daily cap, exactly as the status block gives it. Where a cap is "not measured", say so - never estimate one
 - Any system health issues you're aware of
@@ -118,80 +103,6 @@ def _get_digest_schedule() -> tuple:
     content = path.read_text(encoding="utf-8")
     parsed = _parse_digest_schedule(content)
     return (*parsed, _digest_zone(content)) if parsed else (10, 0, clock.USER_TZ)
-
-
-def _get_watchlist() -> list[str]:
-    path = config.MEMORY_DIR / "watchlist.md"
-    if not path.exists():
-        return ["Morning digest delivery", "Model update availability (weekly)", "System health"]
-    return [
-        line.strip()[2:].strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip().startswith("- ")
-    ]
-
-
-async def _check_bridgemind_videos() -> None:
-    if _send_fn is None or _client is None:
-        return
-    try:
-        import urllib.request
-        import xml.etree.ElementTree as ET
-
-        loop = asyncio.get_running_loop()
-
-        def _fetch_rss() -> bytes:
-            with urllib.request.urlopen(_BRIDGEMIND_RSS, timeout=10) as r:
-                return r.read()
-
-        data = await loop.run_in_executor(None, _fetch_rss)
-        root = ET.fromstring(data)
-        ns = {
-            "atom": "http://www.w3.org/2005/Atom",
-            "yt": "http://www.youtube.com/xml/schemas/2015",
-        }
-
-        entries = root.findall("atom:entry", ns)
-        if not entries:
-            return
-
-        latest = entries[0]
-        video_id = latest.find("yt:videoId", ns).text
-        title = latest.find("atom:title", ns).text
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        seen_path = config.MEMORY_DIR / "bridgemind_seen.txt"
-        if not seen_path.exists():
-            seen_path.write_text(video_id, encoding="utf-8")
-            return
-
-        if seen_path.read_text(encoding="utf-8").strip() == video_id:
-            return
-
-        seen_path.write_text(video_id, encoding="utf-8")
-
-        def _get_transcript() -> str:
-            from youtube_transcript_api import YouTubeTranscriptApi
-            entries = YouTubeTranscriptApi.get_transcript(video_id)
-            return " ".join(e["text"] for e in entries)[:4000]
-
-        try:
-            transcript = await loop.run_in_executor(None, _get_transcript)
-            summary = await llm.complete(
-                _client,
-                config.MODELS["summary"],
-                _VIDEO_SUMMARY_PROMPT,
-                f"Video: {title}\n\nTranscript:\n{transcript}",
-                max_tokens=1024,
-                label="Video summary",
-            )
-            await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}\n\n{summary}")
-        except Exception as e:
-            logger.error("BridgeMind transcript failed for %s - %s: %s", video_id, type(e).__name__, e)
-            await _send_fn(f"**New BridgeMind Video**\n{title}\n{video_url}")
-
-    except Exception as e:
-        logger.error("BridgeMind check failed - %s: %s", type(e).__name__, e)
 
 
 def setup(send_fn: Callable[[str], Awaitable[None]],
@@ -1273,8 +1184,9 @@ def status_block() -> str:
     else:
         status_lines.append("Scheduler: not running")
 
-    watchlist = _get_watchlist()
-    status_lines.append("News watchlist:\n" + "\n".join(f"  - {w}" for w in watchlist))
+    # The digest's sections, from the file the digest itself reads. A hand-written watchlist
+    # stood here until 2026-11-03 and listed Unreal news and positive headlines, neither of which ran.
+    status_lines.append("Morning digest sections: " + ", ".join(_get_digest_sections()))
     status_lines.append(_watcher_status())
     try:
         from agents import scheduled

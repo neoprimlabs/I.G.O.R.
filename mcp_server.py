@@ -29,7 +29,7 @@ logger = logging.getLogger("igor.mcp")
 # Private and sealed files are not in it, and are checked again by path below.
 NOTES = (
     "tasks.md", "projects.md", "user.md", "agents.md", "digest_config.md",
-    "watchlist.md", "presence_config.md", "job_search.md", "jobs_found.md",
+    "presence_config.md", "job_search.md", "jobs_found.md",
     "gig_search.md", "gigs_found.md", "price_watch.md", "price_watch_status.md",
 )
 
@@ -50,7 +50,7 @@ def _capped(text: str) -> str:
 
 def read_note(file: str) -> str:
     """Read one of I.G.O.R.'s memory notes: tasks.md, projects.md, user.md, agents.md,
-    digest_config.md, watchlist.md, presence_config.md, job_search.md, jobs_found.md
+    digest_config.md, presence_config.md, job_search.md, jobs_found.md
     (what the job watch found and its notes on fit), gig_search.md, gigs_found.md,
     price_watch.md or price_watch_status.md."""
     from agents import react

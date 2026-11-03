@@ -760,7 +760,14 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   18 days (journal, 2026-10-01 to 10-19); revisit when clones or pitch drafting add
   multi-step work.
 
-- [ ] **V.2 Memory restructure.** Was R4.3. PARTLY OVERTAKEN 2026-10-22: notes are
+- [x] **V.2 Memory restructure.** DONE 2026-11-03, in a different form, flagged to the
+  user: no separate index. An index of what IGOR keeps would be one more hand-kept
+  description, and a check of the notes against what runs found that is exactly what
+  goes wrong: five false lines in `watchlist.md`, `agents.md` and `projects.md` (STATE,
+  Memory 11-03). The rule now: what IGOR does is read from what runs. `watchlist.md` is
+  retired and Monitor reports the jobs, the digest's sections and each watch's state; the
+  spec's watchlist is that set, still fluid. Text below is history.
+  Was R4.3. PARTLY OVERTAKEN 2026-10-22: notes are
   edited one dated entry at a time, as Hermes does (966eda4), and older conversation
   is kept as a running summary. The curated index is not built. Raw sources plus a
   curated index rather than flat files that drift. M.3 decides the rule this implements. NOTE for a

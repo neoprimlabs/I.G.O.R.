@@ -310,7 +310,13 @@ are read aloud in Orpheus, or the browser's voice while Groq refuses Orpheus wit
 lasts until the user accepts its terms in the Groq console. The user's browser runs Firefox's engine, whose own
 voices are Windows' older ones. Checked locally, headless in the same engine, at desk and phone width. Not yet seen: the user's
 own mic, and Orpheus at all. Live at 1ddcc29: Groq refused Orpheus for its terms, and the voice rests an hour
-and the page reads with the browser's. Not
+and the page reads with the browser's. **Memory, 11-03 (GAMEPLAN V.2):** a check of the notes
+against what runs found five false lines: `watchlist.md`, which nothing ran from, listed Unreal news (off in
+`digest_config.md`) and positive headlines (never built); `agents.md` said a YouTube channel was checked
+(switched off in 5c00457); `projects.md` said the app had not started and Syncthing was set up (no process).
+Monitor now reports the digest's sections from the file the digest reads, `watchlist.md` is retired,
+ConfigEdit turns news on as a digest section and hands any other watch to React, the dead YouTube code
+is gone, and the false lines were cut from the notes (backups `.bak-20261103`). Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
