@@ -308,8 +308,9 @@ and offered an 18-month-old post as new, so watch questions now take a Watches r
 records, Whisper hears it (measured: 2000 a day, a 5s clip exact in 1.5s) and it goes in as a voice note; replies
 are read aloud in Orpheus, or the browser's voice while Groq refuses Orpheus with `model_terms_required`, which
 lasts until the user accepts its terms in the Groq console. The user's browser runs Firefox's engine, whose own
-voices are Windows' older ones. Checked locally in headless Zen at desk and phone width. Not yet seen: the user's
-own mic, and Orpheus at all. Not
+voices are Windows' older ones. Checked locally, headless in the same engine, at desk and phone width. Not yet seen: the user's
+own mic, and Orpheus at all. Live at 1ddcc29: Groq refused Orpheus for its terms, and the voice rests an hour
+and the page reads with the browser's. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
