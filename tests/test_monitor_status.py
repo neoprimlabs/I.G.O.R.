@@ -157,12 +157,17 @@ def test_what_is_watched_comes_from_what_runs() -> None:
 
     config.MEMORY_DIR = Path(tempfile.mkdtemp())
     (config.MEMORY_DIR / "digest_config.md").write_text(
-        "# Digest Config\n\n## Sections\n- tasks\n- ai_news\n", encoding="utf-8")
+        "# Digest Config\n\n## Sections\n- tasks\n- ai_news\n\n## Exclusions\n- kettle reviews\n",
+        encoding="utf-8")
     (config.MEMORY_DIR / "watchlist.md").write_text(
         "# Monitor Watchlist\n\n- Positive headlines (daily)\n", encoding="utf-8")
     block = monitor.status_block()
     _check("the digest's real sections are listed", "Morning digest sections: tasks, ai_news" in block, block)
     _check("a leftover note is not reported as a watch", "Positive headlines" not in block, block)
+    _check("an exclusion is not a section", "kettle" not in block, block)
+    (config.MEMORY_DIR / "digest_config.md").write_text("- tasks\n- overnight\n", encoding="utf-8")
+    _check("a file without the heading is still read whole", monitor._get_digest_sections() == ["tasks", "overnight"],
+           str(monitor._get_digest_sections()))
 
 
 if __name__ == "__main__":

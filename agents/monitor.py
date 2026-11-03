@@ -957,11 +957,18 @@ def _get_digest_sections() -> list[str]:
     path = config.MEMORY_DIR / "digest_config.md"
     if not path.exists():
         return ["tasks"]
-    sections = [
-        line.strip()[2:].strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip().startswith("- ")
-    ]
+    # Only the lines under "## Sections" when the file has that heading: the Exclusions list below
+    # it was read as sections too, harmless to the digest but reported as sections by Monitor.
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if any(line.strip().lower() == "## sections" for line in lines):
+        under, inside = [], False
+        for line in lines:
+            if line.strip().startswith("#"):
+                inside = line.strip().lower() == "## sections"
+            elif inside:
+                under.append(line)
+        lines = under
+    sections = [line.strip()[2:].strip() for line in lines if line.strip().startswith("- ")]
     return sections if sections else ["tasks"]
 
 
