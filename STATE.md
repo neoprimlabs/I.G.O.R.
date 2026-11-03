@@ -302,7 +302,9 @@ runs `igor-dashboard.ps1` in the keys folder: an SSH tunnel on local port 8642, 
 igor's, mode 600; no key gets 401; `status` sent through the chat came back as a note. Plain words, 12-hour times
 and a phone layout followed (fbbd9ff, 26fed8a). Live 11-03: the user's first messages from the page reached the
 router, Direct and the proposal list, so the page works end to end. The Direct answer was a guess - a question about
-what the dock watch had found went CHAT - and watch questions now route to React in code, like job questions. Not
+what the dock watch had found went CHAT. Routed to React (1414e04), the next try read only the price watch's files
+and offered an 18-month-old post as new, so watch questions now take a Watches route with watch_history required
+(6cd1038), and the price status dates each match. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
