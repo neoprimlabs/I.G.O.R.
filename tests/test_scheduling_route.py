@@ -104,7 +104,11 @@ async def test_routing() -> None:
                     "Did we miss any price drops on the dock?"):
         routed.clear()
         got = await o._classify(message)
-        _check(f"to React in code: {message[:50]!r}", got == "React" and not routed, f"{got}, router={bool(routed)}")
+        _check(f"to the watch route in code: {message[:50]!r}", got == "Watches" and not routed,
+               f"{got}, router={bool(routed)}")
+    routed.clear()
+    got = await o._classify("Has the job watch found anything new?")
+    _check("a question about the job watch stays with the job files", got == "React" and not routed, got)
     for message in ("what is on the watchlist?", "is the stock watch running?"):
         routed.clear()
         await o._classify(message)
@@ -178,6 +182,12 @@ async def test_remember_requires_the_memory_tool() -> None:
         _check("skipping a kind of job is saved to the job watch's exclusions",
                seen.get("force_tool") == "memory_write" and "job_search.md" in seen.get("message", "")
                and '"Exclude"' in seen.get("message", ""), seen.get("message", ""))
+        # 2026-11-03: free to choose, React read the price watch's files alone and offered an
+        # old posting as a new find. The stock watch is seen only through watch_history.
+        seen.clear()
+        await o.process(42, "Are we missing any kettle drops?")
+        _check("a question about what a watch found has watch_history required",
+               seen.get("force_tool") == "watch_history", str(seen))
     finally:
         config.MEMORY_DIR, context_store._DB_PATH, react.handle, config.AUTHORIZED_USER_ID = real
         tmp.cleanup()

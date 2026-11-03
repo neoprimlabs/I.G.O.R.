@@ -163,6 +163,17 @@ def test_stale_deals_are_not_news() -> None:
     _check("one with no date is kept rather than guessed away",
            "https://slickdeals.net/f/undated" in urls, str(urls))
 
+    # 2026-11-03: the status file showed the old $179 post as the cheapest match with no
+    # date, and IGOR offered it as a new find.
+    path = config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    (path / "price_watch.md").write_text("# Price Watch\n\n## AG01 dock\nquery: ag01\nunder: 200\n",
+                                         encoding="utf-8")
+    prices.check(fetch=lambda q: prices._from_feed(feed))
+    status = (path / "price_watch_status.md").read_text(encoding="utf-8")
+    _check("the status file dates the cheapest match", "Posted " in status, status)
+    _check("and says an old one is not a new price drop",
+           "older than 14 days, so it is not a new price drop" in status, status)
+
 
 def test_seen_store() -> None:
     from agents import prices

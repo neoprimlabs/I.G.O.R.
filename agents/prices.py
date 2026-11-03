@@ -201,7 +201,9 @@ def _closest(item: dict, deals: list[dict]) -> Optional[dict]:
         if price is None:
             continue
         if best is None or price < best["price"]:
-            best = {"price": price, "title": deal["title"], "url": deal["url"]}
+            posted = deal.get("posted")
+            best = {"price": price, "title": deal["title"], "url": deal["url"],
+                    "posted": posted.isoformat() if posted else ""}
     return best
 
 
@@ -246,6 +248,13 @@ def _write_status(items: list[dict], closest: dict, now: datetime) -> None:
                   " - NOT checked for being the right product, do not quote it as"
                   " this item's price",
                   f"  {best['title']}", f"  {best['url']}"]
+        # 2026-11-03 IGOR offered the $179 match as a new find. It was posted in April 2025.
+        if best.get("posted"):
+            posted = datetime.fromisoformat(best["posted"])
+            old = now - posted > timedelta(days=_MAX_AGE_DAYS)
+            lines.append(f"  Posted {posted:%d %b %Y}" + (
+                f" - older than {_MAX_AGE_DAYS} days, so it is not a new price drop and is never sent as one"
+                if old else ""))
 
     try:
         path = config.MEMORY_DIR / _STATUS

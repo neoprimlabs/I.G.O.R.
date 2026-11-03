@@ -701,8 +701,9 @@ class Orchestrator:
             return "Remember"
         if _JOB_WORD.search(content) and _JOB_EXCLUDE.search(content):
             return "Remember"
-        if _MORE_ABOUT.search(content) or ((_JOB_WORD.search(content) or _WATCH_WORD.search(content))
-                                           and _ABOUT_FOUND.search(content)):
+        if _WATCH_WORD.search(content) and _ABOUT_FOUND.search(content) and not _JOB_WORD.search(content):
+            return "Watches"
+        if _MORE_ABOUT.search(content) or (_JOB_WORD.search(content) and _ABOUT_FOUND.search(content)):
             return "React"
         if commands.wants_file(content) or commands.wants_board(content):
             return "React"
@@ -867,6 +868,14 @@ class Orchestrator:
             react.set_notify(self._notify)
             return await react.handle(content, self._window(), max_tokens=2048,
                                       force_tool="scheduled_message")
+
+        if destination == "Watches":
+            # 2026-11-03, on React with the tool free, the dock question read only the price
+            # watch's files and offered an 18-month-old Slickdeals post as a new find. The
+            # stock watch, which had the answer, is visible only through watch_history.
+            react.set_notify(self._notify)
+            return await react.handle(content, self._window(), max_tokens=2048,
+                                      force_tool="watch_history")
 
         if destination == "Remember":
             # The memory tool is required on the first call, as above: see _REMEMBERING.
