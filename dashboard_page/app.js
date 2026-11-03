@@ -239,6 +239,12 @@ function message(role, text, at, extra) {
   const head = el("div", null, "msg-head");
   head.append(el("b", role === "you" ? "You" : "I.G.O.R."), el("span", at));
   if (extra === "unprompted") head.append(el("span", "unprompted", "tag"));
+  if (role === "igor") {
+    const listen = el("button", "Listen", "listen");
+    listen.type = "button";
+    listen.addEventListener("click", () => (voice.button === listen ? stopSpeaking() : speak(text, listen)));
+    head.append(listen);
+  }
   item.append(head, prose(text));
   return item;
 }
@@ -262,6 +268,7 @@ function lockChat(why) {
   try { localStorage.removeItem(KEY_NAME); } catch (e) { /* nothing kept */ }
   $("say").disabled = true;
   $("send").disabled = true;
+  $("talk").disabled = true;
   $("say").placeholder = why;
   if (!$("chatlog").children.length) $("chatlog").append(el("li", why, "muted empty"));
 }
@@ -299,8 +306,15 @@ async function chatPoll() {
       const [turn, node] = chat.pending.entries().next().value || [];
       if (role === "you" && node) { node.remove(); chat.pending.delete(turn); }
     };
-    for (const row of data.rows) { landed(row.role); append(message(row.role, row.text, row.at, row.unprompted ? "unprompted" : ""), first); }
-    for (const note of data.notes) { landed(note.role); append(message(note.role, note.text, note.at, "")); }
+    // Read aloud: replies that arrive while the page is open, not the history it opened on, and not
+    // what IGOR sent unprompted, which waits for its Listen button.
+    const aloud = (role, text, unprompted) => { if (voice.aloud && !first && role === "igor" && !unprompted) speak(text); };
+    for (const row of data.rows) {
+      landed(row.role);
+      append(message(row.role, row.text, row.at, row.unprompted ? "unprompted" : ""), first);
+      aloud(row.role, row.text, row.unprompted);
+    }
+    for (const note of data.notes) { landed(note.role); append(message(note.role, note.text, note.at, "")); aloud(note.role, note.text, false); }
     if (first && !data.rows.length) $("chatlog").append(el("li", "No messages yet.", "muted empty"));
     // The fonts arrive after the first rows and make them taller, which leaves the newest out of view.
     if (first && document.fonts) document.fonts.ready.then(() => { $("chatlog").scrollTop = $("chatlog").scrollHeight; });
@@ -334,13 +348,295 @@ async function say(text) {
     if (response.status === 401) lockChat(data.error || "Chat is locked.");
     return false;
   }
+  sending(data.turn, text);
+  return true;
+}
+
+function sending(turn, text) {
   const node = message("you", text, "sending", "pending");
-  chat.pending.set(data.turn, node);
+  chat.pending.set(turn, node);
   append(node, true);
   setWorking(true);
   chatPoll();
-  return true;
 }
+
+// Voice. Talk records, and the server's Whisper turns it into the message. Replies are read in I.G.O.R.'s
+// voice (Groq, through the server) or, when that cannot speak, the browser's own. The server decides what
+// is said: no link addresses, no code, no markdown marks.
+const VOICE_PREFS = "igor-voice";
+const IGOR_VOICES = ["daniel", "troy", "austin", "autumn", "diana", "hannah"];
+const DEFAULT_VOICE = "igor:daniel";
+const MAX_RECORD_MS = 115000;   // At 32 kbps, well inside the server's 1 MB
+const MIN_RECORD_MS = 700;
+const TEST_LINE = "Good evening. This is how I.G.O.R. sounds in this voice.";
+const voice = {aloud: false, choice: DEFAULT_VOICE, rec: null, stream: null, chunks: [], started: 0, clock: 0,
+               run: 0, queue: [], busy: false, audio: null, button: null, noted: ""};
+
+try {
+  const saved = JSON.parse(localStorage.getItem(VOICE_PREFS) || "{}");
+  voice.aloud = saved.aloud === true;
+  if (typeof saved.choice === "string") voice.choice = saved.choice;
+} catch (e) { /* defaults */ }
+
+function saveVoice() {
+  try { localStorage.setItem(VOICE_PREFS, JSON.stringify({aloud: voice.aloud, choice: voice.choice})); } catch (e) { /* this visit only */ }
+}
+
+function voiceNote(text) {
+  if (text === voice.noted) return;
+  voice.noted = text;
+  $("voice-note").hidden = !text;
+  $("voice-note").textContent = text;
+}
+
+function browserVoices() {
+  return "speechSynthesis" in window ? speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en")) : [];
+}
+
+function fillVoices() {
+  const select = $("voice");
+  select.replaceChildren();
+  const mine = el("optgroup");
+  mine.label = "I.G.O.R.'s voice";
+  for (const name of IGOR_VOICES) {
+    const option = el("option", name[0].toUpperCase() + name.slice(1));
+    option.value = "igor:" + name;
+    mine.append(option);
+  }
+  select.append(mine);
+  const local = browserVoices();
+  if (local.length) {
+    const group = el("optgroup");
+    group.label = "This browser's voices";
+    for (const v of local) {
+      const option = el("option", v.name);
+      option.value = "browser:" + v.name;
+      group.append(option);
+    }
+    select.append(group);
+  }
+  // A browser voice may not be listed yet: the choice stays saved until the list arrives.
+  select.value = voice.choice;
+  if (select.value !== voice.choice) select.value = DEFAULT_VOICE;
+}
+
+function showAloud() {
+  $("aloud").setAttribute("aria-pressed", String(voice.aloud));
+  $("aloud").textContent = "Read replies aloud: " + (voice.aloud ? "on" : "off");
+}
+
+function marking(button) {
+  if (voice.button) { voice.button.textContent = "Listen"; voice.button.classList.remove("on"); }
+  voice.button = button || null;
+  if (voice.button) { voice.button.textContent = "Stop"; voice.button.classList.add("on"); }
+}
+
+function stopSpeaking() {
+  voice.run++;
+  voice.queue = [];
+  voice.busy = false;
+  if (voice.audio) { voice.audio.pause(); voice.audio = null; }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  marking(null);
+}
+
+// A Listen or a Test interrupts; a reply arriving waits its turn.
+function speak(text, button) {
+  if (button !== undefined) stopSpeaking();
+  voice.queue.push({text, button});
+  if (!voice.busy) speakQueue();
+}
+
+async function speakQueue() {
+  voice.busy = true;
+  const run = voice.run;
+  while (voice.queue.length && run === voice.run) {
+    const item = voice.queue.shift();
+    marking(item.button);
+    await speakOne(item.text, run);
+  }
+  if (run === voice.run) { voice.busy = false; marking(null); }
+}
+
+function postJson(path, body) {
+  return fetch(path, {method: "POST", cache: "no-store", body: JSON.stringify(body),
+                      headers: {"Content-Type": "application/json", "X-IGOR-Key": chat.key}});
+}
+
+async function speakOne(text, run) {
+  let data;
+  try {
+    const response = await postJson("/dashboard/speech", {text});
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    data = await response.json();
+  } catch (e) {
+    voiceNote("Could not read that aloud (" + e.message + "). Is the tunnel open?");
+    return;
+  }
+  if (run !== voice.run || !data.parts.length) return;
+  const name = voice.choice.slice(voice.choice.indexOf(":") + 1);
+  let mine = voice.choice.startsWith("igor:") && data.igor_voice;
+  if (voice.choice.startsWith("igor:") && !data.igor_voice) voiceNote("Reading with the browser's voice: " + data.why + ".");
+  let next = mine ? fetchPart(data.parts[0], name) : null;
+  for (let i = 0; i < data.parts.length; i++) {
+    if (mine) {
+      const got = await next;
+      if (run !== voice.run) return;
+      next = i + 1 < data.parts.length ? fetchPart(data.parts[i + 1], name) : null;
+      if (got.blob) {
+        voiceNote("");
+        await playBlob(got.blob, run);
+        if (run !== voice.run) return;
+        continue;
+      }
+      mine = false;
+      voiceNote("Reading with the browser's voice: " + got.error + ".");
+    }
+    await sayInBrowser(data.parts[i], run);
+    if (run !== voice.run) return;
+  }
+}
+
+async function fetchPart(line, name) {
+  try {
+    const response = await postJson("/dashboard/speech.wav", {line, voice: name});
+    if (response.ok) return {blob: await response.blob()};
+    const data = await response.json().catch(() => ({}));
+    return {error: data.error || "HTTP " + response.status};
+  } catch (e) {
+    return {error: "the link is down"};
+  }
+}
+
+function playBlob(blob, run) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    const done = () => { URL.revokeObjectURL(url); if (voice.audio === audio) voice.audio = null; resolve(); };
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
+    audio.addEventListener("pause", done);
+    if (run !== voice.run) return done();
+    voice.audio = audio;
+    audio.play().catch((e) => {
+      if (e.name === "NotAllowedError") voiceNote("The browser held the sound back. Click anywhere on the page once, then press Listen.");
+      done();
+    });
+  });
+}
+
+function sayInBrowser(line, run) {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window) || run !== voice.run) return resolve();
+    const utterance = new SpeechSynthesisUtterance(line);
+    const local = browserVoices();
+    const wanted = voice.choice.startsWith("browser:") ? voice.choice.slice(8) : "";
+    const pick = local.find((v) => v.name === wanted) || local.find((v) => v.lang === "en-GB") || local[0];
+    if (pick) { utterance.voice = pick; utterance.lang = pick.lang; }
+    utterance.onend = resolve;
+    utterance.onerror = resolve;
+    speechSynthesis.speak(utterance);
+  });
+}
+
+function talkLabel() {
+  const button = $("talk");
+  if (voice.rec) {
+    const s = Math.floor((Date.now() - voice.started) / 1000);
+    button.textContent = "Send voice " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  } else {
+    button.textContent = "Talk";
+  }
+  button.classList.toggle("recording", Boolean(voice.rec));
+}
+
+async function startTalking() {
+  if (!chat.key || voice.rec || $("talk").disabled) return;
+  chatError("");
+  stopSpeaking();
+  if (!navigator.mediaDevices || !window.MediaRecorder) { chatError("This browser cannot record here."); return; }
+  try {
+    voice.stream = await navigator.mediaDevices.getUserMedia({audio: true});
+  } catch (e) {
+    chatError(e.name === "NotAllowedError" ? "The microphone was refused. Allow it for this page, then press Talk again."
+                                           : "No microphone could be opened (" + e.name + ").");
+    return;
+  }
+  const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+  const options = type ? {mimeType: type, audioBitsPerSecond: 32000} : {audioBitsPerSecond: 32000};
+  const rec = new MediaRecorder(voice.stream, options);
+  voice.chunks = [];
+  rec.addEventListener("dataavailable", (e) => { if (e.data.size) voice.chunks.push(e.data); });
+  rec.addEventListener("stop", () => sendRecording(rec));
+  rec.start();
+  voice.rec = rec;
+  voice.started = Date.now();
+  clearInterval(voice.clock);
+  voice.clock = setInterval(() => {
+    if (Date.now() - voice.started >= MAX_RECORD_MS) stopTalking();
+    else talkLabel();
+  }, 250);
+  talkLabel();
+}
+
+function stopTalking() {
+  if (!voice.rec) return;
+  clearInterval(voice.clock);
+  if (voice.rec.state !== "inactive") voice.rec.stop();
+}
+
+async function sendRecording(rec) {
+  const length = Date.now() - voice.started;
+  const blob = new Blob(voice.chunks, {type: rec.mimeType || "audio/webm"});
+  for (const track of voice.stream ? voice.stream.getTracks() : []) track.stop();
+  voice.stream = null;
+  voice.rec = null;
+  talkLabel();
+  if (length < MIN_RECORD_MS || !blob.size) { chatError("That was too short. Press Talk, speak, then press it again."); return; }
+  const button = $("talk");
+  button.disabled = true;
+  button.textContent = "Hearing";
+  try {
+    const response = await fetch("/dashboard/voice", {method: "POST", cache: "no-store", body: blob,
+                                                      headers: {"Content-Type": blob.type || "audio/webm", "X-IGOR-Key": chat.key}});
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) sending(data.turn, data.text);
+    else {
+      chatError(data.error || "Not sent (HTTP " + response.status + ").");
+      if (response.status === 401) lockChat(data.error || "Chat is locked.");
+    }
+  } catch (e) {
+    chatError("Not sent: the link is down. Is the tunnel open?");
+  } finally {
+    button.disabled = !chat.key;
+    talkLabel();
+  }
+}
+
+$("talk").addEventListener("click", () => (voice.rec ? stopTalking() : startTalking()));
+// Hermes' push-to-talk key.
+document.addEventListener("keydown", (event) => {
+  if (event.ctrlKey && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "b") {
+    event.preventDefault();
+    if (voice.rec) stopTalking(); else startTalking();
+  }
+});
+$("aloud").addEventListener("click", () => {
+  voice.aloud = !voice.aloud;
+  saveVoice();
+  showAloud();
+  if (!voice.aloud) stopSpeaking();
+});
+$("voice").addEventListener("change", () => {
+  voice.choice = $("voice").value;
+  saveVoice();
+  voiceNote("");
+  speak(TEST_LINE, null);
+});
+$("voice-test").addEventListener("click", () => speak(TEST_LINE, null));
+if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", fillVoices);
+fillVoices();
+showAloud();
 
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();

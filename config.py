@@ -31,6 +31,7 @@ MODELS = {
     "presence": "openai/gpt-oss-120b",   # shares chat's bucket
     "vision": "qwen/qwen3.8-27b",        # shares router's bucket: 2048 tokens an image, only when one is sent
     "speech": "whisper-large-v3-turbo",  # voice notes; audio is limited in seconds, not tokens
+    "voice": "canopylabs/orpheus-v1-english",  # replies read aloud on the dashboard; billed by the character
 }
 
 # Delegated workers run on 20b, NOT on react's 120b. A worker starts while the

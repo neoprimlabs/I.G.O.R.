@@ -20,10 +20,10 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
   network, secrets or sealed memory, read-only but `/tmp`, `.git` and
   `memory/workspace`; refused if it cannot start. The shell also refuses a blocklist and DMs the user for a yes
   before risky ones (approvals).
-- **No `scheduler.yaml`, `run_agent()` or `igor` module.** No spoken
-  replies; voice notes, images and videos the user sends are read.
+- **No `scheduler.yaml`, `run_agent()` or `igor` module.** Spoken replies only
+  on the dashboard; voice notes, images and videos sent are read.
 
-**React's 25 tools, in full:** `search` (web, jobs), `memory_read`, `search_memory`,
+**React's 25 tools:** `search` (web, jobs), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
 `send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Seventeen load on
@@ -40,7 +40,7 @@ until Groq's stated reset.
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none, by design |
-| React | `TASK`, router failure | 120b | all 23 |
+| React | `TASK`, router failure | 120b | all 25 |
 | Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
 | ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
@@ -76,15 +76,15 @@ reply that ran out of steps or offers to go on is judged by 20b. On `continue`, 
 3 more rounds of 4 steps, each reply sent as it lands; stops at 45000 tokens or under
 60000 left today. A round keeps the turn's web and private lockouts; any user message stops it.
 
-**Cost**: Groq caps tokens per model per day; 120b's daily token budget (200000) is
-shared by Direct and React. `usage.py` counts spend.
+**Cost**: Groq caps tokens per model per day; 120b's 200000 budget is shared by Direct
+and React. `usage.py` counts spend.
 
 **Deployment**: a root-owned script outside `/opt/igor` tests, restarts, waits for
 Discord and rolls back on failure.
 
 **MCP**: `mcp_server.py` serves six read-only tools over SSH; `mcp_client.py` uses the user's servers.
 
-**Dashboard**: status and keyed chat, `/dashboard` on loopback.
+**Dashboard**: status, keyed chat and voice, `/dashboard` on loopback.
 
 **Off until configured**: `http_server.py`'s API and webhooks, `hooks.py`.
 
@@ -382,7 +382,9 @@ sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing 
 
 **Dashboard** (`dashboard.py`, Hermes' web dashboard): status with no login on loopback, other Host names refused;
 chat through `orchestrator.process`, needing the key in `memory/private/dashboard.key`, which no tool or sandbox
-reads. The PC launcher fetches it over SSH.
+reads. The PC launcher fetches it over SSH. Voice (`voice.py`): Talk records in the browser, Whisper hears it and
+it goes in labelled `(voice note)`; replies are read in Orpheus in 200-character parts, or the browser's voice
+while Orpheus is refused (its terms, a 429). No addresses, code or markdown are read.
 
 ### Plugins, the board and the browser
 
@@ -521,14 +523,11 @@ and independent buckets. Every general-purpose model Groq serves is 8000 TPM
 | Role | Model | Bucket |
 |---|---|---|
 | `router` | `qwen/qwen3.8-27b` | 8000, sole occupant, ~28 tokens a call |
-| `chat`, `react` | `openai/gpt-oss-120b` | 8000, shared |
-| `research`, `evaluator`, `summary` | `openai/gpt-oss-20b` | 8000, shared |
-| `worker` | `openai/gpt-oss-20b` | shares research's 8000 |
-| `judge` | `openai/gpt-oss-20b` | shares research's 8000; follow-through, skill drafts |
-| `screening` | `openai/gpt-oss-120b` | shares chat's 8000; one gig screen a day |
-| `presence` | `openai/gpt-oss-120b` | shares chat's 8000; check-ins |
+| `chat`, `react`, `screening`, `presence` | `openai/gpt-oss-120b` | 8000, shared; a gig screen and check-ins daily |
+| `research`, `evaluator`, `summary`, `worker`, `judge` | `openai/gpt-oss-20b` | 8000, shared |
 | `vision` | `qwen/qwen3.8-27b` | shares router's 8000; 2048 an image, when sent |
-| `speech` | `whisper-large-v3-turbo` | audio seconds, not tokens |
+| `speech` | `whisper-large-v3-turbo` | audio seconds; 2000 requests a day |
+| `voice` | `canopylabs/orpheus-v1-english` | billed by character; unmeasured |
 
 `chat` and `react` share a bucket deliberately: the router sends each message to
 one, never both, so they alternate instead of stacking.
@@ -618,14 +617,9 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
 `/usr/local/lib/igor-deploy/deploy.sh`, root-owned, outside `/opt/igor` so `write_file` cannot reach it,
 logs every attempt to `/var/log/igor-deploy.log`, which `igor` cannot write either.
 
-Four gates. The first three run before any restart, so failing them never takes IGOR down:
-
-| Gate | Catches | On failure |
-|---|---|---|
-| syntax | compiles every `.py` outside `memory/` | reset to previous commit, no restart |
-| imports | the NameError class `py_compile` cannot see | reset to previous commit, no restart |
-| tests | every offline `tests/test_*.py`, as igor, ~5 min | reset to previous commit, no restart |
-| **gateway** | `I.G.O.R. online` in the journal within 90s of restart | roll back, restart, alert |
+Four gates. Syntax (every `.py` outside `memory/`), imports (the NameError class `py_compile` misses) and
+every offline `tests/test_*.py` (as igor, ~5 min) run before any restart and reset to the previous commit, so
+IGOR never goes down for them. **Gateway**: `I.G.O.R. online` in the journal within 90s, or roll back and alert.
 
 **After a healthy deploy:** a crash is `Restart=always`, a dropped connection the heartbeat above.
 Below the host, the PC's `scripts/backup_memory.ps1` and the hourly `memory-push.sh` cover it.

@@ -304,7 +304,12 @@ and a phone layout followed (fbbd9ff, 26fed8a). Live 11-03: the user's first mes
 router, Direct and the proposal list, so the page works end to end. The Direct answer was a guess - a question about
 what the dock watch had found went CHAT. Routed to React (1414e04), the next try read only the price watch's files
 and offered an 18-month-old post as new, so watch questions now take a Watches route with watch_history required
-(6cd1038), and the price status dates each match. Not
+(6cd1038), and the price status dates each match. **Voice, 11-03** (`voice.py`, GAMEPLAN I.2): Talk (or Ctrl+B)
+records, Whisper hears it (measured: 2000 a day, a 5s clip exact in 1.5s) and it goes in as a voice note; replies
+are read aloud in Orpheus, or the browser's voice while Groq refuses Orpheus with `model_terms_required`, which
+lasts until the user accepts its terms in the Groq console. The user's browser runs Firefox's engine, whose own
+voices are Windows' older ones. Checked locally in headless Zen at desk and phone width. Not yet seen: the user's
+own mic, and Orpheus at all. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it

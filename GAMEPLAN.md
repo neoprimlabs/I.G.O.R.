@@ -787,16 +787,18 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
 ## Phase I - Interface
 
 - [ ] **I.1 Desktop dashboard (was "Web or Flutter UI").** STARTED 2026-11-02: `/dashboard`
-  shows IGOR's state and carries chat (ARCHITECTURE, Dashboard). Voice is next in it. Spec Phase 2. Decided
+  shows IGOR's state and carries chat (ARCHITECTURE, Dashboard). Voice added 2026-11-03 (I.2). Spec Phase 2. Decided
   with the user 2026-10-16: a desktop dashboard application, coming soon, that takes
   over from Discord as the main interface - more control and quality-of-life
   improvements. Its first data source is A.4's work folder and status. Separate
   design when it starts. projects.md tracks it as "I.G.O.R. App (Front-End)".
-- [ ] **I.2 Voice** HALF DONE: voice notes the user sends are transcribed by Whisper
-  (`agents/inbound.py`). Spoken replies are PARKED until IGOR's own app; the user
-  ruled out TTS in Discord (2026-10-19). Via Groq: Whisper for speech to text, Orpheus for text to
-  speech, both already on the key. Not qwen3-tts, which Groq does not serve, and not
-  local, which the host cannot fit. Measure both rate limits first. After I.1.
+- [ ] **I.2 Voice** BUILT on the dashboard 2026-11-03 (`voice.py`): a Talk button (Ctrl+B, Hermes'
+  key) records in the browser, Whisper hears it, and it goes in as a voice note; replies are read
+  aloud in Orpheus, or the browser's voice while Orpheus is refused. Not in Discord: the user ruled
+  that out (2026-10-19). Whisper measured: 2000 requests a day, a 5s clip back exact in 1.5s.
+  **Open:** Orpheus answers `model_terms_required` until the account owner accepts its terms in
+  the Groq console; then measure its limits (per-request characters, RPM, daily) and set
+  `voice.PART_CHARS` from the real ceiling, not the secondary source's 200.
 
 ## Phase A - Autonomy and learning
 

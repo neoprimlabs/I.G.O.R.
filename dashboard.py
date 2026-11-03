@@ -53,7 +53,8 @@ _HEARTBEAT_STALE_S = 180
 _MEMORY_LEVELS = ((64, 0.05, "critical"), (128, 0.15, "elevated"))
 _DISK_LEVELS = ((256, "critical"), (512, "elevated"))
 _HEADERS = {
-    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:",
+    # media-src blob: is IGOR's voice, played from the bytes the page fetched.
+    "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; font-src 'self'; img-src 'self' data:; media-src blob:",
     "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
 }
@@ -64,6 +65,10 @@ _CHAT_ROWS = 30
 _CHAT_CATCH_UP = 200
 _NOTES_KEPT = 50
 _PROACTIVE = "[sent proactively]"
+# What a Discord voice note's words carry in front, so a misheard "stop" is never run as a command.
+_SPOKEN = "(voice note) "
+_MIN_RECORDING_BYTES = 1000
+_SPEECH_TEXT_CHARS = 20000
 
 # Dashboard messages not yet answered, and replies the store does not keep (commands, errors) as notes.
 _open_turns: set[int] = set()
@@ -406,12 +411,9 @@ async def _turn(number: int, text: str) -> None:
 
 async def _chat_post(request):
     from aiohttp import web
-    global _turn_seq
-    if not _origin_ok(request):
-        logger.warning("Dashboard chat refused a post from %r", request.headers.get("Origin", "")[:80])
-        return web.json_response({"error": "Only the dashboard's own page may send messages."}, status=403)
-    if not _key_ok(request):
-        return web.json_response({"error": _LOCKED}, status=401)
+    refused = _refused(request)
+    if refused is not None:
+        return refused
     try:
         body = await request.json()
     except (ValueError, web.HTTPException):
@@ -423,13 +425,106 @@ async def _chat_post(request):
         return web.json_response({"error": f"A message here stops at {_CHAT_CHARS} characters."}, status=400)
     import commands
     if len(_open_turns) >= _CHAT_QUEUE and commands.parse(text) != "stop":
-        return web.json_response({"error": "Wait for the replies already on their way."}, status=429)
+        return web.json_response({"error": _FULL}, status=429)
+    return web.json_response({"turn": _start(text.strip())}, status=202)
+
+
+_FULL = "Wait for the replies already on their way."
+
+
+def _start(text: str) -> int:
+    global _turn_seq
     _turn_seq += 1
     _open_turns.add(_turn_seq)
-    task = asyncio.create_task(_turn(_turn_seq, text.strip()))
+    task = asyncio.create_task(_turn(_turn_seq, text))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
-    return web.json_response({"turn": _turn_seq}, status=202)
+    return _turn_seq
+
+
+def _refused(request):
+    """The checks every post makes: the dashboard's own page, holding the key. None when both pass."""
+    from aiohttp import web
+    if not _origin_ok(request):
+        logger.warning("Dashboard refused a post from %r", request.headers.get("Origin", "")[:80])
+        return web.json_response({"error": "Only the dashboard's own page may send messages."}, status=403)
+    if not _key_ok(request):
+        return web.json_response({"error": _LOCKED}, status=401)
+    return None
+
+
+async def _voice_post(request):
+    """A recording from the page's Talk button: Whisper's words go to IGOR as a typed message would, with
+    the label a Discord voice note has. The queue is checked first, so a full one costs no transcription."""
+    from aiohttp import web
+    import voice
+    refused = _refused(request)
+    if refused is not None:
+        return refused
+    if not request.content_type.startswith("audio/"):
+        return web.json_response({"error": "That was not a recording."}, status=400)
+    if len(_open_turns) >= _CHAT_QUEUE:
+        return web.json_response({"error": _FULL}, status=429)
+    try:
+        data = await request.read()
+    except web.HTTPRequestEntityTooLarge:
+        return web.json_response({"error": "That recording is too long. Keep it under two minutes."}, status=413)
+    if len(data) < _MIN_RECORDING_BYTES:
+        return web.json_response({"error": "That recording was empty."}, status=400)
+    try:
+        heard = await voice.hear(data, request.content_type)
+    except ValueError:
+        return web.json_response({"error": "This browser records in a format that cannot be read."}, status=415)
+    except Exception as e:
+        logger.error("A dashboard recording could not be transcribed - %s: %s", type(e).__name__, e)
+        return web.json_response({"error": f"That could not be heard ({type(e).__name__}). Try again, or type it."}, status=502)
+    if not heard:
+        return web.json_response({"error": "No words were heard in that recording."}, status=422)
+    text = (_SPOKEN + heard)[:_CHAT_CHARS]
+    return web.json_response({"turn": _start(text), "text": text}, status=202)
+
+
+async def _body(request) -> dict:
+    try:
+        body = await request.json()
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+async def _speech_post(request):
+    """A reply as the voice should say it, in parts, and whether IGOR's own voice can say them now."""
+    from aiohttp import web
+    import voice
+    refused = _refused(request)
+    if refused is not None:
+        return refused
+    text = (await _body(request)).get("text")
+    if not isinstance(text, str) or not text.strip() or len(text) > _SPEECH_TEXT_CHARS:
+        return web.json_response({"error": "There is nothing to read."}, status=400)
+    able, why = voice.ready()
+    return web.json_response({"parts": voice.speech_parts(text), "igor_voice": able, "why": why})
+
+
+async def _speech_audio(request):
+    """One part in IGOR's voice, as WAV. 503 means use the browser's voice, and says why."""
+    from aiohttp import web
+    import voice
+    refused = _refused(request)
+    if refused is not None:
+        return refused
+    body = await _body(request)
+    line, name = body.get("line"), body.get("voice")
+    if not isinstance(line, str) or not line.strip() or len(line) > voice.PART_CHARS or name not in voice.VOICES:
+        return web.json_response({"error": "Not a part to read."}, status=400)
+    try:
+        audio = await voice.speak(line.strip(), name)
+    except voice.Unavailable as e:
+        return web.json_response({"error": str(e)}, status=503)
+    except Exception as e:
+        logger.error("IGOR's voice failed - %s: %s", type(e).__name__, e)
+        return web.json_response({"error": f"IGOR's voice failed ({type(e).__name__})"}, status=503)
+    return web.Response(body=audio, content_type="audio/wav")
 
 
 async def _chat_get(request):
@@ -500,4 +595,7 @@ def add_routes(application) -> None:
     application.router.add_get("/dashboard/status.json", _guarded(_status))
     application.router.add_get("/dashboard/chat.json", _guarded(_chat_get))
     application.router.add_post("/dashboard/chat", _guarded(_chat_post))
+    application.router.add_post("/dashboard/voice", _guarded(_voice_post))
+    application.router.add_post("/dashboard/speech", _guarded(_speech_post))
+    application.router.add_post("/dashboard/speech.wav", _guarded(_speech_audio))
     application.router.add_get("/dashboard/{name:(fonts/)?[A-Za-z0-9._-]+}", _guarded(_asset))

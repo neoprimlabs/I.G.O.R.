@@ -31,10 +31,17 @@
     <div id="working" class="working" hidden><span id="working-text">Working</span><i></i></div>
     <form id="composer" class="composer">
       <textarea id="say" rows="2" maxlength="4000" placeholder="Message I.G.O.R." aria-label="Message I.G.O.R."></textarea>
+      <button type="button" id="talk" class="talk" title="Press, speak, press again to send (Ctrl+B)">Talk</button>
       <button type="submit" id="send">Send</button>
       <button type="button" id="stop" class="stop" hidden>Stop</button>
     </form>
     <p id="chat-error" class="chat-error" hidden></p>
+    <div class="voicebar">
+      <button type="button" id="aloud" class="toggle" aria-pressed="false">Read replies aloud: off</button>
+      <label class="pick">Voice <select id="voice" aria-label="Voice for reading aloud"></select></label>
+      <button type="button" id="voice-test" class="toggle">Test</button>
+    </div>
+    <p id="voice-note" class="voice-note" hidden></p>
   </section>
   <section class="panel"><h2><b>02</b> Vitals</h2><dl id="health"></dl></section>
   <section class="panel"><h2><b>03</b> Scheduled messages</h2><ul id="scheduled"></ul><h2 class="next"><b>04</b> Task board</h2><ul id="board"></ul></section>
