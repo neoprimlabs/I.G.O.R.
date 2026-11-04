@@ -785,7 +785,11 @@ Added 2026-08-03. Restoration is finished; this is the first phase of forward wo
   formal schema would also be one more hand-maintained description of facts that
   change, which is the exact failure that hit five files in one week.
 
-- [ ] **V.3 Dev and Comms as real specialists.** IGOR_SPEC.md describes five
+- [x] **V.3 Dev and Comms as real specialists.** CLOSED 2026-11-03 without building, by
+  evidence, flagged to the user: the 124 user messages kept since 2026-09-28 hold no request
+  for IGOR to write code or a message; the user's code is written with Claude Code. Reopen if
+  that work starts reaching IGOR. Text below is history.
+  IGOR_SPEC.md describes five
   specialists; there are four routed destinations. Both are currently absorbed into
   React. Only worth doing if their prompts would genuinely differ from React's.
   Status 2026-10-23: no evidence yet that they would; ARCHITECTURE.md lists it under
@@ -980,7 +984,16 @@ equally useful whenever added.
   under 8000 tokens with goals injected. Commit:
   `Goals live outside the context window and are actively retrieved (A.1)`
 
-- [ ] **A.3 Subgoal decomposition with local replanning.** Not started. Its two
+- [x] **A.3 Subgoal decomposition with local replanning.** CLOSED 2026-11-03 without
+  building, by evidence. Hermes' form is `todo_list` (items with a parent, one in progress,
+  completed only once verified, a failed item cancelled and a revised one added, the active
+  ones re-injected after compression). Here 120b makes one tool call a step, so each update
+  would be a model call of about 5000 tokens, and the work it serves is rare: from 10-20 to
+  11-03 React ran out of steps 5 times and follow-through ran once. The local replanning
+  that exists costs nothing: a turn out of steps says what is still open, a round ends by
+  saying what is left, and the next round reads every reply so far. Reopen if long tasks
+  become common. Text below is history.
+  Not started. Its two
   prerequisites now exist (S.1's gate, A.1's goals). Decompose into subgoals
   and confine replanning to the active node, so a local failure does not cascade
   into global replanning. Close the loop per subgoal: plan, execute, verify,
@@ -1260,7 +1273,14 @@ personal details in config or memory, never in code.
 
 ## Phase X - Containerisation
 
-- [ ] **X.1 Containerise IGOR.** Dual purpose. Oracle terminated the instance once
+- [ ] **X.1 Containerise IGOR.** RESCOPED 2026-11-03: a rebuild script, not a container.
+  Hermes treats Docker as optional and moves hosts with an installer, `hermes backup` /
+  `hermes import` and `hermes gateway install`. Neither the host (about 500 MB free) nor the
+  user's PC has Docker. The daily backup already holds memory/ and .env, and the deploy
+  machinery's copy has its install steps; `igor.service` had no copy until 11-03. Left: one
+  script that turns a fresh Ubuntu host into running IGOR from the latest backup. Build and
+  test it together, on a spare host: untested, it would claim more than it does.
+  Was: Dual purpose. Oracle terminated the instance once
   over an entitlement change, and a container makes the host interchangeable, which
   is the real answer to that. It is also a prerequisite if the app idea ever becomes
   real. Worth doing on its own merits either way.
