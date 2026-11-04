@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-03**
+Last updated: **2026-11-04**
 
 ---
 
@@ -316,7 +316,14 @@ against what runs found five false lines: `watchlist.md`, which nothing ran from
 (switched off in 5c00457); `projects.md` said the app had not started and Syncthing was set up (no process).
 Monitor now reports the digest's sections from the file the digest reads, `watchlist.md` is retired,
 ConfigEdit turns news on as a digest section and hands any other watch to React, the dead YouTube code
-is gone, and the false lines were cut from the notes (backups `.bak-20261103`). Not
+is gone, and the false lines were cut from the notes (backups `.bak-20261103`). **Hermes, 11-04:**
+asked how it stacks up against Hermes and what people use Hermes for, IGOR answered both through Direct
+from the model's memory of Nous' Hermes language models, not Hermes Agent. Comparing IGOR with another
+agent now routes SELF, and SelfDescribe reads `docs/HERMES_PARITY.md` when Hermes is named (worst case
+about 7600 of 120b's 8000 a minute, held by a test). Direct's whole reply is `LOOKUP` when the answer
+needs facts it may lack, and React takes the turn. The 11-04 weekday idea (a055d1) ended "... [DONE]"
+inside a line with no stop condition in its brief: the series went on, but the mark reached the user. A
+mark closing a line is now removed, and a series that does end says so in code. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it

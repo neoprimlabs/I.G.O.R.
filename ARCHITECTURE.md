@@ -39,14 +39,14 @@ until Groq's stated reset.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
-| Direct | `CHAT` | 120b | none, by design |
+| Direct | `CHAT` | 120b | none; lookups go to React |
 | React | `TASK`, router failure | 120b | all 25 |
 | Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
-| ConfigEdit | `CONFIG` | 120b | none; writes 3 files, only when named |
+| ConfigEdit | `CONFIG` | 120b | none; writes 2 files, only when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
-| SelfDescribe | `SELF` - about IGOR itself | 120b | none, reads this file |
+| SelfDescribe | `SELF` - about IGOR itself | 120b | none; this file, Hermes ledger if named |
 
-**Scheduled jobs**, registered in code in `monitor.setup()`: morning digest (10:00
+**Scheduled jobs** in `monitor.setup()`: morning digest (10:00
 local), job watch (11:30), gig watch (11:45), price watch (2-hourly), stock watch
 (hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
@@ -73,7 +73,7 @@ first (`checkpoints.py`); the user's `rollback` restores them.
 
 **Follow-through** (`followthrough.py`, Hermes' /goal, but IGOR decides): a React
 reply that ran out of steps or offers to go on is judged by 20b. On `continue`, up to
-3 more rounds of 4 steps, each reply sent as it lands; stops at 45000 tokens or under
+3 more rounds of 4 steps, each sent as it lands; stops at 45000 tokens or under
 60000 left today. A round keeps the turn's web and private lockouts; any user message stops it.
 
 **Cost**: Groq caps tokens per model per day; 120b's 200000 budget is shared by Direct
@@ -92,8 +92,7 @@ Discord and rolls back on failure.
 
 ---
 
-Describes the system **as it exists today**, verified against the source on
-2026-10-17. **This file is reality**; when it disagrees with the code it is wrong -
+Describes the system **as it exists today**. **This file is reality**; when it disagrees with the code it is wrong -
 fix it in the same commit. IGOR quotes it. **Keep the summary above short**,
 and the whole file inside ten 3700-character `read_file` windows.
 
@@ -210,12 +209,13 @@ section, the research loop reports what it has.
 ### Direct
 
 One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
-`call_claude` passed to it (rate-limit backoff and user notification). Its prompt
+`call_claude` passed to it. Its prompt
 ends with `memory/user.md` (Hermes' USER.md) and how full it is; `memory_write` refuses
 a write past 1500 characters, judged on a batch's result, and lists the entries.
 
 Its prompt forbids claims about IGOR's state it cannot check, saying IGOR lacks a capability,
-and promising a future action.
+and promising a future action. Facts it may lack (a product, company or event today) get a bare
+`LOOKUP`, and React takes the turn. SelfDescribe adds `docs/HERMES_PARITY.md` when Hermes is named.
 
 ### React
 
@@ -311,7 +311,7 @@ is `update`, which edits a pending message in place by id. `repeat` (daily, week
 the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 across
 daylight saving; an interval (3 hours at the shortest, 5 minutes with a script) steps by its
 minutes. `times` limits the runs; a run ending `[DONE]` on its own line ends the series (Hermes'
-LOOP_COMPLETE). After downtime it sends one late message, never a backlog; resuming
+LOOP_COMPLETE) and says so; one ending a line is dropped. After downtime it sends one late message, never a backlog; resuming
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run sees the series' last three
 messages, marked sent, never built. An IGOR
@@ -378,7 +378,7 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 **HTTP** (`http_server.py`, Hermes' API server and webhooks), on loopback, off until configured:
 `API_SERVER_KEY` opens `/v1/chat/completions`, the newest user message going through
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
-sends its rendered prompt plainly or through a read-only run, 24 a day. Nothing is configured.
+sends its rendered prompt plainly or through a read-only run, 24 a day.
 
 **Dashboard** (`dashboard.py`, Hermes' web dashboard): status with no login on loopback, other Host names refused;
 chat through `orchestrator.process`, needing the key in `memory/private/dashboard.key`, which no tool or sandbox
@@ -517,8 +517,7 @@ gate on any action derived from the open web.
 ## Models and rate limits
 
 `config.MODELS` is the single source of truth. Groq TPM limits are **per model**
-and independent buckets. Every general-purpose model Groq serves is 8000 TPM
-(re-measured 2026-08-18):
+and independent buckets. Every general-purpose model Groq serves is 8000 TPM:
 
 | Role | Model | Bucket |
 |---|---|---|
@@ -562,9 +561,8 @@ a failed push.
 
 **Read at startup, restart required:** `schedule_config.md`
 
-**Read per call, immediate effect:** `digest_config.md`, `prompt_*.md`. There is no
-watchlist file: Monitor reports what is watched from the jobs, the digest's sections and
-each watch's state.
+**Read per call, immediate effect:** `digest_config.md`, `prompt_*.md`. No watchlist
+file: Monitor reports what runs.
 
 **Overnight loop files:** `goals.md` and `goals_archive.md`, `preferences.md`
 (approved standing preferences, 1500 character cap, read per call) and `work/`.
@@ -630,7 +628,7 @@ Below the host, the PC's `scripts/backup_memory.ps1` and the hourly `memory-push
 ## Known sharp edges
 
 1. **The router can misroute at the margins** (35 of 35 live, 2026-10-22). Guards
-   cover the harmful cases; Monitor and SelfDescribe hand off what is not theirs.
+   cover the harmful cases; Monitor, SelfDescribe and Direct hand off what is not theirs.
 2. **Oracle Always Free** can terminate the instance, as in July 2026.
 3. **The critic is off** (`ENABLE_CRITIC`), so `_critic_pass` never runs.
 

@@ -584,7 +584,9 @@ async def test_times_and_done() -> None:
 
     await scheduled.deliver_due(send, now=later + timedelta(hours=3), compose=arrived)
     _check("[DONE] ends the series", _stored() == [], str(_stored()))
-    _check("and the mark never reaches the user", sent[-1] == "The parcel has come.", str(sent))
+    _check("and the mark never reaches the user", "[DONE]" not in sent[-1]
+           and sent[-1].startswith("The parcel has come."), str(sent))
+    _check("the user is told the series has ended", sent[-1].endswith(scheduled._LAST_ONE), str(sent))
 
     _fresh()
     reply = scheduled.run_tool({"action": "add", "in_minutes": 5, "brief": "check the shop", "repeat": "every 6 hours", "until": "the shop has restocked."})
@@ -618,6 +620,20 @@ async def test_times_and_done() -> None:
 
     await scheduled.deliver_due(send, now=later, compose=in_passing)
     _check("the mark only counts on its own line", len(_stored()) == 1 and len(sent) == 1, str(sent))
+    _check("and one inside a sentence is left as written", "[DONE] in a sentence" in sent[-1], str(sent))
+
+    # 2026-11-04, a weekday idea with no stop condition: "...keep the token budget unchanged. [DONE]"
+    _fresh()
+    scheduled.add(brief="Practical idea for IGOR", in_minutes=5, repeat="weekdays", now=NOW)
+    sent.clear()
+
+    async def trailing(brief, now, **kw):
+        return "Add a kettle timer to the digest. It keeps the token budget unchanged. [DONE]"
+
+    await scheduled.deliver_due(send, now=later, compose=trailing)
+    _check("a mark at the very end is taken off", sent == ["Add a kettle timer to the digest. "
+           "It keeps the token budget unchanged."], str(sent))
+    _check("and the series goes on", len(_stored()) == 1, str(_stored()))
 
     _fresh("check.py")
     scheduled.add(in_minutes=5, repeat="every 5 minutes", script="check.py", now=NOW)
@@ -632,7 +648,8 @@ async def test_times_and_done() -> None:
         await scheduled.deliver_due(send, now=later)
     finally:
         prerun.run = real
-    _check("a script can end its own series too", _stored() == [] and sent == ["It is back in stock."], str(sent))
+    _check("a script can end its own series too",
+           _stored() == [] and sent == [f"It is back in stock.\n\n{scheduled._LAST_ONE}"], str(sent))
 
 
 def test_repeat_steps() -> None:

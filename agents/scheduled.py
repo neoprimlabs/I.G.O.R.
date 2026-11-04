@@ -575,6 +575,12 @@ def set_paused(entry_id: str, paused: bool, now: Optional[datetime] = None) -> s
 _SILENT = "[SILENT]"
 # Hermes' LOOP_COMPLETE, on its own line: this was the last one, whatever is left of the series.
 _DONE = re.compile(r"^\s*\[DONE\]\s*$", re.MULTILINE)
+# 2026-11-04: a weekday idea with no stop condition ended "...the token budget unchanged. [DONE]".
+# Not on its own line, so the series went on, but the mark reached the user. One at the very end is
+# taken off; one inside a sentence, as a page might quote it, is left.
+_TRAILING_DONE = re.compile(r"\s*\[DONE\]\s*\Z")
+# Said in code, so a series a model ended by mistake does not just stop arriving.
+_LAST_ONE = "That was the last of these: the series has ended."
 
 
 async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
@@ -626,6 +632,12 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
         finished = not broke and not entry.get("content") and bool(_DONE.search(text))
         if finished:
             text = _DONE.sub("", text).strip()
+        elif not broke and not entry.get("content") and _TRAILING_DONE.search(text):
+            logger.warning("Scheduled message %s ended with [DONE] inside a line: removed, the series goes on",
+                           entry["id"])
+            text = _TRAILING_DONE.sub("", text).strip()
+        if finished and text and entry.get("repeat"):
+            text = f"{text}\n\n{_LAST_ONE}"
         body = text
         # Hermes' cron: a job with nothing to report says so and nothing is sent. A failed
         # run never gets here with the mark, so it still reaches the user.
