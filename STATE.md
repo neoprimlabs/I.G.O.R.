@@ -321,7 +321,12 @@ asked how it stacks up against Hermes and what people use Hermes for, IGOR answe
 from the model's memory of Nous' Hermes language models, not Hermes Agent. Comparing IGOR with another
 agent now routes SELF, and SelfDescribe reads `docs/HERMES_PARITY.md` when Hermes is named (worst case
 about 7600 of 120b's 8000 a minute, held by a test). Direct's whole reply is `LOOKUP` when the answer
-needs facts it may lack, and React takes the turn. The 11-04 weekday idea (a055d1) ended "... [DONE]"
+needs facts it may lack, and React takes the turn. Two live runs in a throwaway copy (about 34000 tokens):
+routing right both times, the comparison grounded but still carrying IGOR's own 03:48 claim, from the
+window and from the running summary, and Direct repeating that claim instead of handing on. With the
+ledger, SelfDescribe now leaves out IGOR's earlier replies, and the claim was cut from
+`conversation_summary.json` (backup `.bak-20261104`). **Not yet seen:** Direct's `LOOKUP` in a window
+without that claim; `journalctl -u igor | grep "handed the message on"` shows it. The 11-04 weekday idea (a055d1) ended "... [DONE]"
 inside a line with no stop condition in its brief: the series went on, but the mark reached the user. A
 mark closing a line is now removed, and a series that does end says so in code. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app

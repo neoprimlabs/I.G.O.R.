@@ -156,6 +156,11 @@ async def handle(message: str, context: list[dict]) -> Optional[str]:
     from agents.react import _get_client
 
     ledger = _load_ledger(message, context)
+    if ledger:
+        # Live 2026-11-04, twice: with the ledger in hand it still said Hermes runs on larger models,
+        # IGOR's own claim from that morning, still in the window. The ledger is the source; the
+        # user's words stay, so a follow-up still makes sense.
+        context = [turn for turn in context if turn.get("role") == "user"]
     # Live 2026-11-04, with the ledger: 6079 tokens in, cut at 1024, and the retry at 2048 went
     # past 120b's 8000 a minute and waited 40 seconds. Less reasoning, and one call that fits:
     # at the cap, llm.complete does not retry.

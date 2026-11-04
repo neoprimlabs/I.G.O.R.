@@ -104,6 +104,34 @@ print("\n=== the Hermes ledger ===")
 ledger = self_describe._load_ledger("How do you feel like you stack up against Hermes?", [])
 real_ledger = (config.BASE_DIR / self_describe.LEDGER).read_text(encoding="utf-8").strip()
 check("a question naming Hermes gets the ledger", "## Built" in ledger and "Hermes Agent" in ledger)
+
+import asyncio
+from agents import react as _react
+_sent = {}
+
+
+async def _fake_complete(client, model, system, user, max_tokens, label="", **kw):
+    _sent["user"], _sent["kw"], _sent["max_tokens"] = user, kw, max_tokens
+    return "An answer."
+
+_real = (self_describe.llm.complete, _react._get_client)
+self_describe.llm.complete, _react._get_client = _fake_complete, lambda: None
+try:
+    _talk = [{"role": "user", "content": "compare yourself with the kettle"},
+             {"role": "assistant", "content": "Hermes runs on a larger, newer model."}]
+    asyncio.run(self_describe.handle("How do you stack up against Hermes?", _talk))
+    check("with the ledger, IGOR's own earlier claims are left out",
+          not any(t["role"] == "assistant" for t in _sent["user"]), str(_sent["user"]))
+    check("the user's words stay", any("kettle" in t["content"] for t in _sent["user"]))
+    check("and the call is one that fits", _sent["max_tokens"] == self_describe.LEDGER_REPLY_TOKENS
+          and _sent["kw"].get("cap") == self_describe.LEDGER_REPLY_TOKENS, str(_sent))
+    _talk = [{"role": "user", "content": "compare yourself with the kettle"},
+             {"role": "assistant", "content": "The kettle has no tools."}]
+    asyncio.run(self_describe.handle("what tools can you use", _talk))
+    check("without it, the conversation is as it was",
+          any(t["role"] == "assistant" for t in _sent["user"]) and _sent["max_tokens"] == 1024, str(_sent))
+finally:
+    self_describe.llm.complete, _react._get_client = _real
 check("so does a follow-up once Hermes was named",
       self_describe._load_ledger("and memory?", [{"role": "user", "content": "compare yourself with hermes"}]) != "")
 check("other questions do not pay for it", self_describe._load_ledger("what tools can you use", []) == "")
