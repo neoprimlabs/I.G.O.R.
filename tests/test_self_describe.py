@@ -97,6 +97,27 @@ check("prompt + history + max_tokens fits the 12000 bucket", total < 11000,
       f"estimated {int(total)} tokens")
 print(f"        estimated {int(prompt_tokens)} prompt + {int(history)} history + 1024 out = {int(total)} of 12000")
 
+print("\n=== the Hermes ledger ===")
+
+# 2026-11-04: asked how it stacks up against Hermes, IGOR answered from the model's memory
+# of Nous' Hermes language models. The ledger goes in only when Hermes is named.
+ledger = self_describe._load_ledger("How do you feel like you stack up against Hermes?", [])
+real_ledger = (config.BASE_DIR / self_describe.LEDGER).read_text(encoding="utf-8").strip()
+check("a question naming Hermes gets the ledger", "## Built" in ledger and "Hermes Agent" in ledger)
+check("so does a follow-up once Hermes was named",
+      self_describe._load_ledger("and memory?", [{"role": "user", "content": "compare yourself with hermes"}]) != "")
+check("other questions do not pay for it", self_describe._load_ledger("what tools can you use", []) == "")
+check("the ledger is under its cap", len(real_ledger) <= self_describe.LEDGER_MAX_CHARS,
+      f"{len(real_ledger)} of {self_describe.LEDGER_MAX_CHARS}: trim docs/HERMES_PARITY.md")
+# Measured 2026-11-04 with the o200k tokenizer gpt-oss uses: the ledger is 13166 chars and 3330
+# tokens. The summary prompt measured 2474 tokens in on a real call. Worst case: the ledger at its cap.
+_O200K_CHARS_PER_TOKEN = 3.9
+worst = (len(prompt) + len(ledger) - len(real_ledger) + self_describe.LEDGER_MAX_CHARS
+         + orchestrator._CONTEXT_BUDGET_SELF) / _O200K_CHARS_PER_TOKEN + 1024
+check("with the ledger at its cap, the call fits 120b's 8000 a minute", worst < 8000,
+      f"estimated {int(worst)}")
+print(f"        worst case {int(worst)} of 8000")
+
 print("\n=== orchestrator wiring ===")
 
 import orchestrator

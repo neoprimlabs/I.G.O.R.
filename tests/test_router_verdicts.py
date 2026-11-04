@@ -27,6 +27,12 @@ CASES = [
     ("explain your memory system", "SelfDescribe"),
     ("Can you change your own code?", "SelfDescribe"),
     ("what are your limits", "SelfDescribe"),
+    # 2026-11-04: both went CHAT, and Direct answered from memory of Nous' Hermes models.
+    # The comparison is SELF; the question about the world stays CHAT, and Direct hands
+    # it on for a search (agents/direct.py, LOOKUP).
+    ("How do you feel like you stack up against Hermes?", "SelfDescribe"),
+    ("how do you compare to ChatGPT", "SelfDescribe"),
+    ("What are people using Hermes for?", "Direct"),
 
     # Previously-fixed regressions. Opinion questions read as CONFIG once because the
     # CONFIG line ended with "preferences"; research mentions read as RESEARCH.

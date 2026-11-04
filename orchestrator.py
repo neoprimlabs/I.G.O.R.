@@ -37,10 +37,11 @@ CONFIG - requests to CHANGE a saved setting: add or remove a digest section, cha
 RESEARCH - asking to START a long-running investigation, and naming the subject to investigate
 Reply with the single word only.
 
-Seven rules that override the above:
+Eight rules that override the above:
 A message that mentions research, or talks about the research feature, without asking to start one is CHAT.
 Asking what a setting is, or how something is built or configured, is never CONFIG. CONFIG requires wanting something changed.
 Asking how IGOR works, or what IGOR can do, is SELF, not CHAT and not TASK, even though the subject is IGOR. So is suggesting a use for one of IGOR's own systems: "We could have you use your scheduled system to promote and inform" is SELF.
+Comparing IGOR with another assistant or agent is SELF, however it is worded: "How do you stack up against Hermes?" is SELF.
 Naming one of IGOR's tools while asking for work to be done is TASK, not SELF. "Use your shell tool to check disk space" is TASK. "What does your shell tool do" is SELF.
 Asking IGOR to message the user later, or to change, correct or cancel a message already planned, is TASK - including short follow-ups like "I said 1am" or "write something new when it sends". It is never CONFIG and never CHAT.
 Asking what the user said or told IGOR earlier, or about the user's own plans or work hours, is CHAT. "What did I tell you about my work schedule" is CHAT. Asking which messages IGOR has scheduled for the user is MONITOR.
@@ -433,6 +434,7 @@ class Orchestrator:
         self._notify = notify
         self._notify_file = notify_file or notify
         self._monitor_declined = False
+        self._looked_up = False
         self._last_route = ""
         # followthrough.py: the React reply waiting to be followed through once the bot
         # has sent it, the stop for one under way, and a count of the user's messages so
@@ -573,6 +575,8 @@ class Orchestrator:
         except Exception as e:
             logger.error("A side question failed - %s: %s", type(e).__name__, e)
             return "I could not answer that on the side. Ask again when I have finished."
+        if direct.wants_lookup(reply):
+            return "That needs a search, which has to wait for the task in progress. Ask it again once I have answered."
         self._update_context(question, reply, route="Direct (side question)")
         return reply
 
@@ -611,6 +615,7 @@ class Orchestrator:
             file_mode = True
 
         self._monitor_declined = False
+        self._looked_up = False
         turn = llm.start_turn()
         stop = asyncio.Event()
         self._stop_turn = stop
@@ -644,6 +649,10 @@ class Orchestrator:
 
         if destination in ("ResearchLoop", "StopResearch"):
             return response, file_mode
+        # React answered what Direct handed on, so React is what a correction is about and
+        # what follow-through continues.
+        if self._looked_up:
+            destination = self._last_route = "React"
 
         skill_captured = False
         if config.ENABLE_CRITIC:
@@ -815,7 +824,11 @@ class Orchestrator:
             logger.info("Monitor declined the message, forwarding to Direct")
             self._monitor_declined = True
             from agents import direct
-            return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            reply = await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            if not direct.wants_lookup(reply):
+                return reply
+            logger.info("Direct handed the message on for a lookup, forwarding to React")
+            self._looked_up = True
 
         if destination == "FileExport":
             import commands
@@ -905,7 +918,14 @@ class Orchestrator:
             # Direct carries no tool schemas on the 12000 bucket, so it can hold far
             # more history than React. This is what makes "what did you just say"
             # answerable in chat.
-            return await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            reply = await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            if not direct.wants_lookup(reply):
+                return reply
+            # 2026-11-04: asked what people use Hermes for, Direct answered from memory about
+            # Nous' Hermes models, not Hermes Agent. A model with no search now hands such a
+            # question to the one that has it, as Hermes' own agent would search.
+            logger.info("Direct handed the message on for a lookup, forwarding to React")
+            self._looked_up = True
 
         if destination == "SelfDescribe":
             from agents import self_describe

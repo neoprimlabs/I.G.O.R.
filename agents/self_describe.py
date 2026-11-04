@@ -114,6 +114,35 @@ def _load_document() -> str:
     return text[:marker]
 
 
+# 2026-11-04: asked how it stacks up against Hermes, IGOR answered from the model's memory of Nous'
+# Hermes language models, not Hermes Agent, which docs/HERMES_PARITY.md compares it with feature by
+# feature. Sent only when Hermes is named: 3330 tokens, so summary, ledger and reply measured about
+# 7000 against 120b's 8000 a minute. tests/test_self_describe.py holds the ledger under the cap.
+_HERMES = re.compile(r"\bhermes\b", re.IGNORECASE)
+LEDGER = "docs/HERMES_PARITY.md"
+LEDGER_MAX_CHARS = 15000
+
+
+def _load_ledger(message: str, context: list[dict]) -> str:
+    said = [message or ""] + [str(turn.get("content") or "") for turn in (context or [])[-2:]]
+    if not any(_HERMES.search(text) for text in said):
+        return ""
+    try:
+        text = (config.BASE_DIR / LEDGER).read_text(encoding="utf-8").strip()
+    except OSError as e:
+        logger.error("SelfDescribe could not read %s - %s: %s", LEDGER, type(e).__name__, e)
+        return ""
+    if len(text) > LEDGER_MAX_CHARS:
+        logger.warning("%s is %d characters, over %d - cut", LEDGER, len(text), LEDGER_MAX_CHARS)
+        text = text[:LEDGER_MAX_CHARS] + "\n[cut]"
+    return (f"\n\n=== {LEDGER}: IGOR against Hermes Agent, Nous Research's open-source personal agent, "
+            f"feature by feature ===\n"
+            "This ledger is part of your document. Hermes here always means Hermes Agent. Comparing IGOR "
+            "with it, however the question is worded - how IGOR stacks up, how it feels about it - is a "
+            f"question about what IGOR can and cannot do, and yours to answer from this.\n\n{text}\n"
+            "=== end of ledger ===")
+
+
 async def handle(message: str, context: list[dict]) -> Optional[str]:
     document = _load_document()
     if not document:
@@ -124,7 +153,7 @@ async def handle(message: str, context: list[dict]) -> Optional[str]:
     answer = await llm.complete(
         _get_client(),
         config.MODELS["chat"],
-        _SYSTEM_PROMPT.format(document=document),
+        _SYSTEM_PROMPT.format(document=document) + _load_ledger(message, context),
         context + [{"role": "user", "content": message}],
         max_tokens=1024,
         label="SelfDescribe",
