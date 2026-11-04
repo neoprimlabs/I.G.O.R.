@@ -120,7 +120,8 @@ def _load_document() -> str:
 # 7000 against 120b's 8000 a minute. tests/test_self_describe.py holds the ledger under the cap.
 _HERMES = re.compile(r"\bhermes\b", re.IGNORECASE)
 LEDGER = "docs/HERMES_PARITY.md"
-LEDGER_MAX_CHARS = 15000
+LEDGER_MAX_CHARS = 14000
+LEDGER_REPLY_TOKENS = 1280
 
 
 def _load_ledger(message: str, context: list[dict]) -> str:
@@ -139,8 +140,12 @@ def _load_ledger(message: str, context: list[dict]) -> str:
             f"feature by feature ===\n"
             "This ledger is part of your document. Hermes here always means Hermes Agent. Comparing IGOR "
             "with it, however the question is worded - how IGOR stacks up, how it feels about it - is a "
-            f"question about what IGOR can and cannot do, and yours to answer from this.\n\n{text}\n"
-            "=== end of ledger ===")
+            "question about what IGOR can and cannot do, and yours to answer from this. Hermes Agent is "
+            "software, not a model: it runs on whatever model its user chooses, so never compare model size, "
+            "speed or context length. Say nothing about Hermes that this ledger does not say, whatever "
+            "earlier messages claimed. Answer in a few short paragraphs of plain prose, no tables or "
+            "headers, since it may be read aloud: what is built, what differs on purpose and why, and what "
+            f"is still waiting.\n\n{text}\n=== end of ledger ===")
 
 
 async def handle(message: str, context: list[dict]) -> Optional[str]:
@@ -150,13 +155,20 @@ async def handle(message: str, context: list[dict]) -> Optional[str]:
 
     from agents.react import _get_client
 
+    ledger = _load_ledger(message, context)
+    # Live 2026-11-04, with the ledger: 6079 tokens in, cut at 1024, and the retry at 2048 went
+    # past 120b's 8000 a minute and waited 40 seconds. Less reasoning, and one call that fits:
+    # at the cap, llm.complete does not retry.
+    budget = LEDGER_REPLY_TOKENS if ledger else 1024
+    extra = {"reasoning_effort": "low", "cap": budget} if ledger else {}
     answer = await llm.complete(
         _get_client(),
         config.MODELS["chat"],
-        _SYSTEM_PROMPT.format(document=document) + _load_ledger(message, context),
+        _SYSTEM_PROMPT.format(document=document) + ledger,
         context + [{"role": "user", "content": message}],
-        max_tokens=1024,
+        max_tokens=budget,
         label="SelfDescribe",
+        **extra,
     )
 
     if not answer or answer.strip().upper().startswith(_DECLINE):

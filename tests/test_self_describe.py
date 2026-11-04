@@ -110,10 +110,11 @@ check("other questions do not pay for it", self_describe._load_ledger("what tool
 check("the ledger is under its cap", len(real_ledger) <= self_describe.LEDGER_MAX_CHARS,
       f"{len(real_ledger)} of {self_describe.LEDGER_MAX_CHARS}: trim docs/HERMES_PARITY.md")
 # Measured 2026-11-04 with the o200k tokenizer gpt-oss uses: the ledger is 13166 chars and 3330
-# tokens. The summary prompt measured 2474 tokens in on a real call. Worst case: the ledger at its cap.
+# tokens; a live call with it was 6079 tokens in. Worst case: the ledger at its cap and the whole
+# reply budget, which llm.complete never retries past, since it is also the cap.
 _O200K_CHARS_PER_TOKEN = 3.9
 worst = (len(prompt) + len(ledger) - len(real_ledger) + self_describe.LEDGER_MAX_CHARS
-         + orchestrator._CONTEXT_BUDGET_SELF) / _O200K_CHARS_PER_TOKEN + 1024
+         + orchestrator._CONTEXT_BUDGET_SELF) / _O200K_CHARS_PER_TOKEN + self_describe.LEDGER_REPLY_TOKENS
 check("with the ledger at its cap, the call fits 120b's 8000 a minute", worst < 8000,
       f"estimated {int(worst)}")
 print(f"        worst case {int(worst)} of 8000")
