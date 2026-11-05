@@ -503,8 +503,8 @@ async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
 
 
 async def test_a_lull_about_its_own_bookkeeping_is_not_sent() -> None:
-    """2026-11-05, 2:51am, from a lull: "Your cover-letter draft for the three-month evaluation-pipeline
-    contract is saved and ready whenever you want to pull it." The user had said, in so many words, that
+    """2026-11-05, 2:51am, from a lull: a message that a saved cover letter was ready whenever the user
+    wanted it (the fixture below invents the contract). The user had said, in so many words, that
     they wanted no readouts until they were ready to apply, and no reports about what IGOR keeps."""
     from agents import presence
 
