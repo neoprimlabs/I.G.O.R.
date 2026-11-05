@@ -74,15 +74,17 @@ async def compose(brief: str, now: Optional[datetime] = None, material: Optional
         api_key=config.GROQ_API_KEY,
         base_url="https://api.groq.com/openai/v1",
     )
+    given = f"Brief: {brief}\n\nFacts:\n{_facts(now)}" + (f"\n{material}" if material else "")
     text = await llm.complete(
         client,
         config.MODELS["summary"],
         _SYSTEM,
-        f"Brief: {brief}\n\nFacts:\n{_facts(now)}" + (f"\n{material}" if material else ""),
+        given,
         max_tokens=_MAX_TOKENS,
         label="Compose",
     )
-    text = (text or "").strip()
+    import links
+    text = links.guard((text or "").strip(), links.found(given))
     if not text:
         logger.warning("Compose returned nothing for brief %r", brief[:60])
         return None

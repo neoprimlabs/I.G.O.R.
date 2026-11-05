@@ -179,4 +179,5 @@ async def handle(message: str, context: list[dict]) -> Optional[str]:
     if not answer or answer.strip().upper().startswith(_DECLINE):
         logger.info("SelfDescribe declined, message is a task not a question about IGOR")
         return None
-    return answer
+    import links
+    return links.guard(answer, links.found(document + ledger + message) | links.in_conversation(context))

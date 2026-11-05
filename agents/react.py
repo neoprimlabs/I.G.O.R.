@@ -2036,6 +2036,8 @@ _SAVING_TOOLS = frozenset({"memory_write", "task_update", "write_file", "patch_f
                            "scheduled_message", "goal", "send_file", "board"})
 _RECEIPTS: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_receipts", default=None)
 _TRACE: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_trace", default=None)
+# Every link a tool returned this turn, workers' included: what a reply's links are checked against (links.py).
+_SEEN_LINKS: "contextvars.ContextVar[Optional[set]]" = contextvars.ContextVar("react_seen_links", default=None)
 _MAX_RECEIPT_LINES = 4
 
 
@@ -2103,8 +2105,11 @@ async def handle(
         return await _handle(message, context, **kwargs)
     token = _RECEIPTS.set([])
     trace_token = _TRACE.set([])
+    links_token = _SEEN_LINKS.set(set())
     try:
         reply = await _handle(message, context, **kwargs)
+        import links
+        reply = links.guard(reply, _SEEN_LINKS.get() | links.found(message) | links.in_conversation(context))
         # Only a turn the user asked for: a forced tool, a job's own prompt or a
         # follow-through round is not a task someone would want to repeat.
         if allowed_tools is None and system_override is None and force_tool is None and not message.startswith("[IGOR is"):
@@ -2113,6 +2118,7 @@ async def handle(
         footer = _receipt_footer(_RECEIPTS.get())
         return f"{reply}\n\n{footer}" if footer and reply else (reply or footer)
     finally:
+        _SEEN_LINKS.reset(links_token)
         _TRACE.reset(trace_token)
         _RECEIPTS.reset(token)
 
@@ -2352,6 +2358,11 @@ async def _handle(
                 return result
 
             results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])
+            seen_links = _SEEN_LINKS.get()
+            if seen_links is not None:
+                import links
+                for r in results:
+                    seen_links |= links.found(r)
             trace = _TRACE.get()
             if trace is not None and _depth == 0:
                 for tc, r in zip(tool_calls, results):

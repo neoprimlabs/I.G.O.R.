@@ -125,10 +125,8 @@ A Discord DM travels this path every time:
    a user message, or gets its own turn if too late (Hermes' /steer); `btw <question>` while
    one runs is answered by Direct on 20b (Hermes' /btw). Outside text can use neither.
 3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
-   `file:` request skips the router entirely and goes to React, because it is
-   document work regardless of what it asks for. Run-together clock times are
-   then spelled out in code (`100am` -> `1:00am`, `_spell_out_times`); models read
-   the digits as a number and scheduled "100am" for 10:00.
+   `file:` request skips the router and goes to React. Run-together clock times are
+   spelled out in code (`100am` -> `1:00am`, `_spell_out_times`).
 4. **`orchestrator._classify`** - fast paths first, no model call:
 
    ```
@@ -154,8 +152,7 @@ A Discord DM travels this path every time:
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
    `none`, 15s timeout, on a bucket it has to itself. It returns one word, mapped
-   by `_VERDICT_MAP`. The effort setting is load-bearing: without it the 10-token
-   budget is spent on hidden reasoning before any verdict is emitted.
+   by `_VERDICT_MAP`. Without that effort setting the 10 tokens go on hidden reasoning.
 
    Any failure - unparseable output, exception, timeout - falls through to React.
    The verdict is logged as `Router: <verdict> -> <destination>`.
@@ -225,7 +222,9 @@ context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memo
 `memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
 seventeen (it returns their rules too; a direct call loads the tool and retries; a request for a
 file opens `send_file` at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
-and a save that failed is flagged whatever the reply says (Hermes' verifier).
+and a save that failed is flagged whatever the reply says (Hermes' verifier). A link in any
+reply must appear in what was read that turn, the message or the conversation (`links.py`);
+any other is taken out, with a line saying how many.
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
 messages, both sides plus proactive sends), else the messages with the most of them:

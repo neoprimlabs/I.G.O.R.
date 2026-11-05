@@ -570,13 +570,16 @@ class Orchestrator:
         async def on_the_other_bucket(system, messages, max_tokens=2048, model=None):
             return await base(system, messages, max_tokens=max_tokens, model=config.MODELS["summary"])
 
+        window = self._window()
         try:
-            reply = await direct.handle(question, self._window(), on_the_other_bucket)
+            reply = await direct.handle(question, window, on_the_other_bucket)
         except Exception as e:
             logger.error("A side question failed - %s: %s", type(e).__name__, e)
             return "I could not answer that on the side. Ask again when I have finished."
         if direct.wants_lookup(reply):
             return "That needs a search, which has to wait for the task in progress. Ask it again once I have answered."
+        import links
+        reply = links.guard(reply, links.found(question + direct.sources(question, window)) | links.in_conversation(window))
         self._update_context(question, reply, route="Direct (side question)")
         return reply
 
@@ -832,9 +835,11 @@ class Orchestrator:
             logger.info("Monitor declined the message, forwarding to Direct")
             self._monitor_declined = True
             from agents import direct
-            reply = await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            window = self._window(_CONTEXT_BUDGET_DIRECT)
+            reply = await direct.handle(content, window, call)
             if not direct.wants_lookup(reply):
-                return reply
+                import links
+                return links.guard(reply, links.found(content + direct.sources(content, window)) | links.in_conversation(window))
             logger.info("Direct handed the message on for a lookup, forwarding to React")
             self._looked_up = True
 
@@ -926,9 +931,11 @@ class Orchestrator:
             # Direct carries no tool schemas on the 12000 bucket, so it can hold far
             # more history than React. This is what makes "what did you just say"
             # answerable in chat.
-            reply = await direct.handle(content, self._window(_CONTEXT_BUDGET_DIRECT), call)
+            window = self._window(_CONTEXT_BUDGET_DIRECT)
+            reply = await direct.handle(content, window, call)
             if not direct.wants_lookup(reply):
-                return reply
+                import links
+                return links.guard(reply, links.found(content + direct.sources(content, window)) | links.in_conversation(window))
             # 2026-11-04: asked what people use Hermes for, Direct answered from memory about
             # Nous' Hermes models, not Hermes Agent. A model with no search now hands such a
             # question to the one that has it, as Hermes' own agent would search.

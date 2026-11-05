@@ -1246,4 +1246,5 @@ async def handle(
 
     system = _get_system_prompt() + f"\n\nCurrent status:\n{status_block()}"
     messages = context + [{"role": "user", "content": message}]
-    return await call_claude(system, messages)
+    import links
+    return links.guard(await call_claude(system, messages), links.found(system) | links.in_conversation(messages))

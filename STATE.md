@@ -332,7 +332,11 @@ mark closing a line is now removed, and a series that does end says so in code. 
 the user's own statements had waited up to ten days as proposals. As Hermes' default, memory_review now
 saves what they said themselves without asking, names it under the next reply, and runs by day after 15
 quiet minutes as well as at night; a replacement or a full file still waits, and unanswered proposals
-expire in 7 days. The waiting list was cleared by hand the same day. Not
+expire in 7 days. The waiting list was cleared by hand the same day. **Links, 11-05:** asked for
+entry-level jobs, React listed five after a real job-board search; three links were invented or on the
+wrong site (checked against `jobs_seen.json`). `links.py` now takes out any link in a reply that was not
+in a tool result that turn, the message, the conversation or Direct's notes, and says how many, for
+React, Direct, Monitor, SelfDescribe, presence and scheduled messages. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it

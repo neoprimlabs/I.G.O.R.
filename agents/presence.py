@@ -486,14 +486,15 @@ async def _ask_model(bundle: str, reason: str = "lull") -> str:
         base_url="https://api.groq.com/openai/v1",
         max_retries=5,
     )
-    return await llm.complete(
+    import links
+    return links.guard(await llm.complete(
         client,
         config.MODELS["presence"],
         _system_for(reason),
         bundle,
         max_tokens=1024,
         label="Presence",
-    )
+    ), links.found(bundle))
 
 
 def _opening(text: str) -> str:

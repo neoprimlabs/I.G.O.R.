@@ -100,6 +100,12 @@ def _user_profile() -> str:
     return text
 
 
+def sources(message: str, context: list[dict]) -> str:
+    """What Direct reads besides the conversation: what a reply's links may come from (links.py)."""
+    import proposals
+    return "\n".join((_user_profile(), _resume_if_asked(message, context), proposals.preferences_block()))
+
+
 _LOOKUP = re.compile(r"^\W*LOOKUP\W*$")
 
 
