@@ -500,6 +500,13 @@ async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
         out = await presence.consider("checkin", now=now, ask=model)
         _check(name, out == expected and len(asked) == 2, f"{out!r} {len(asked)}")
     _check("and the retry is told why", "about something you sent or keep" in asked[1], asked[1][-200:])
+    # 2026-11-05: the job list IGOR sent, asked after in other words.
+    for text in ("How are you finding the entry-level opportunities you received earlier this afternoon?",
+                 "Did any of the roles I sent catch your eye?"):
+        _check(f"also caught: {text[:40]}", presence._ABOUT_ITS_OWN_POSTS.search(text) is not None)
+    for text in ("How did the kitchen painting go?", "Did you get some rest after the late night?",
+                 "How is the job hunt feeling this week?"):
+        _check(f"while this still goes out: {text[:40]}", presence._ABOUT_ITS_OWN_POSTS.search(text) is None)
 
 
 async def test_a_lull_about_its_own_bookkeeping_is_not_sent() -> None:

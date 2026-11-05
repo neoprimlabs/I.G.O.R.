@@ -89,6 +89,51 @@ def _get(url: str, accept: str = "application/json") -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+# 2026-11-05: told "I have zero software engineering experience. Only entry level positions please",
+# the ranking still picked a posting asking for "1-5 years of professional software engineering
+# experience", with the preference in front of it. A ceiling the user sets is a number, so code holds it:
+# "## Most years asked" in job_search.md, and a posting asking for more is never shown.
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                 "nine": 9, "ten": 10}
+_YEARS_ASKED = re.compile(
+    r"(?<![\d.])(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:\+|plus)?\s*"
+    r"(?:(?:-|\u2013|\u2014|to)\s*\d{1,2}\s*\+?\s*)?(?:years?|yrs?)'?(?!\s+(?:of\s+)?(?:age|old)\b)"
+    r"(?:\s+\S+){0,2}?\s+(?:of|experience|in|working|hands-on|professional|building|at)\b", re.IGNORECASE)
+
+
+def _most_years() -> Optional[int]:
+    """The ceiling under "## Most years asked" in job_search.md, or None for none."""
+    try:
+        text = (config.MEMORY_DIR / "job_search.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    section = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith("## "):
+            section = stripped[3:].strip().lower()
+        elif section == "most years asked" and stripped.startswith("- "):
+            number = re.match(r"\d+", stripped[2:].strip())
+            if number:
+                return int(number.group(0))
+    return None
+
+
+def _years_asked(description: str) -> Optional[int]:
+    """The most years of experience a posting asks for, counting a range from its low end, or None."""
+    text = re.sub(r"<[^>]+>", " ", html.unescape(description or ""))
+    asked = [int(m.group(1)) if m.group(1).isdigit() else _NUMBER_WORDS[m.group(1).lower()]
+             for m in _YEARS_ASKED.finditer(text)]
+    return max(asked) if asked else None
+
+
+def _too_senior(job: dict, most: Optional[int]) -> bool:
+    if most is None:
+        return False
+    asked = _years_asked(f"{job.get('title', '')}. {job.get('description', '')}")
+    return asked is not None and asked > most
+
+
 def _repair(text: str) -> str:
     """Undo UTF-8 read as latin-1, which some feeds ship already broken.
 
@@ -367,6 +412,7 @@ def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str
     """
     from concurrent.futures import ThreadPoolExecutor
     wanted, excluded = _criteria()
+    most = _most_years()
     sources = fetchers if fetchers is not None else _live_fetchers()
 
     def fetch(item):
@@ -387,7 +433,7 @@ def search(query: str, min_hourly: Optional[float] = None, fetchers=None) -> str
     for _, postings in results:
         for job in postings or []:
             url = job.get("url", "")
-            if not url or url in by_url or not _matches(job, wanted, excluded):
+            if not url or url in by_url or not _matches(job, wanted, excluded) or _too_senior(job, most):
                 continue
             text = f"{job.get('title', '')} {job.get('company', '')}".lower()
             # Whole words: live, "ai" matched Plaid's accounting role.
@@ -445,6 +491,7 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
     """New matching postings, newest source first. Never raises."""
     now = now or datetime.now(timezone.utc)
     wanted, excluded = _criteria()
+    most = _most_years()
 
     seen = set(_load_seen())
     found, by_url = [], set()
@@ -459,7 +506,7 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
             url = job.get("url", "")
             if not url or url in seen or url in by_url:
                 continue
-            if not _matches(job, wanted, excluded):
+            if not _matches(job, wanted, excluded) or _too_senior(job, most):
                 continue
             by_url.add(url)
             found.append(job)

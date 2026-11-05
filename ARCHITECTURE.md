@@ -336,8 +336,8 @@ standing preferences and no tasks or drafts, and a message about IGOR's own post
 plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
-The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters, 20b
-picks by what each posting asks; picks go out with those asks, no note. On those remote-only boards a location naming
+The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters (and drops one asking more
+years than job_search.md's `## Most years asked`), 20b picks by what each posting asks; picks go out with those asks, no note. On those remote-only boards a location naming
 the US counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
@@ -591,7 +591,7 @@ prompt in play.
 
 `main._smoke_test()` exits 1 rather than raising, so the deploy gate rolls back. It verifies the
 `config.MODELS` roles, the keys, four routing fast paths and that **every agent module imports**
-(they load lazily, so a bad import would otherwise fail on first use). The sandbox probe only logs.
+(they load lazily). The sandbox probe only logs.
 
 ---
 

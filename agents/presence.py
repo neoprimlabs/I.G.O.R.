@@ -464,7 +464,11 @@ def _opening(text: str) -> str:
 
 
 _WHAT_IGOR_SENT = re.compile(r"\b(?:IGOR|I\.G\.O\.R\.)\s+sent\b|^\W*sent\b", re.IGNORECASE)
-_ABOUT_ITS_OWN_POSTS = re.compile(r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper)\b", re.IGNORECASE)
+# 2026-11-05 a check-in asked "How are you finding the entry-level opportunities you received earlier this
+# afternoon?": IGOR's own job list, in words the list above did not have.
+_ABOUT_ITS_OWN_POSTS = re.compile(
+    r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper|opportunit(?:y|ies)|"
+    r"you (?:received|got from me)|I (?:sent|found|shared|passed along|flagged))\b", re.IGNORECASE)
 
 
 def _stale(text: str, openings: list[str], earlier: list[str], checkin: bool = False) -> Optional[str]:

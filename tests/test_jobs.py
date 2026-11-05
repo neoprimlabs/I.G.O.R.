@@ -427,6 +427,39 @@ def test_a_saved_exclusion_counts() -> None:
     _check("and machine learning is not", jobs._matches(ml, [], excluded))
 
 
+def test_a_ceiling_on_years_asked() -> None:
+    """2026-11-05: told the user has no software experience and wants entry level only, the ranking
+    still picked a posting asking for "1-5 years of professional software engineering experience"."""
+    from agents import jobs
+    for text, years in (("Typically 1–5 years of professional software engineering experience", 1),
+                        ("3–5+ years of experience in recruiting", 3),
+                        ("2 years' experience with Zendesk", 2),
+                        ("three years of experience in kettle sales", 3),
+                        ("<li>4-5+ years of professional software development</li>", 4),
+                        ("0-2 years of experience", 0),
+                        ("Must be at least 18 years of age", None),
+                        ("For over 20 years, Kettle Co has grown", None),
+                        ("Experience in customer service required", None)):
+        _check(f"years asked in: {text[:40]}", jobs._years_asked(text) == years, str(jobs._years_asked(text)))
+
+    _fresh()
+    _check("no ceiling unless one is set", jobs._most_years() is None)
+    path = config.MEMORY_DIR / "job_search.md"
+    path.write_text("# Job Search\n\n## Exclude\n- senior\n\n## Most years asked\n- 0\n", encoding="utf-8")
+    _check("the ceiling is read", jobs._most_years() == 0)
+    senior = {"title": "Software Engineer - Claims", "company": "Kettle Co", "location": "",
+              "url": "https://remoteok.com/remote-jobs/kettle-1", "source": "remoteok",
+              "description": "<p>Typically 1-5 years of professional software engineering experience.</p>"}
+    starter = {"title": "Claims Representative", "company": "Kettle Co", "location": "",
+               "url": "https://remoteok.com/remote-jobs/kettle-2", "source": "remoteok",
+               "description": "<p>Must be at least 18 years of age. No experience required.</p>"}
+    found = jobs.collect(now=NOW, fetchers=[("remoteok:support", lambda: [senior, starter])])
+    _check("the watch drops a posting that asks for more", found == [starter], str([j["title"] for j in found]))
+    text = jobs.search("claims", None, fetchers=[("remoteok:support", lambda: [senior, starter])])
+    _check("and so does a search the user asks for", "Claims Representative" in text
+           and "Software Engineer" not in text, text)
+
+
 def test_search_on_demand() -> None:
     """2026-10-25: asked for remote roles at $18/hr or more, React had only web search.
     It listed search-results pages as postings, a pay range nobody had published, and
@@ -695,6 +728,8 @@ def test_ranking_sees_what_a_posting_asks() -> None:
 if __name__ == "__main__":
     print("a saved exclusion counts")
     test_a_saved_exclusion_counts()
+    print("a ceiling on years asked")
+    test_a_ceiling_on_years_asked()
     print("a job search keeps search")
     test_a_job_search_keeps_search()
     print("a refused force is let go")
