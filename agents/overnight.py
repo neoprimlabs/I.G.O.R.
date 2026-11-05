@@ -312,7 +312,9 @@ def _real_complete():
 
     async def call(system: str, user: str, max_tokens: int, cap: Optional[int] = None) -> str:
         extra = {} if cap is None else {"cap": cap}
-        writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM)
+        # Which of the user's notes to drop is a judgement about their data, and rare: live 2026-11-05,
+        # 20b twice passed over a dated status for a goal, then for three lasting facts.
+        writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM, memory_review.ROOM_SYSTEM)
         model = config.OVERNIGHT_WRITE_MODEL if writing else config.OVERNIGHT_MODEL
         # On low, 20b answered "seller" to all of it and called e-book generators the idea itself.
         effort = ("medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM, memory_review.ROOM_SYSTEM)

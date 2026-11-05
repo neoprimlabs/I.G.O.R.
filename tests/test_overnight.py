@@ -1003,6 +1003,14 @@ def test_overnight_model_is_one_pinned_name() -> None:
         llm.complete, research_loop._get_client = real_c, real_cl
     _check("except the paper write, which goes to the write model",
            seen.get("model") == config.OVERNIGHT_WRITE_MODEL, str(seen))
+    import memory_review
+    llm.complete, research_loop._get_client = fake_complete, lambda: None
+    try:
+        _a.run(overnight._real_complete()(memory_review.ROOM_SYSTEM, "u", 1024))
+    finally:
+        llm.complete, research_loop._get_client = real_c, real_cl
+    _check("and which of the user's notes to drop, which 20b judged badly",
+           seen.get("model") == config.OVERNIGHT_WRITE_MODEL, str(seen))
 
     goals.add("Study autonomous systems", "research")
     _run(overnight.tick(NIGHT_TIME, search=_Stubs().search, complete=_Stubs(findings_per_step=5).complete))

@@ -452,7 +452,7 @@ re-propose fixed mistakes. At most 5 JSON proposals, stored in
 **Memory review** (`memory_review.py`, Hermes' background review): there, and by day after 15 quiet
 minutes, 20b reads the user's new messages for at most 3 items. Code checks each quote is theirs
 (first-person for a fact); a fact goes to `user.md`, a preference to `preferences.md`, unasked and
-named under the next reply. A replacement, or a fact for a full file with the lines 20b chose to
+named under the next reply. A replacement, or a fact for a full file with the lines 120b chose to
 drop, waits for one "approve".
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds

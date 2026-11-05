@@ -8,7 +8,7 @@ and named under the next reply; one that would replace a saved line waits as a p
 
 When the notes are full, Hermes refuses the add, and its background review stages a batch that drops
 or shortens old entries and adds the new one, for the user to approve. Until 2026-11-05 IGOR staged
-only the add, so approving it failed and asked the user which lines to drop. make_room has 20b choose
+only the add, so approving it failed and asked the user which lines to drop. make_room has 120b choose
 the drops instead, staged with the fact as one batch: one yes applies both, and the listing shows
 each line it would drop.
 
@@ -345,7 +345,7 @@ def dropping(test: str) -> list[str]:
 
 async def make_room(pid: str, complete) -> tuple[bool, str]:
     """(whether a model was called, what happened). Turns a waiting fact that does not fit into one
-    batch that drops what 20b chose and adds the fact, as Hermes' background review stages a
+    batch that drops what 120b chose and adds the fact, as Hermes' background review stages a
     consolidation when an add is refused. Nothing is removed until the user approves it; until then
     the proposal stays as it was if anything about the choice is wrong."""
     target = next((p for p in proposals.pending() if p["id"] == pid and p["kind"] == "memory"), None)

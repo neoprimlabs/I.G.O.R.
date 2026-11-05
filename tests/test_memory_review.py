@@ -241,7 +241,7 @@ def test_a_full_file_brings_its_room() -> None:
         system, user = model.calls[1][:2]
         _check("it sees the notes numbered, each under its heading, and how much to free",
                "3. [User] (" in user and "fact number 2 goes" in user and "Characters to free: at least" in user, user[:300])
-        _check("its prompt plus answer fits 20b's 8000 TPM at 3 chars a token",
+        _check("its prompt plus answer fits 120b's 8000 TPM at 3 chars a token",
                (len(system) + len(user)) // 3 + memory_review.ROOM_TOKENS < 8000)
         _check("and the pass reserves at least that",
                memory_review.ROOM_RESERVE >= (len(system) + len(user)) // 3 + memory_review.ROOM_TOKENS)
