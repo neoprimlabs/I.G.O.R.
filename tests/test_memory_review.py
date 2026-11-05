@@ -1,4 +1,4 @@
-"""Tests for what IGOR proposes to remember: memory_review.py and its place in the night's review.
+"""Tests for what IGOR remembers on its own and what it asks about: memory_review.py and its place in the night's review.
 
 Run: python tests/test_memory_review.py   (repo root, stdlib only, no API calls)
 
@@ -77,39 +77,41 @@ def _run(model, seen=None, room=60000):
 THREE = ("I moved to Maine last month", "please check the kettle prices", "thanks for that one")
 
 
-def test_a_fact_is_proposed_not_saved() -> None:
+def test_a_fact_is_saved_and_named() -> None:
+    """2026-11-05: six of the user's own statements waited a week for their yes. Hermes saves without
+    asking by default and says "Memory updated"; so does IGOR now, for what the user said themselves."""
     with _Memory():
         _said(*THREE)
         raised, spent, seen = _run(_Model(_row()))
-        _check("it raises a proposal", raised == 1 and len(proposals.pending()) == 1, str(proposals.pending()))
-        _check("and writes nothing to the notes", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == NOTES)
-        p = proposals.pending()[0]
-        _check("of the kind only a person can approve", p["kind"] == "memory", str(p))
-        _check("showing the user their own words", 'You said: "I moved to Maine last month"' in p["problem"], str(p))
-        _check("and the fact", p["change"] == "The user moved to Maine last month", str(p))
-        _check("its place is saved", seen["messages"] == context_store.max_id(), str(seen))
-        _check("the listing shows it", "The user moved to Maine" in proposals.brief_listing())
-
-        said = proposals.decide(p["id"], True)
         notes = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
-        _check("approved, it reaches the notes", "The user moved to Maine last month" in notes and "Approved" in said, said)
+        _check("it is saved", raised == 1 and "The user moved to Maine last month" in notes, notes)
         _check("and the rest of the notes are untouched", "two kettles" in notes and "Ohio" in notes)
+        _check("nothing waits for the user", not proposals.pending(), str(proposals.pending()))
+        record = proposals._load()[-1]
+        _check("it is on record as saved, in their words", record["status"] == "saved"
+               and 'You said: "I moved to Maine last month"' in record["problem"], str(record))
+        _check("its place is saved", seen["messages"] == context_store.max_id(), str(seen))
+        _check("the user hears of it once", memory_review.take_notices() == ["The user moved to Maine last month"])
+        _check("and only once", memory_review.take_notices() == [])
+        _check("the listing has nothing to ask", "No proposals" in proposals.brief_listing())
 
 
 def test_a_model_cannot_approve_it() -> None:
     with _Memory():
         _said(*THREE)
-        _run(_Model(_row()))
+        _run(_Model(_row(replaces="lives in Ohio")))
         pid = proposals.pending()[0]["id"]
         said = proposals.run_tool({"action": "approve", "id": pid})
-        _check("the proposal tool refuses", "user alone" in said and len(proposals.pending()) == 1, said)
+        _check("a change to a saved line waits, and the proposal tool refuses it", "user alone" in said
+               and len(proposals.pending()) == 1, said)
         _check("nothing is saved", "Maine" not in (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8"))
         said = proposals.decide(pid, False)
         _check("rejected, it is gone", "Rejected" in said and not proposals.pending(), said)
         _check("and still not saved", "Maine" not in (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8"))
         _said("I moved to Maine last month, did I say?", "one more thing", "and another")
-        _run(_Model(_row()), {"messages": 0})
+        _run(_Model(_row(replaces="lives in Ohio")), {"messages": 0})
         _check("a rejected fact is not asked about twice", not proposals.pending(), str(proposals.pending()))
+        _check("nor saved behind the user's back", "Maine" not in (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8"))
 
 
 def test_only_the_users_words_count() -> None:
@@ -150,6 +152,7 @@ def test_what_is_known_is_not_asked_again() -> None:
         _check("a fact already in the notes", not proposals.pending(), str(proposals.pending()))
         _run(_Model(_row(say="The user keeps two kettles at home.", quote="I moved to Maine last month")), {"messages": 0})
         _check("worded a little differently too", not proposals.pending(), str(proposals.pending()))
+        _check("and nothing is saved twice", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == NOTES)
 
 
 def test_a_new_fact_can_replace_an_old_one() -> None:
@@ -176,13 +179,15 @@ def test_a_new_fact_can_replace_an_old_one() -> None:
     with _Memory():
         _said(*THREE)
         _run(_Model(_row(replaces="words not in the notes at all")))
-        p = proposals.pending()[0]
-        _check("a span the notes do not hold replaces nothing", p["test"] == memory_review._ADDS and "replaces" not in p["problem"], str(p))
+        notes = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
+        _check("a span the notes do not hold replaces nothing: it is a new line, saved",
+               not proposals.pending() and "Maine" in notes and "Ohio" in notes, notes)
 
     with _Memory():
         _said(*THREE)
         _run(_Model(_row(replaces="The user")))
-        _check("nor does one they hold twice", proposals.pending()[0]["test"] == memory_review._ADDS)
+        notes = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
+        _check("nor does one they hold twice", not proposals.pending() and "Maine" in notes and "kettles" in notes, notes)
 
 
 def test_a_full_notes_file_says_so() -> None:
@@ -192,6 +197,9 @@ def test_a_full_notes_file_says_so() -> None:
         _check("the fixture is nearly full", 1400 < len(full) <= config.USER_PROFILE_CAP, str(len(full)))
         _said(*THREE)
         _run(_Model(_row(say="The user moved to Maine last month and likes it there, " + "and more " * 12)))
+        _check("a full file is not written past its cap", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == full)
+        _check("so it waits for the user, as Hermes leaves room-making to a person", len(proposals.pending()) == 1)
+        _check("and is not announced as saved", memory_review.take_notices() == [])
         pid = proposals.pending()[0]["id"]
         said = proposals.decide(pid, True)
         _check("it asks which to drop", "user.md is full" in said and "1. " in said, said)
@@ -204,11 +212,17 @@ def test_a_preference_goes_with_the_preferences() -> None:
     with _Memory():
         _said("always keep your replies short", "a second thing", "a third thing")
         _run(_Model(_row(kind="preference", say="Keep replies short.  Long ones are not read.", quote="always keep your replies short")))
-        p = proposals.pending()[0]
-        _check("a preference is its own kind, and needs no first person", p["kind"] == "preference", str(p))
-        proposals.decide(p["id"], True)
-        _check("and lands in preferences", "Keep replies short" in proposals.preferences_block())
+        _check("a preference needs no first person, and is saved without asking",
+               not proposals.pending() and "Keep replies short" in proposals.preferences_block(), proposals.preferences_block())
         _check("not in the notes", "short" not in (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8"))
+        _check("the user hears of it", memory_review.take_notices() == ["Keep replies short. Long ones are not read."])
+
+    with _Memory():
+        (config.MEMORY_DIR / "preferences.md").write_text("- " + "x" * (proposals.PREFERENCES_CAP - 10) + "\n", encoding="utf-8")
+        _said("always keep your replies short", "a second thing", "a third thing")
+        _run(_Model(_row(kind="preference", say="Keep replies short, please.", quote="always keep your replies short")))
+        _check("with preferences full it waits instead", len(proposals.pending()) == 1
+               and "Keep replies short" not in proposals.preferences_block(), str(proposals.pending()))
 
 
 def test_when_it_calls_the_model() -> None:
@@ -290,7 +304,7 @@ def test_it_runs_in_the_nights_review() -> None:
             _said(*THREE)
             model = _Model(_row())
             out = asyncio.run(overnight.tick(NIGHT_TIME, search=None, complete=model))
-            _check("the idle review now has something to do", "1 memories proposed" in out, out)
+            _check("the idle review now has something to do", "1 memories saved or proposed" in out, out)
             seen = json.loads((config.MEMORY_DIR / "work" / "self-improvement" / "seen.json").read_text(encoding="utf-8"))
             _check("and saves its place", seen["messages"] == context_store.max_id(), str(seen))
             _check("the digest hears of the proposal", work._load()[-1]["files"], str(work._load()[-1]))
@@ -319,8 +333,88 @@ def test_tests_cannot_see_real_messages() -> None:
         _check("and that way of opening it cannot write", not wrote and memory_review._rows(0) == rows_before and real.exists())
 
 
+def test_old_proposals_expire() -> None:
+    from datetime import timedelta
+    with _Memory():
+        old = NIGHT_TIME - timedelta(days=proposals.EXPIRE_DAYS + 1)
+        stale = proposals.add("code", "a problem", "some evidence", "a change", "a test", old)
+        fresh = proposals.add("code", "another problem", "some evidence", "another change", "a test", NIGHT_TIME)
+        _check("expire marks only the old one", proposals.expire(NIGHT_TIME) == 1, str(proposals._load()))
+        _check("it no longer waits", [p["id"] for p in proposals.pending()] == [fresh], str(proposals.pending()))
+        _check("and is kept on record as expired", any(p["id"] == stale and p["status"] == "expired" for p in proposals._load()))
+        _check("it cannot be approved now", "no pending proposal" in proposals.decide(stale, True))
+        import skills
+        dropped, real = [], skills.discard
+        skills.discard = dropped.append
+        try:
+            proposals.add("skill", "a task", "some evidence", "kettle-descaling", "a test", old)
+            proposals.expire(NIGHT_TIME)
+        finally:
+            skills.discard = real
+        _check("an expired skill's draft goes with it", dropped == ["kettle-descaling"], str(dropped))
+
+
+def test_by_day() -> None:
+    from datetime import timedelta, timezone
+    import work
+    real = work.in_window
+    with _Memory():
+        try:
+            _said(*THREE)
+            model = _Model(_row())
+            now = datetime.now(timezone.utc)
+            work.in_window = lambda when: True
+            _check("overnight, the loop does it", asyncio.run(memory_review.daytime(now + timedelta(hours=1), model)) == ""
+                   and not model.calls)
+            work.in_window = lambda when: False
+            _check("not while the user is still writing",
+                   asyncio.run(memory_review.daytime(now + timedelta(minutes=memory_review.QUIET_MINUTES - 5), model)) == ""
+                   and not model.calls)
+            out = asyncio.run(memory_review.daytime(now + timedelta(minutes=memory_review.QUIET_MINUTES + 5), model))
+            _check("once it is quiet, it reviews and saves", len(model.calls) == 1 and "1 saved" in out
+                   and "Maine" in (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8"), out)
+            seen = json.loads((config.MEMORY_DIR / "work" / "self-improvement" / "seen.json").read_text(encoding="utf-8"))
+            _check("in the place the night's review reads, so nothing is read twice", seen["messages"] == context_store.max_id())
+            _check("and a second tick has nothing to do",
+                   asyncio.run(memory_review.daytime(now + timedelta(minutes=40), model)) == "" and len(model.calls) == 1)
+        finally:
+            work.in_window = real
+
+
+def test_the_next_reply_says_so() -> None:
+    import orchestrator
+    from agents import direct
+    with _Memory():
+        real = (direct.handle, config.AUTHORIZED_USER_ID)
+
+        async def chat(message, context, call):
+            return "Good evening, Creator."
+
+        async def notify(_):
+            pass
+
+        async def as_chat(text):
+            return "Direct"
+
+        try:
+            direct.handle, config.AUTHORIZED_USER_ID = chat, 42
+            o = orchestrator.Orchestrator(notify)
+            o._classify = as_chat
+            memory_review._notice("The user keeps two kettles at home")
+            reply, _ = asyncio.run(o.process(42, "evening"))
+            _check("the reply names what was saved, under it", reply.startswith("Good evening")
+                   and reply.endswith("-# Remembered: The user keeps two kettles at home"), reply)
+            reply, _ = asyncio.run(o.process(42, "and again"))
+            _check("once", "Remembered" not in reply, reply)
+        finally:
+            direct.handle, config.AUTHORIZED_USER_ID = real
+
+
 if __name__ == "__main__":
-    test_a_fact_is_proposed_not_saved()
+    test_a_fact_is_saved_and_named()
+    test_old_proposals_expire()
+    test_by_day()
+    test_the_next_reply_says_so()
     test_a_model_cannot_approve_it()
     test_only_the_users_words_count()
     test_what_is_known_is_not_asked_again()

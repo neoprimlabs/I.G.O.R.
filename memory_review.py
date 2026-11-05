@@ -1,12 +1,18 @@
-"""What is worth remembering from what the user said, picked at night and approved by them.
+"""What is worth remembering from what the user said, saved as Hermes saves it.
 
-Hermes reviews each conversation in a background fork after a turn and saves what matters, freely
-by default; memory.write_approval stages those writes instead, which its docs call the answer to
-"the agent saved a wrong assumption about me". IGOR always runs that way, and once a night on 20b,
-since a review per turn would spend the day. A fact has to carry the user's own words, and code
-checks they said them: nothing IGOR said, and no document they attached, can become a fact.
+Hermes reviews a conversation in the background after a turn and saves what matters without asking,
+by default, with a "Memory updated" notice; its background review may add but not change or remove
+an entry, which it stages for approval instead. IGOR does the same since 2026-11-05, when the user
+found six of their own statements waiting a week for their yes. A new fact or preference is saved
+and named under the next reply; one that would replace a saved line waits as a proposal.
+
+Where it differs: it reviews once the conversation has been quiet for QUIET_MINUTES, by day, and at
+night in the overnight loop, on 20b, rather than after every turn, for the budget. And it is stricter:
+a fact has to carry the user's own words, and code checks they said them, so nothing IGOR said and
+no document they attached can become one.
 """
 
+import json
 import logging
 import re
 import sqlite3
@@ -27,6 +33,11 @@ _FILE = "user.md"
 _REPLACES = "Replaces in user.md: "
 _ADDS = "Adds a line to user.md."
 _APPLIES = "Reaches every reply once approved."
+_SAVED = "Saved without asking: the user's own words."
+# By day the review waits until the user has stopped writing for this long, as Hermes reviews after
+# the turn is over, not while it is under way.
+QUIET_MINUTES = 15
+_NOTICES = "notices.json"
 # Less than this is not worth a model call. The messages wait for tomorrow.
 _MIN_MESSAGES = 3
 # How far back the first pass looks, in rows. After that, seen.json holds the place.
@@ -162,7 +173,33 @@ def _known(say: str) -> bool:
     return any(_same(say, line) for line in saved + decided + proposals._preference_lines())
 
 
+def _notices_path():
+    return proposals._folder() / _NOTICES
+
+
+def _notice(say: str) -> None:
+    path = _notices_path()
+    try:
+        held = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = []
+    held = (held if isinstance(held, list) else []) + [say]
+    proposals._write(path, json.dumps(held[-20:]))
+
+
+def take_notices() -> list[str]:
+    """What was saved since the user last heard, once: Hermes' "Memory updated", under the next reply."""
+    path = _notices_path()
+    try:
+        held = json.loads(path.read_text(encoding="utf-8"))
+        path.unlink()
+    except (OSError, ValueError):
+        return []
+    return [str(s) for s in held if str(s).strip()] if isinstance(held, list) else []
+
+
 def _propose(row: dict, users: list[tuple], now: datetime) -> bool:
+    """Saved, or failing that proposed. True when either happened."""
     kind = str(row.get("type", "")).strip().lower()
     say = " ".join(str(row.get("say", "")).split())
     quote = " ".join(str(row.get("quote", "")).split())
@@ -180,13 +217,22 @@ def _propose(row: dict, users: list[tuple], now: datetime) -> bool:
         logger.info("Memory quote does not speak of the user, dropped: %s", words[:80])
         return False
     problem, test = f'You said: "{words}"', _ADDS if kind == "fact" else _APPLIES
+    evidence, label = f'{_day(ts)}: "{words}"', "memory" if kind == "fact" else "preference"
     notes = _notes()
-    # Only a span the file holds once can be replaced, and it is checked again at approval.
+    # Only a span the file holds once can be replaced, and it is checked again at approval. A change to
+    # what is saved waits for the user, as Hermes stages a background review's patch or remove.
     if kind == "fact" and span and len(span) <= _SPAN_CAP and notes.count(span) == 1:
         problem += f" This replaces: {' '.join(memory_entries._entry_around(notes, span).split())}"
-        test = _REPLACES + span
-    return bool(proposals.add("memory" if kind == "fact" else "preference", problem,
-                              f'{_day(ts)}: "{words}"', say, test, now))
+        return bool(proposals.add(label, problem, evidence, say, _REPLACES + span, now))
+    why = save(say, _ADDS)[0] if kind == "fact" else proposals.save_preference(say, now)
+    if why:
+        # Full: Hermes refuses the write and has the agent make room. Unattended, that is the user's call.
+        logger.info("Memory not saved (%s), proposed instead: %s", why[:80], say[:80])
+        return bool(proposals.add(label, problem, evidence, say, test, now))
+    proposals.add(label, problem, evidence, say, _SAVED, now, status="saved")
+    _notice(say)
+    logger.info("Memory saved: %s", say[:120])
+    return True
 
 
 async def review(seen: dict, complete, token_room: int, now: Optional[datetime] = None) -> tuple[int, int]:
@@ -212,6 +258,28 @@ async def review(seen: dict, complete, token_room: int, now: Optional[datetime] 
         return 0, RESERVE
     raised = sum(1 for row in rows[:_MAX_PER_PASS] if _propose(row, users, now))
     return raised, RESERVE
+
+
+async def daytime(now: Optional[datetime] = None, complete=None) -> str:
+    """A review between conversations, by day. Overnight the loop runs it. Returns what happened, or ""
+    when there was nothing to do, so the quarter-hourly job stays quiet in the log."""
+    import work
+    from agents import overnight
+    now = now or datetime.now(timezone.utc)
+    if work.in_window(now):
+        return ""
+    proposals.expire(now)
+    users = [ts for _, role, _, ts in _rows(max(0, _last_id() - _FIRST_LOOK)) if role == "user"]
+    if not users or now.timestamp() - users[-1] < QUIET_MINUTES * 60:
+        return ""
+    folder = proposals._folder()
+    folder.mkdir(parents=True, exist_ok=True)
+    seen = overnight._read_seen(folder)
+    taken, spent = await review(seen, complete or overnight._real_complete(), RESERVE, now)
+    if not spent:
+        return ""
+    overnight._write_seen(folder, seen)
+    return f"{taken} saved or proposed"
 
 
 def save(fact: str, test: str) -> tuple[str, str]:

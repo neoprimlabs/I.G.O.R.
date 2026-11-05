@@ -446,18 +446,16 @@ no income shown, unchecked, against).
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
 `rate-limited` skipped), with 40 recent non-docs commit subjects so it does not
 re-propose fixed mistakes. At most 5 JSON proposals, stored in
-`work/self-improvement/proposals.md` (30 pending, 40 decided kept).
+`work/self-improvement/proposals.md` (30 pending, 40 decided kept, unanswered ones expire in 7 days).
 
-**Memory review** (`memory_review.py`, Hermes' background review with `write_approval` on):
-in that session 20b reads the user's own typed messages since the last pass and raises at most
-3 proposals. Code checks each quote is theirs and, for a fact, first-person. Only the user's own
-"approve" adds a `memory` to `user.md`, replacing a named stale line.
+**Memory review** (`memory_review.py`, Hermes' background review): there, and by day after 15 quiet
+minutes, 20b reads the user's new messages for at most 3 items. Code checks each quote is theirs
+(first-person for a fact); a fact goes to `user.md`, a preference to `preferences.md`, unasked and
+named under the next reply. A replacement or a full file waits for "approve".
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
 `preference`, `prompt`, `code`, `skill`, `memory`. Approving a `preference` appends one dated line to
-`memory/preferences.md`, one of three paths out of the work folder. `with_preferences`
-adds those lines to the prompts of Direct and React and to
-the job ranking profile. Approving a `prompt` or `code` proposal only marks it for a
+`memory/preferences.md`; `with_preferences` adds them to Direct's, React's and the job ranking's prompts. Approving a `prompt` or `code` proposal only marks it for a
 Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
 turn the quarantine above closes `proposal` itself, so approval needs a fresh message.
 `goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`

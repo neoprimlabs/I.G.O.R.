@@ -653,6 +653,14 @@ class Orchestrator:
         # what follow-through continues.
         if self._looked_up:
             destination = self._last_route = "React"
+        # Hermes' "Memory updated": what memory_review saved since the user last heard, once.
+        if response.strip() and not file_mode:
+            import memory_review
+            saved = memory_review.take_notices()
+            if saved:
+                response += "\n\n" + "\n".join(f"-# Remembered: {s}" for s in saved[:3])
+                if len(saved) > 3:
+                    response += f"\n-# and {len(saved) - 3} more, in your notes"
 
         skill_captured = False
         if config.ENABLE_CRITIC:

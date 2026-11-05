@@ -203,6 +203,10 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
     # ticks return before any model call, and while it is switched off all of them do.
     _scheduler.add_job(_presence_tick, "interval", minutes=10, id="presence")
 
+    # What the user said, saved once the conversation has gone quiet (memory_review.py, Hermes'
+    # background review). Most ticks read a few rows and return before any model call.
+    _scheduler.add_job(_memory_tick, "interval", minutes=15, id="memory", max_instances=1)
+
     # Clear of the digest, and it runs on the chat model's bucket rather than the
     # digest's, so the two cannot contend.
     _scheduler.add_job(_weekly_advocacy_draft, "cron", day_of_week="mon", hour=12, minute=0, timezone=clock.USER_TZ,
@@ -365,6 +369,16 @@ async def _presence_tick() -> None:
         return
     from agents import presence
     await presence.tick(_send_fn)
+
+
+async def _memory_tick() -> None:
+    import memory_review
+    try:
+        done = await memory_review.daytime()
+        if done:
+            logger.info("Memory review by day: %s", done)
+    except Exception as e:
+        logger.error("Memory review by day failed - %s: %s", type(e).__name__, e)
 
 
 async def _check_model_update() -> None:

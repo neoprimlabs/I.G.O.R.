@@ -328,7 +328,11 @@ ledger, SelfDescribe now leaves out IGOR's earlier replies, and the claim was cu
 `conversation_summary.json` (backup `.bak-20261104`). **Not yet seen:** Direct's `LOOKUP` in a window
 without that claim; `journalctl -u igor | grep "handed the message on"` shows it. The 11-04 weekday idea (a055d1) ended "... [DONE]"
 inside a line with no stop condition in its brief: the series went on, but the mark reached the user. A
-mark closing a line is now removed, and a series that does end says so in code. Not
+mark closing a line is now removed, and a series that does end says so in code. **Memory, 11-05:** six of
+the user's own statements had waited up to ten days as proposals. As Hermes' default, memory_review now
+saves what they said themselves without asking, names it under the next reply, and runs by day after 15
+quiet minutes as well as at night; a replacement or a full file still waits, and unanswered proposals
+expire in 7 days. The waiting list was cleared by hand the same day. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it

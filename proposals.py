@@ -3,11 +3,14 @@
 memory/work/self-improvement/proposals.md holds what the night's review suggested.
 Its text comes from corrections and logs, which are derived from untrusted input, so
 every field is flattened to one line and nothing here acts on a proposal by itself.
-decide() is the only path that writes outside the work folder: approving a
-`preference` appends one dated line to memory/preferences.md, which Direct, React and
-the job ranking read, approving a `skill` moves its draft to memory/skills/
-(skills.py), and approving a `memory` adds its fact to memory/user.md (memory_review.py).
-Approving a `prompt` or `code` proposal only marks it for a Claude Code session.
+decide() writes outside the work folder: approving a `preference` appends one dated line to
+memory/preferences.md, which Direct, React and the job ranking read, approving a `skill` moves
+its draft to memory/skills/ (skills.py), and approving a `memory` adds its fact to memory/user.md
+(memory_review.py). Approving a `prompt` or `code` proposal only marks it for a Claude Code session.
+
+The other writer is memory_review, which saves what the user said in their own words without asking,
+as Hermes does by default, and records it here as `saved`. A proposal nobody decides on expires
+after EXPIRE_DAYS: the user asked on 2026-11-05 that they stop piling up.
 """
 
 import logging
@@ -31,7 +34,8 @@ _MAX_PENDING = 30
 _KEEP_DECIDED = 40
 _CAPS = {"problem": 300, "evidence": 400, "change": 300, "test": 300}
 _PREFERENCE_CHANGE_CAP = 200
-_HEADER_RE = re.compile(r"^## (p\d+) \[(\w+)\] (pending|approved|rejected) (\S+)$")
+_HEADER_RE = re.compile(r"^## (p\d+) \[(\w+)\] (pending|approved|rejected|saved|expired) (\S+)$")
+EXPIRE_DAYS = 7
 _HEADING = "Standing preferences the user approved:"
 
 
@@ -96,13 +100,39 @@ def _save(items: list[dict]) -> None:
     _write(_path(), _render([p for p in items if p["id"] not in drop]))
 
 
+def _stale(p: dict, now: datetime) -> bool:
+    try:
+        made = datetime.fromisoformat(p["date"]).date()
+    except ValueError:
+        return False
+    return p["status"] == "pending" and (now.date() - made).days > EXPIRE_DAYS
+
+
 def pending() -> list[dict]:
     return [p for p in _load() if p["status"] == "pending"]
 
 
+def expire(now: Optional[datetime] = None) -> int:
+    """Marks proposals over EXPIRE_DAYS old as expired, and drops a skill's draft with it. Returns how many."""
+    now = now or datetime.now(timezone.utc)
+    items = _load()
+    stale = [p for p in items if _stale(p, now)]
+    if not stale:
+        return 0
+    for p in stale:
+        p["status"] = "expired"
+        if p["kind"] == "skill":
+            import skills
+            skills.discard(p["change"])
+    _save(items)
+    logger.info("Expired %d proposals older than %d days", len(stale), EXPIRE_DAYS)
+    return len(stale)
+
+
 def add(kind: str, problem: str, evidence: str, change: str, test: str,
-        now: Optional[datetime] = None) -> str:
-    """The new proposal's id, or "" when it was refused (bad kind, empty field, full)."""
+        now: Optional[datetime] = None, status: str = "pending") -> str:
+    """The new proposal's id, or "" when it was refused (bad kind, empty field, full). status "saved"
+    records something memory_review already wrote, so it is never asked about again."""
     now = now or datetime.now(timezone.utc)
     kind = (kind or "").strip()
     fields = {"problem": problem, "evidence": evidence, "change": change, "test": test}
@@ -113,11 +143,11 @@ def add(kind: str, problem: str, evidence: str, change: str, test: str,
     if kind not in KINDS or not all(fields.values()):
         return ""
     items = _load()
-    if sum(1 for p in items if p["status"] == "pending") >= _MAX_PENDING:
+    if status == "pending" and sum(1 for p in items if p["status"] == "pending") >= _MAX_PENDING:
         logger.warning("Proposal refused: %d already pending", _MAX_PENDING)
         return ""
     number = max([int(p["id"][1:]) for p in items], default=0) + 1
-    items.append({"id": f"p{number}", "kind": kind, "status": "pending",
+    items.append({"id": f"p{number}", "kind": kind, "status": status,
                   "date": now.date().isoformat(), **fields})
     _save(items)
     return f"p{number}"
@@ -137,6 +167,19 @@ def _preference_lines() -> list[str]:
 def preferences_block() -> str:
     lines = _preference_lines()
     return f"{_HEADING}\n" + "\n".join(lines) if lines else ""
+
+
+def save_preference(change: str, now: Optional[datetime] = None) -> str:
+    """Appends one dated standing preference. Returns why it was not saved, or ""."""
+    now = now or datetime.now(timezone.utc)
+    text = _preference_text()
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text += f"- {_flat(change, _PREFERENCE_CHANGE_CAP)} (saved {now.date().isoformat()})\n"
+    if len(text) > PREFERENCES_CAP:
+        return f"preferences.md would pass {PREFERENCES_CAP} characters"
+    _write(_preferences_path(), text)
+    return ""
 
 
 def with_preferences(prompt: str) -> str:
@@ -178,14 +221,9 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
         logger.info("Approved memory %s", pid)
         return f"Approved {pid}. {done}"
     if target["kind"] == "preference":
-        text = _preference_text()
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += f"- {target['change']} (approved {now.date().isoformat()})\n"
-        if len(text) > PREFERENCES_CAP:
+        if save_preference(target["change"], now):
             return (f"Not approved: preferences.md would pass {PREFERENCES_CAP} characters. "
                     f"{pid} stays pending. Reject or retire an older preference first.")
-        _write(_preferences_path(), text)
         target["status"] = "approved"
         _save(items)
         logger.info("Approved preference %s", pid)
@@ -213,6 +251,7 @@ def _listing(items: list[dict]) -> str:
 
 def brief_listing() -> str:
     """For the user, answered in code: what each pending proposal would change."""
+    expire()
     items = pending()
     if not items:
         return "No proposals are waiting for you."

@@ -797,6 +797,7 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     folder = work.folder("self-improvement")
     folder.mkdir(parents=True, exist_ok=True)
     seen = _read_seen(folder)
+    proposals.expire()
     drafted, spent = await _draft_skills(folder, seen, complete, token_room)
     token_room -= spent
     if drafted:
@@ -807,7 +808,7 @@ async def _self_improve_session(goal: dict, state: dict, search, complete, night
     if spent:
         _write_seen(folder, seen)
     if remembered:
-        note += f"{remembered} memories proposed, "
+        note += f"{remembered} memories saved or proposed, "
         if not drafted:
             state["files"].append(str(proposals._path().relative_to(config.MEMORY_DIR)))
     corrections = _new_corrections(seen.get("corrections", ""))
