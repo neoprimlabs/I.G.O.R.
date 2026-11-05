@@ -239,8 +239,8 @@ def test_a_full_file_brings_its_room() -> None:
                and model.calls[1][0] == memory_review.ROOM_SYSTEM, str(len(model.calls)))
         _check("and the pass counts it", spent == memory_review.RESERVE + memory_review.ROOM_RESERVE, str(spent))
         system, user = model.calls[1][:2]
-        _check("it sees the notes numbered, and how much to free",
-               "3. (" in user and "fact number 2 goes" in user and "Characters to free: at least" in user, user[:300])
+        _check("it sees the notes numbered, each under its heading, and how much to free",
+               "3. [User] (" in user and "fact number 2 goes" in user and "Characters to free: at least" in user, user[:300])
         _check("its prompt plus answer fits 20b's 8000 TPM at 3 chars a token",
                (len(system) + len(user)) // 3 + memory_review.ROOM_TOKENS < 8000)
         _check("and the pass reserves at least that",
@@ -272,6 +272,15 @@ def test_a_full_file_brings_its_room() -> None:
         _check("and is not dropped: the whole batch is refused", "Not approved" in said and "changed" in said, said)
         _check("with nothing written", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == edited)
         _check("and it stays pending", proposals.pending() and proposals.pending()[0]["id"] == pid)
+
+
+def test_each_entry_shows_its_heading() -> None:
+    import memory_entries
+    notes = ("# User\n\n- Loose line\n\n## Goals\n- Short term: ship the kettle app\n\n"
+             "## News\n- Waiting to hear back (2026-11-05)\n")
+    found = [memory_review._section(notes, a) for a, _ in memory_entries.entries(notes)]
+    _check("an entry's heading is the nearest one above it", found == ["User", "Goals", "News"], str(found))
+    _check("with none above, none", memory_review._section("- a line\n", 0) == "")
 
 
 def test_making_room_fails_safe() -> None:
@@ -518,6 +527,7 @@ if __name__ == "__main__":
     test_a_full_notes_file_says_so()
     test_a_full_file_brings_its_room()
     test_making_room_fails_safe()
+    test_each_entry_shows_its_heading()
     test_a_preference_goes_with_the_preferences()
     test_when_it_calls_the_model()
     test_what_the_model_sees()

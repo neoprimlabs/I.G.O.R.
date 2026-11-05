@@ -99,7 +99,7 @@ Style:
 
 ROOM_SYSTEM = """You keep the notes an assistant, I.G.O.R., holds on its user. The notes are full, and a new line about the user has to fit.
 
-You receive the new line, how many characters must be freed, and the notes as numbered entries with their sizes. Choose entries to drop so that together they free at least that many characters. Prefer, in this order:
+You receive the new line, how many characters must be freed, and the notes as numbered entries, each with the heading it sits under and its size. The heading says what an entry is: one under Goals is a goal, however short its term. Choose entries to drop so that together they free at least that many characters. Prefer, in this order:
 1. an entry the new line makes wrong, or says again
 2. a passing status or a one-off event, rather than something lasting
 3. a detail the assistant is least likely to need
@@ -315,6 +315,12 @@ def _pin(notes: str, start: int, end: int) -> str:
     return ""
 
 
+def _section(notes: str, start: int) -> str:
+    """The heading an entry sits under."""
+    found = re.findall(r"(?m)^#{1,6}\s+(.*?)\s*$", notes[:start])
+    return found[-1] if found else ""
+
+
 def _drops(test: str) -> list[str]:
     if test.startswith(_ROOM):
         return [s for s in test[len(_ROOM):].split(_ROOM_SEP) if s]
@@ -353,8 +359,10 @@ async def make_room(pid: str, complete) -> tuple[bool, str]:
     if need <= 0:
         return False, "it fits now"
     spans = memory_entries.entries(notes)
-    listing = "\n".join(f"{n}. ({len(notes[a:b].strip())} chars) {' '.join(notes[a:b].split())}"
-                        for n, (a, b) in enumerate(spans, 1))
+    # Live 2026-11-05, shown the lines alone, 20b dropped "Short term: finish ..." from under Goals
+    # over a dated "has not heard back" status: without its heading, a goal read as passing.
+    listing = "\n".join(f"{n}. [{_section(notes, a) or 'no heading'}] ({len(notes[a:b].strip())} chars) "
+                        f"{' '.join(notes[a:b].split())}" for n, (a, b) in enumerate(spans, 1))
     request = (f"New line: {target['change']}\n\nCharacters to free: at least {need}\n\n"
                f"Notes, numbered:\n{listing}")
     try:
