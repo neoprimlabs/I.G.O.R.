@@ -51,10 +51,10 @@ def test_the_check() -> None:
     _check("www, the scheme and a closing slash are the same page",
            links.guard("https://www.kettle.example/a/", links.found("http://kettle.example/a")) == "https://www.kettle.example/a/")
     _check("a site read without its scheme may be written with one",
-           links.guard("Their site: https://kettleworks.example", links.found("Website: kettleworks.example"))
-           == "Their site: https://kettleworks.example")
+           links.guard("Their site: https://kettleworks.example.com", links.found("Website: kettleworks.example.com"))
+           == "Their site: https://kettleworks.example.com")
     _check("an address inside an email is not a site read", "taken out" in
-           links.guard("https://kettleworks.example", links.found("sales@kettleworks.example")))
+           links.guard("https://kettleworks.example.com", links.found("sales@kettleworks.example.com")))
     _check("a reply with no links is untouched", links.guard("No links here.", set()) == "No links here.")
     _check("nor one whose links were all read", links.guard(f"Here: {REAL}", seen) == f"Here: {REAL}")
 
@@ -124,14 +124,14 @@ def test_direct() -> None:
         reply, _ = asyncio.run(o.process(42, "where does Hermes live?"))
         _check("Direct, with no tools, cannot hand over a link it made up", MADE_UP not in reply
                and "taken out" in reply, reply)
-        (config.MEMORY_DIR / "user.md").write_text("# User\n\n- Website: kettleworks.example\n", encoding="utf-8")
+        (config.MEMORY_DIR / "user.md").write_text("# User\n\n- Website: kettleworks.example.com\n", encoding="utf-8")
 
         async def from_notes(message, context, call):
-            return "Your site is https://kettleworks.example"
+            return "Your site is https://kettleworks.example.com"
 
         direct.handle = from_notes
         reply, _ = asyncio.run(o.process(42, "what is my website?"))
-        _check("but can name one from the user's notes", reply == "Your site is https://kettleworks.example", reply)
+        _check("but can name one from the user's notes", reply == "Your site is https://kettleworks.example.com", reply)
     finally:
         (config.MEMORY_DIR, context_store._DB_PATH, direct.handle, config.AUTHORIZED_USER_ID) = real
         tmp.cleanup()
