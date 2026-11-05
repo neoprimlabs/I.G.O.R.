@@ -521,6 +521,14 @@ async def test_write_at_delivery() -> None:
                "model call to every message" in inspect.getsource(compose.write))
         _check("and the writer is told those parts already exist",
                "already exists" in picked(thursday), picked(thursday)[:300])
+        # 2026-11-05: the safety day proposed approval middleware, which approvals.py already is. The
+        # summary gives approvals five words; the paragraphs on each area go in with it.
+        safety = compose._area_detail(compose._IGOR_AREAS[5])
+        _check("the safety day is shown what approvals already do", "approvals.py" in safety, safety[:300])
+        _check("and each area's detail stays capped", all(
+            0 < len(compose._area_detail(area)) <= compose._AREA_CHARS for area in compose._IGOR_AREAS))
+        _check("the day's idea carries its area's detail",
+               "What I.G.O.R. already does in that area" in thursday, thursday[-400:])
         await compose.write("Practical idea for IGOR", now=_utc(2026, 10, 23, 14, 0))
         _check("a one-off brief about IGOR is not steered",
                "make this one about" not in seen.get("message", ""))

@@ -170,9 +170,9 @@ async def test_the_bundle_is_facts_only() -> None:
     bundle = model.asked[0]
     _check("the bundle carries the local time", "EDT" in bundle, bundle[:200])
     _check("the bundle names the reason it was woken", "drafts" in bundle, bundle[:200])
-    _check("the bundle lists the open task", "X/Twitter" in bundle, bundle[:400])
-    _check("the bundle excludes finished tasks", "done thing" not in bundle, bundle[:400])
-    _check("the bundle dates the unreviewed draft", "2026-09-14" in bundle, bundle[:600])
+    # 2026-11-05: a lull message at 2:51am offered a cover letter from a note in tasks.md.
+    _check("IGOR's tasks stay out of it", "X/Twitter" not in bundle and "done thing" not in bundle, bundle[:400])
+    _check("and so do its drafts", "2026-09-14" not in bundle and "Drafts" not in bundle, bundle[:600])
 
 
 def test_claimed_work_is_dropped() -> None:
@@ -502,6 +502,23 @@ async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
     _check("and the retry is told why", "about something you sent or keep" in asked[1], asked[1][-200:])
 
 
+async def test_a_lull_about_its_own_bookkeeping_is_not_sent() -> None:
+    """2026-11-05, 2:51am, from a lull: "Your cover-letter draft for the three-month evaluation-pipeline
+    contract is saved and ready whenever you want to pull it." The user had said, in so many words, that
+    they wanted no readouts until they were ready to apply, and no reports about what IGOR keeps."""
+    from agents import presence
+
+    _fresh(_state())
+    model = _Model("Your cover-letter draft for the kettle contract is saved and ready whenever you want to pull it.")
+    out = await presence.consider("lull", now=AWAKE, ask=model, last_user_at=AWAKE - timedelta(minutes=40))
+    _check("a lull message about a draft IGOR keeps is not sent", out is None, repr(out))
+    (config.MEMORY_DIR / "preferences.md").write_text(
+        "- The user wants readouts only when ready to apply. (saved 2026-11-05)\n", encoding="utf-8")
+    _check("and both kinds of check-in read the user's standing preferences",
+           "readouts only when ready to apply" in presence._system_for("lull")
+           and "readouts only when ready to apply" in presence._system_for("checkin"))
+
+
 async def test_a_fresh_opening() -> None:
     """Four check-ins running opened "I trust your ... is proceeding smoothly"."""
     from agents import presence
@@ -593,7 +610,7 @@ async def test_a_checkin_sees_the_last_few_days() -> None:
     # recent drafts on universal basic income and the pending X/Twitter integration".
     _check("a check-in gets no tasks or drafts, which are IGOR's bookkeeping",
            "X/Twitter" not in checkin and "Drafts" not in checkin, checkin[:300])
-    _check("the lull judgement still sees them", "X/Twitter" in lull and "Drafts" in lull)
+    _check("and since 2026-11-05 neither does the lull judgement", "X/Twitter" not in lull and "Drafts" not in lull, lull[:300])
 
     _fresh(_state())
     asked = []
@@ -739,6 +756,7 @@ if __name__ == "__main__":
     asyncio.run(test_silence_and_cleanup())
     asyncio.run(test_a_fresh_opening())
     asyncio.run(test_a_checkin_about_its_own_posts_is_not_sent())
+    asyncio.run(test_a_lull_about_its_own_bookkeeping_is_not_sent())
     asyncio.run(test_a_checkin_sees_the_last_few_days())
     print("\ntriggers")
     test_triggers()

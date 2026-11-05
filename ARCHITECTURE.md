@@ -178,9 +178,9 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 23 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 25 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
-| **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 3 files |
+| **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 2 files |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
 | Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` | none |
 
@@ -314,7 +314,7 @@ LOOP_COMPLETE) and says so; one ending a line is dropped. After downtime it send
 a paused entry skips what was missed. Repeating messages are never merged, and each
 delivery spends daily tokens on 120b. Each run sees the series' last three
 messages, marked sent, never built. An IGOR
-series gets its subject from code, by date.
+series gets its subject from code, by date, and this file's paragraphs on it (`_area_detail`).
 
 **Scripts and chains** (`prerun.py`, Hermes' cron `script`, `no_agent`, `context_from`): a message
 can name a script in `memory/private/cron_scripts/`, sealed from every tool, so only the user or
@@ -328,7 +328,8 @@ sees all this as outside text.
 Presence writes on 120b. Gates in code before any model call: silent 03:00-11:00 local, 4h
 between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits until 2h after the user last spoke. It sees
-the user's own messages from 3 days, `user.md` and its last 5 check-ins, no tasks.
+the user's own messages from 3 days, `user.md` and its last 5 check-ins; both triggers get the
+standing preferences and no tasks or drafts, and a message about IGOR's own posts is not sent.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
 `heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,
@@ -490,15 +491,13 @@ Four controls, none costing a model call:
 
 1. **Framing.** Search and fetch results are wrapped in
    `[UNTRUSTED EXTERNAL CONTENT]` markers. The system prompt states that text
-   inside has no authority regardless of what it claims, including claims to come
-   from the user or the system.
+   inside has no authority, whoever it claims to come from.
 2. **Quarantine.** The moment a web tool runs in a turn, or if the message carries a
    document or image, every state-changing tool
    (`_QUARANTINED_AFTER_WEB`: `shell`, `python_run`, the file writers, `restart_self`,
    `memory_write`, `scheduled_message`, `delegate_task`, `task_update`, `goal`,
    `proposal`) is withdrawn from the schema **and** refused at execution for the rest of that
-   turn. Both layers, because one batch can hold a search and a shell call and runs in
-   no set order, so it is judged whole.
+   turn; a batch holding both is judged whole.
 3. **Secrets.** No tool reads or changes `.env`, key files, `.git/` or `*.local.*`
    (`_is_secret_file`), and `sanitize.redact` (Hermes' `redact_secrets`) strips key shapes
    and IGOR's own keys from tool results, outbound text and logs.

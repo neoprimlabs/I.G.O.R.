@@ -167,7 +167,10 @@ Style:
 
 
 def _system_for(reason: str) -> str:
-    return _SYSTEM_CHECKIN if reason in _COMPOSE_TRIGGERS else _SYSTEM_JUDGE
+    # The user's standing preferences, as Direct and React have them. 2026-11-05 a lull message at
+    # 2:51am offered a saved cover letter to a user who had said: no readouts until I am ready to apply.
+    import proposals
+    return proposals.with_preferences(_SYSTEM_CHECKIN if reason in _COMPOSE_TRIGGERS else _SYSTEM_JUDGE)
 
 
 def _config_path():
@@ -253,27 +256,6 @@ def _blocked(state: dict, now: datetime, last_user_at: Optional[datetime]) -> Op
     return None
 
 
-def _drafts() -> list[tuple[str, datetime]]:
-    """Draft headings and their timestamps, newest first."""
-    try:
-        text = (config.MEMORY_DIR / "drafts.md").read_text(encoding="utf-8")
-    except OSError:
-        return []
-    found = []
-    for line in text.splitlines():
-        if not line.startswith("## "):
-            continue
-        match = re.search(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*UTC", line)
-        if not match:
-            continue
-        try:
-            when = datetime.strptime(f"{match.group(1)} {match.group(2)}", "%Y-%m-%d %H:%M")
-        except ValueError:
-            continue
-        found.append((line[3:].strip(), when.replace(tzinfo=timezone.utc)))
-    return sorted(found, key=lambda pair: pair[1], reverse=True)
-
-
 def _checkin_time(now: datetime, state: dict) -> Optional[datetime]:
     """When today's check-in is due, or None if it already happened.
 
@@ -323,15 +305,6 @@ def _when(ts: Optional[int], now: datetime) -> str:
     return f"{day}{at:%a} {at:%b} {at.day} {at:%H:%M}"
 
 
-def _open_tasks() -> list[str]:
-    try:
-        text = (config.MEMORY_DIR / "tasks.md").read_text(encoding="utf-8")
-    except OSError:
-        return []
-    from agents import monitor
-    return monitor._parse_tasks(text)
-
-
 def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
            earlier_checkins: Optional[list[str]] = None) -> str:
     """Only what can be read from a file or the database. Nothing inferred."""
@@ -345,22 +318,11 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
     else:
         lines.append("The user last said something: unknown")
 
-    # A check-in gets none of IGOR's bookkeeping. Told to ground itself in something
-    # real, the 2026-10-29 eval asked after "the recent drafts on universal basic income
-    # and the pending X/Twitter integration" - a report, which its prompt forbids.
-    if reason != "checkin":
-        tasks = _open_tasks()
-        lines.append(f"Open tasks ({len(tasks)}):" if tasks else "Open tasks: none")
-        lines.extend(f"  {t}" for t in tasks[:5])
-
-        drafts = _drafts()
-        if drafts:
-            lines.append(f"Drafts sent for review and not replied to ({len(drafts)}):")
-            for title, when in drafts[:3]:
-                age = (now - when).days
-                lines.append(f"  {title} - sent {age} days ago")
-        else:
-            lines.append("Drafts awaiting review: none")
+    # Nothing gets IGOR's bookkeeping, tasks or drafts. Told to ground itself in something real,
+    # the 2026-10-29 check-in eval asked after "the recent drafts on universal basic income and the
+    # pending X/Twitter integration", so check-ins lost it then. The lull judgement kept it, and on
+    # 2026-11-05 at 2:51am said "Your cover-letter draft ... is saved and ready" from a note in
+    # tasks.md: the report the user had already said they did not want.
 
     try:
         import context_store
@@ -447,7 +409,7 @@ def _facts(reason: str, now: datetime, last_user_at: Optional[datetime],
         # reviewed?", from the summary's line on the morning's job post and the list below.
         # It may raise none of what IGOR sent, so it does not see it.
         lines.extend(f"  {line}" for line in summary[:1500].splitlines()
-                     if line.strip() and not (reason == "checkin" and _WHAT_IGOR_SENT.search(line)))
+                     if line.strip() and not _WHAT_IGOR_SENT.search(line))
 
     if unprompted and reason != "checkin":
         lines.append("Already sent to the user unprompted. Do not repeat, re-raise, "
@@ -573,9 +535,10 @@ async def consider(reason: str, now: Optional[datetime] = None,
                 message = again
         except Exception as e:
             logger.warning("Presence (%s) retry for a fresh opening failed - %s", reason, type(e).__name__)
-    # A worn opening still beats silence. Asking the user to report on IGOR's own posts does not.
-    if checkin and message and _ABOUT_ITS_OWN_POSTS.search(message):
-        logger.warning("Presence (checkin) asked about its own posts twice, staying silent: %s", message[:120])
+    # A worn opening still beats silence. A message about IGOR's own posts, drafts or proposals does
+    # not, whichever trigger wrote it: the lull judgement gets no retry, silence being its usual answer.
+    if message and _ABOUT_ITS_OWN_POSTS.search(message):
+        logger.warning("Presence (%s) was about its own posts, staying silent: %s", reason, message[:120])
         message = None
     if message:
         state["openings"] = (recent + [_opening(message)])[-5:]

@@ -122,7 +122,45 @@ _IGOR_AREAS = (
     "cost: the daily token budget and which model does each job",
     "memory: notes, the conversation store and its running summary",
 )
+# 2026-11-05: the safety day proposed approval middleware for risky commands, which approvals.py has
+# done since October. The self-summary gives approvals five words; what each area already does is in the
+# rest of ARCHITECTURE.md, so the paragraphs naming the area go in too.
+_AREA_WORDS = dict(zip(_IGOR_AREAS, (
+    ("price watch", "stock watch", "job watch", "gig watch", "heartbeats.py", "watch_history", "restock"),
+    ("overnight", "goals.md", "paper", "proof.py", "findings"),
+    ("digest",),
+    ("scheduled_message", "scheduled.json", "presence", "check-in", "[silent]", "[done]"),
+    ("router", "_classify", "fast path", "_verdict_map", "selfdescribe", "lookup"),
+    ("approvals.py", "sandbox", "checkpoint", "rollback", "_hardline_refusal", "quarantine", "prestart", "links.py"),
+    ("daily_token_caps", "token_ledger", "tpm", "headroom", "fallback", "max_tokens"),
+    ("memory_write", "user.md", "context.db", "compression", "memory review", "preferences.md", "memory_entries"),
+)))
+_AREA_CHARS = 3500
 _AGENT_TIMEOUT_S = 180
+
+
+def _area_detail(area: str) -> str:
+    """The paragraphs of ARCHITECTURE.md past the self-summary that say most about the area, capped,
+    in the document's order. Ranked, because taken in order a routing table that said "refuse" once
+    filled the safety day before the paragraph on approvals came up."""
+    from agents import self_describe
+    try:
+        text = (config.BASE_DIR / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    marker = text.find(self_describe._SUMMARY_MARKER)
+    body = text[marker + len(self_describe._SUMMARY_MARKER):] if marker != -1 else text
+    words = _AREA_WORDS.get(area, ())
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", body) if b.strip()]
+    scored = [(sum(w in b.lower() for w in words), i) for i, b in enumerate(blocks)]
+    kept, size = [], 0
+    for score, i in sorted(scored, key=lambda pair: (-pair[0], pair[1])):
+        if not score or size + len(blocks[i]) > _AREA_CHARS:
+            continue
+        kept.append(i)
+        size += len(blocks[i]) + 2
+    return "\n\n".join(blocks[i] for i in sorted(kept))
+
 
 _AGENT_SYSTEM = """You are I.G.O.R., writing one Discord message to the one person you talk to. They asked for it earlier and it is being sent now. You have no conversation history: the brief is everything you know about what they want.
 
@@ -191,6 +229,10 @@ async def write(brief: str, now: Optional[datetime] = None,
             task += (f"\n\nUnless the brief names a subject, make this one about {area}, "
                      "whatever the earlier ones covered. Everything it names already exists, "
                      "as the summary describes: the idea must add something none of it does.")
+            detail = _area_detail(area)
+            if detail:
+                task += ("\n\nWhat I.G.O.R. already does in that area, from the rest of the same "
+                         "document. Do not propose any of it again, under any name:\n" + detail)
     try:
         text = await asyncio.wait_for(
             react.handle(

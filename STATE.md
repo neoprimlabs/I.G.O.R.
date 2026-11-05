@@ -336,7 +336,13 @@ expire in 7 days. The waiting list was cleared by hand the same day. **Links, 11
 entry-level jobs, React listed five after a real job-board search; three links were invented or on the
 wrong site (checked against `jobs_seen.json`). `links.py` now takes out any link in a reply that was not
 in a tool result that turn, the message, the conversation or Direct's notes, and says how many, for
-React, Direct, Monitor, SelfDescribe, presence and scheduled messages. Not
+React, Direct, Monitor, SelfDescribe, presence and scheduled messages. **Presence, 11-05:** a lull
+message at 2:51am offered the saved cover letter, from a note in `tasks.md`, to a user whose standing
+preference says no readouts until ready to apply. The lull judgement now gets no tasks or drafts (the
+check-in lost them 10-29), both triggers get the standing preferences, and any message about IGOR's own
+posts or drafts is not sent; the note left `tasks.md` (backup `.bak-20261105`). **Ideas, 11-05:** the
+safety day proposed approval middleware, which `approvals.py` is. Each day's area now brings its own
+ARCHITECTURE paragraphs (`compose._area_detail`, ranked, 3500 chars). Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
