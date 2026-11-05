@@ -114,8 +114,43 @@ def test_remove() -> None:
         reply = _apply("remove", old_text="Name: Sam\n- Time zone")
         _check("text spanning two entries is refused", reply.startswith("Not written"), reply)
         _apply("remove", old_text="loose paragraph")
-        _check("a paragraph is removed whole", "working late" not in path.read_text(encoding="utf-8"))
-        _check("headings stay", "## Goals" in path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        _check("a paragraph is removed whole", "working late" not in text)
+        _check("a heading left empty goes with its last entry, as room in a capped file",
+               "## Goals" not in text and "- Time zone: EST\n\n## Stack\n- Flutter/Dart\n" in text, text)
+        _check("headings with entries under them stay", "## Identity" in text and "## Stack" in text, text)
+
+
+def test_an_emptied_heading() -> None:
+    with _Home() as path:
+        path.write_text("# User\n\n## Display\n- Dark mode\n\n## Stack\n- Python\n", encoding="utf-8")
+        _apply("remove", old_text="Dark mode")
+        _check("between two sections", path.read_text(encoding="utf-8") == "# User\n\n## Stack\n- Python\n",
+               path.read_text(encoding="utf-8"))
+        _apply("remove", old_text="Python")
+        _check("at the end, but never the file's title", path.read_text(encoding="utf-8") == "# User\n",
+               path.read_text(encoding="utf-8"))
+        path.write_text("# User\n## Work\n- Old job\n### Tools\n- Notion\n", encoding="utf-8")
+        _apply("remove", old_text="Old job")
+        _check("a heading with a subsection under it stays",
+               path.read_text(encoding="utf-8") == "# User\n## Work\n### Tools\n- Notion\n", path.read_text(encoding="utf-8"))
+        path.write_text("# User\n- Loose\n## Work\n- Old job\n## Home\n- Ohio\n", encoding="utf-8")
+        _apply("remove", old_text="Old job")
+        _check("the spacing around it stays as it was",
+               path.read_text(encoding="utf-8") == "# User\n- Loose\n## Home\n- Ohio\n", path.read_text(encoding="utf-8"))
+        path.write_text("# User\n## Work\n- Old job\n- New job\n", encoding="utf-8")
+        _apply("remove", old_text="Old job")
+        _check("and a heading with an entry left keeps it", path.read_text(encoding="utf-8") == "# User\n## Work\n- New job\n",
+               path.read_text(encoding="utf-8"))
+
+
+def test_check_batch() -> None:
+    with _Home() as path:
+        _check("a batch that would save says nothing",
+               memory_entries.check_batch("projects.md", [{"action": "add", "content": "A new note"}]) == "")
+        _check("one that would be refused says why",
+               "appears 0 times" in memory_entries.check_batch("projects.md", [{"action": "remove", "old_text": "nowhere"}]))
+        _check("and neither writes", path.read_text(encoding="utf-8") == NOTES)
 
 
 def test_refusals() -> None:

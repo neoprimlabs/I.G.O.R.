@@ -153,6 +153,18 @@ def add(kind: str, problem: str, evidence: str, change: str, test: str,
     return f"p{number}"
 
 
+def revise(pid: str, problem: str, test: str) -> bool:
+    """A waiting proposal's problem and test rewritten in place: memory_review.make_room turns a fact
+    that did not fit into one that brings its room with it. False if it is no longer pending."""
+    items = _load()
+    target = next((p for p in items if p["id"] == pid and p["status"] == "pending"), None)
+    if target is None:
+        return False
+    target["problem"], target["test"] = _flat(problem, _CAPS["problem"]), _flat(test, _CAPS["test"])
+    _save(items)
+    return True
+
+
 def _preference_text() -> str:
     try:
         return _preferences_path().read_text(encoding="utf-8")
@@ -235,7 +247,11 @@ def decide(pid: str, approve: bool, now: Optional[datetime] = None) -> str:
 
 
 def _skill_steps(p: dict) -> str:
-    """A skill cannot be judged from one line, so its listing carries the draft."""
+    """A skill cannot be judged from one line, so its listing carries the draft. A memory that makes
+    room carries each line it would drop, whole."""
+    if p["kind"] == "memory":
+        import memory_review
+        return "".join(f"\nDrops: {line}" for line in memory_review.dropping(p["test"]))
     if p["kind"] != "skill":
         return ""
     import skills

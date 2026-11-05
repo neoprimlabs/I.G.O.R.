@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-04**
+Last updated: **2026-11-05**
 
 ---
 
@@ -343,8 +343,9 @@ check-in lost them 10-29), both triggers get the standing preferences, and any m
 posts or drafts is not sent; the note left `tasks.md` (backup `.bak-20261105`). **Ideas, 11-05:** the
 safety day proposed approval middleware, which `approvals.py` is. Each day's area now brings its own
 ARCHITECTURE paragraphs (`compose._area_detail`, ranked, 3500 chars). **Checked live, 11-05 evening:**
-memory_review saved "only entry level positions" by day, unasked (the "no software experience" fact waits:
-`user.md` is full); a 19:40 check-in on old code asked after "the entry-level opportunities you received",
+memory_review saved "only entry level positions" by day, unasked. A fact the user stated that day waited,
+as `user.md` is full, and approving it would only have asked the user which lines to drop; a fact for a full
+file is now staged with the lines 20b chose to drop (`make_room`), one yes for both, as Hermes does. Then a 19:40 check-in on old code asked after "the entry-level opportunities you received",
 so the own-posts filter now covers that wording. Re-ranking that day's 10 postings with the new preference
 still picked one asking "1-5 years of professional software engineering experience", so job_search.md's
 `## Most years asked` (set to 0) now drops such postings in code, in the watch and in React's search. Not

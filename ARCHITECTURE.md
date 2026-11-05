@@ -451,13 +451,14 @@ re-propose fixed mistakes. At most 5 JSON proposals, stored in
 **Memory review** (`memory_review.py`, Hermes' background review): there, and by day after 15 quiet
 minutes, 20b reads the user's new messages for at most 3 items. Code checks each quote is theirs
 (first-person for a fact); a fact goes to `user.md`, a preference to `preferences.md`, unasked and
-named under the next reply. A replacement or a full file waits for "approve".
+named under the next reply. A replacement, or a fact for a full file with the lines 20b chose to
+drop, waits for one "approve".
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
 `preference`, `prompt`, `code`, `skill`, `memory`. Approving a `preference` appends one dated line to
 `memory/preferences.md`; `with_preferences` adds them to Direct's, React's and the job ranking's prompts. Approving a `prompt` or `code` proposal only marks it for a
-Claude Code session. `proposal list` counts as an untrusted read: for the rest of that
-turn the quarantine above closes `proposal` itself, so approval needs a fresh message.
+Claude Code session. `proposal list` is an untrusted read: the quarantine then closes `proposal` for the
+turn, so approval needs a fresh message.
 `goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`
 count the same (Hermes: everything read is untrusted); `search_files` and
 `search_memory` skip those files.
@@ -607,7 +608,7 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
   aside for review, reset and alerted; it fails closed. The file tools refuse
   `venv/`, `.git/` and caches, which git cannot see
 
-### Health-gated deploy (S.1, built 2026-08-10)
+### Health-gated deploy (S.1)
 
 `/usr/local/lib/igor-deploy/deploy.sh`, root-owned, outside `/opt/igor` so `write_file` cannot reach it,
 logs every attempt to `/var/log/igor-deploy.log`, which `igor` cannot write either.

@@ -1,6 +1,6 @@
 # IGOR and Hermes Agent, feature by feature
 
-Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source, last on 2026-11-02. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
+Hermes Agent is the reference for what a personal agent should be able to do. This is where IGOR stands against it, checked against Hermes' documentation and IGOR's source, last on 2026-11-05 through v0.23.0. The full ledger is the IGOR vs Hermes artifact. The harder limit is budget: IGOR runs on a free tier of 8000 tokens a minute and 200000 a day on its main model, on a 956 MB host, so several features exist here in a smaller form on purpose.
 
 Update this file when a row changes. ARCHITECTURE.md describes how each thing works; this only says whether it exists.
 
@@ -33,13 +33,13 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | USER.md, MEMORY.md | `user.md`, `preferences.md` | `user.md` reaches Direct and job searches, not every React turn: see below. |
 | `session_search` | `search_history`, `around` | LIKE over FTS5, at this size. |
 | Context compression | `compression.py` | Folds on eviction, since there is one endless conversation. |
-| Fallback providers | `llm.create` | Cerebras is wired in and waits for a key. |
+| Fallback providers | `llm.create` | Cerebras is wired in; the user declined it, since it asks for payment details. |
 | Approvals | `approvals.py` | No "smart" mode: a model call per command. |
 | Sandboxed commands | `sandbox.py` | Bubblewrap, not Docker: the host has about 500 MB free. |
 | Checkpoints, `/rollback` | `checkpoints.py` | Files only; the conversation is not rewound. |
 | File-mutation verifier | Receipts under each reply | |
 | Skills, `skills.write_approval` on, curator | `skills.py` | Always on approval: `approve p7`, never a model's call. Hermes defaults to writing freely. Drafted from a night's review or on request, not by a nudge after each hard task. No supporting files or hub, and no consolidation pass, which Hermes also leaves off. Read with `read_file`, so no extra tool schema. |
-| Background memory review, saving freely, "Memory updated" | `memory_review.py` | Saves without asking, as Hermes' default, and names each save under the next reply. A change to a saved line waits for approval, as Hermes stages a background patch, and so does a write to a full file. On 20b once the user has been quiet 15 minutes, and nightly, rather than after each turn, for the budget. Stricter: a fact must quote the user's own first-person words, checked in code. Unanswered proposals expire after a week, where Hermes' wait forever. |
+| Background memory review, saving freely, "Memory updated" | `memory_review.py` | Saves without asking, as Hermes' default, and names each save under the next reply. A change to a saved line waits for approval, as Hermes stages a background patch. So does a fact for a full file, staged with the lines 20b chose to drop, as Hermes stages a consolidation: one yes applies both, and the listing shows each line in full. On 20b once the user has been quiet 15 minutes, and nightly, rather than after each turn, for the budget. Stricter: a fact must quote the user's own first-person words, checked in code. Unanswered proposals expire after a week, where Hermes' wait forever. |
 | Delegation | `delegate_task` | One worker at a time, for the rate limit. |
 | `execute_code` | `execute_code` | Read-only tools only, 12 lookups and 60 seconds, no private files. Hermes' scripts can also write and run commands. |
 | `video_analyze` | `agents/inbound.py` | No model on this key can watch a video, so ffmpeg gives Whisper the sound and the vision model 3 still frames, in the sandbox: a clip's motion is not seen. A file sent in chat only, not a link. One a message, up to 50 MB. Waits on ffmpeg on the host; without it, IGOR says so. |
@@ -86,7 +86,6 @@ Nothing left on the ledger can be built without one of these.
 
 - **ffmpeg on the host.** Video analysis is built and waits for it.
 - **Lightpanda on the host.** The browser is built and waits for it.
-- **A Cerebras key.** The fallback chain is built. Third-party pages put the free tier near 1M tokens a day, which would be the largest budget increase available.
 - **Accounts.** X search (xAI), Google Workspace and Spotify (each needs a sign-in flow the MCP client does not have yet), memory providers, secrets managers.
 - **IGOR's own app.** Started 2026-11-02 with the dashboard, and chat the same day. Voice 2026-11-03 (`voice.py`): Hermes' push-to-talk and spoken replies, Whisper in, Orpheus out with the browser's voice as fallback. Orpheus waits for the account owner to accept its terms in the Groq console. Buttons are not wanted (2026-11-03).
 - **A larger host.** Oracle's free Arm allowance is now 2 OCPU and 12 GB (halved in 2026), twelve times this host's memory; it would fit Chromium and screenshots. Capacity is often exhausted, and moving IGOR is the largest job on this list.

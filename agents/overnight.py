@@ -315,7 +315,8 @@ def _real_complete():
         writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM)
         model = config.OVERNIGHT_WRITE_MODEL if writing else config.OVERNIGHT_MODEL
         # On low, 20b answered "seller" to all of it and called e-book generators the idea itself.
-        effort = "medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM) else _REASONING_EFFORT
+        effort = ("medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM, memory_review.ROOM_SYSTEM)
+                  else _REASONING_EFFORT)
         return await llm.complete(
             research_loop._get_client(), model, system, user,
             max_tokens=max_tokens, label="Overnight", reasoning_effort=effort, **extra)

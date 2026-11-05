@@ -64,6 +64,17 @@ class _Model:
         return self.reply
 
 
+class _Replies(_Model):
+    """A different reply to each call in turn, then NONE."""
+    def __init__(self, *replies):
+        super().__init__()
+        self.replies = list(replies)
+
+    async def __call__(self, system, user, max_tokens, cap=None):
+        self.calls.append((system, user, max_tokens, cap))
+        return self.replies.pop(0) if self.replies else "NONE"
+
+
 def _row(say="The user moved to Maine last month", quote="I moved to Maine last month", kind="fact", replaces=""):
     return json.dumps({"type": kind, "say": say, "quote": quote, "replaces": replaces})
 
@@ -198,7 +209,7 @@ def test_a_full_notes_file_says_so() -> None:
         _said(*THREE)
         _run(_Model(_row(say="The user moved to Maine last month and likes it there, " + "and more " * 12)))
         _check("a full file is not written past its cap", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == full)
-        _check("so it waits for the user, as Hermes leaves room-making to a person", len(proposals.pending()) == 1)
+        _check("so it waits for the user, and with no room chosen it stays a plain fact", len(proposals.pending()) == 1)
         _check("and is not announced as saved", memory_review.take_notices() == [])
         pid = proposals.pending()[0]["id"]
         said = proposals.decide(pid, True)
@@ -206,6 +217,91 @@ def test_a_full_notes_file_says_so() -> None:
         _check("and lists them", "fact number 3" in said, said)
         _check("it stays pending", proposals.pending()[0]["id"] == pid)
         _check("with nothing written", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == full)
+
+
+FULL = "# User\n\n" + "".join(f"- The user fact number {i} goes here and fills up room (2026-10-01)\n" for i in range(22))
+LONG = "The user moved to Maine last month and likes it there, " + "and more " * 12
+
+
+def _full_run(*replies, room=60000):
+    (config.MEMORY_DIR / "user.md").write_text(FULL, encoding="utf-8")
+    _said(*THREE)
+    model = _Replies(_row(say=LONG), *replies)
+    # Dated today: the listing expires anything older than a week before it shows it.
+    _, spent = asyncio.run(memory_review.review({}, model, room, datetime.now(clock.USER_TZ)))
+    return model, spent
+
+
+def test_a_full_file_brings_its_room() -> None:
+    with _Memory():
+        model, spent = _full_run("3, 5 and 7")
+        _check("a second call chooses what to drop", len(model.calls) == 2
+               and model.calls[1][0] == memory_review.ROOM_SYSTEM, str(len(model.calls)))
+        _check("and the pass counts it", spent == memory_review.RESERVE + memory_review.ROOM_RESERVE, str(spent))
+        system, user = model.calls[1][:2]
+        _check("it sees the notes numbered, and how much to free",
+               "3. (" in user and "fact number 2 goes" in user and "Characters to free: at least" in user, user[:300])
+        _check("its prompt plus answer fits 20b's 8000 TPM at 3 chars a token",
+               (len(system) + len(user)) // 3 + memory_review.ROOM_TOKENS < 8000)
+        _check("and the pass reserves at least that",
+               memory_review.ROOM_RESERVE >= (len(system) + len(user)) // 3 + memory_review.ROOM_TOKENS)
+        _check("the model has a budget it cannot spend to nothing", model.calls[1][2] >= 1024)
+        _check("nothing is written yet", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == FULL)
+        p = proposals.pending()[0]
+        _check("the proposal says the notes are full and that it drops three",
+               p["problem"].startswith("Your notes are full, so this drops 3 older lines") and "Maine" in p["problem"], p["problem"])
+        listing = proposals.brief_listing()
+        _check("the listing shows each line it would drop, whole",
+               all(f"Drops: - The user fact number {i} goes here and fills up room (2026-10-01)" in listing for i in (2, 4, 6)), listing)
+        said = proposals.decide(p["id"], True)
+        notes = (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8")
+        _check("one yes drops them and saves the fact",
+               "Maine" in notes and not any(f"number {i} goes" in notes for i in (2, 4, 6)), notes)
+        _check("and touches nothing else", all(f"number {i} goes" in notes for i in (0, 1, 3, 5, 7, 12, 21)), notes)
+        _check("within the cap", len(notes.strip()) <= config.USER_PROFILE_CAP, str(len(notes)))
+        _check("the reply says what went and what came",
+               said.count("Removed from user.md") == 3 and "Added to user.md" in said, said)
+
+    with _Memory():
+        _full_run("3, 5, 7")
+        pid = proposals.pending()[0]["id"]
+        edited = FULL.replace("fact number 4 goes", "fact number 4 now goes")
+        (config.MEMORY_DIR / "user.md").write_text(edited, encoding="utf-8")
+        _check("a line edited since shows as gone in the listing", "no longer in the notes" in proposals.brief_listing())
+        said = proposals.decide(pid, True)
+        _check("and is not dropped: the whole batch is refused", "Not approved" in said and "changed" in said, said)
+        _check("with nothing written", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == edited)
+        _check("and it stays pending", proposals.pending() and proposals.pending()[0]["id"] == pid)
+
+
+def test_making_room_fails_safe() -> None:
+    for reply, case in (("3, 5", "a choice that frees too little"), ("NONE", "nothing to drop"),
+                        ("Drop the oldest ones", "prose"), ("3, 5, 40", "a number past the end"),
+                        ("1, 2, 3, 4, 5, 6", "more than five")):
+        with _Memory():
+            _full_run(reply)
+            p = proposals.pending()[0]
+            _check(f"{case}: it stays a plain fact", p["test"] == memory_review._ADDS
+                   and not p["problem"].startswith("Your notes"), p["test"])
+            _check(f"{case}: nothing is written", (config.MEMORY_DIR / "user.md").read_text(encoding="utf-8") == FULL)
+
+    with _Memory():
+        model, spent = _full_run("3, 5, 7", room=memory_review.RESERVE)
+        _check("without the budget for it, no second call", len(model.calls) == 1 and spent == memory_review.RESERVE)
+        pid = proposals.pending()[0]["id"]
+        called, what = asyncio.run(memory_review.make_room(pid, _Replies("3, 5, 7")))
+        _check("a fact already waiting can be given its room later",
+               called and proposals.pending()[0]["test"].startswith(memory_review._ROOM), what)
+        again = _Replies("1")
+        _check("but only once", asyncio.run(memory_review.make_room(pid, again))[0] is False and not again.calls)
+
+    with _Memory():
+        _full_run(room=memory_review.RESERVE)
+        pid = proposals.pending()[0]["id"]
+        (config.MEMORY_DIR / "user.md").write_text(NOTES, encoding="utf-8")
+        model = _Replies("1")
+        _check("a fact that fits now needs no call", asyncio.run(memory_review.make_room(pid, model)) == (False, "it fits now")
+               and not model.calls)
 
 
 def test_a_preference_goes_with_the_preferences() -> None:
@@ -420,6 +516,8 @@ if __name__ == "__main__":
     test_what_is_known_is_not_asked_again()
     test_a_new_fact_can_replace_an_old_one()
     test_a_full_notes_file_says_so()
+    test_a_full_file_brings_its_room()
+    test_making_room_fails_safe()
     test_a_preference_goes_with_the_preferences()
     test_when_it_calls_the_model()
     test_what_the_model_sees()

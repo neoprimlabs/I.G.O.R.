@@ -123,6 +123,25 @@ def _listing(text: str) -> str:
     return "\n".join(out)
 
 
+def _without_empty_heading(text: str, at: int) -> str:
+    """A section heading left with nothing under it by a removal at `at` goes too: in a capped file
+    it is room. Never the file's own title, and never a heading with a subsection under it."""
+    lines = text[:at].splitlines(keepends=True)
+    k = len(lines)
+    while k and not lines[k - 1].strip():
+        k -= 1
+    heading = _HEADING.match(lines[k - 1]) if k else None
+    if not heading or len(heading.group(1)) == 1:
+        return text
+    following = next((line for line in text[at:].splitlines() if line.strip()), None)
+    if following is not None:
+        below = _HEADING.match(following)
+        if not below or len(below.group(1)) > len(heading.group(1)):
+            return text
+    before, rest = "".join(lines[:k - 1]), text[at:].lstrip("\n")
+    return before + rest if rest else before.rstrip("\n") + "\n"
+
+
 def _insert(text: str, line: str, section: str) -> str:
     """line appended at the end of `section`, creating the heading if it is absent."""
     if not section:
@@ -199,7 +218,7 @@ def _edit(text: str, filename: str, action: str, content: str, old_text: str,
             return None, "Not written: old_text is not inside one entry. Quote part of the entry to remove.", None
         a, b = hit[0]
         removed = " ".join(text[a:b].split())
-        return text[:a] + text[b:], f"Removed from {filename}: {removed[:120]}", None
+        return _without_empty_heading(text[:a] + text[b:], a), f"Removed from {filename}: {removed[:120]}", None
     if action == "overwrite":
         return None, ("Not written: whole-file overwrite is gone. Use patch to change an entry and "
                       "remove to delete one, so nothing else in the file is touched."), None
@@ -230,6 +249,20 @@ def apply_batch(filename: str, operations: list, today: Optional[str] = None) ->
         return f"Not written: {filename} could not be read ({type(e).__name__})."
     global last_written
 
+    new, said, written = _result(filename, text, operations, today)
+    if new is None or new == text:
+        return said
+    import checkpoints
+    checkpoints.before_write(path)
+    path.write_text(new, encoding="utf-8")
+    checkpoints.after_write(path)
+    last_written = (filename, written) if written else None
+    return said
+
+
+def _result(filename: str, text: str, operations: list,
+            today: Optional[str]) -> tuple[Optional[str], str, Optional[str]]:
+    """The batch run on text in hand: (new text, or None if refused; what happened; entry written)."""
     new, done, written = text, [], None
     for n, op in enumerate(operations, 1):
         op = op if isinstance(op, dict) else {}
@@ -237,29 +270,30 @@ def apply_batch(filename: str, operations: list, today: Optional[str] = None) ->
                                   op.get("old_text") or "", op.get("section") or "", today)
         if step is None:
             if len(operations) == 1:
-                return said
-            return (f"Not written: edit {n} of {len(operations)} ({op.get('action')}) was refused, "
-                    f"so nothing in this call was saved. {said.removeprefix('Not written: ')}")
+                return None, said, None
+            return None, (f"Not written: edit {n} of {len(operations)} ({op.get('action')}) was refused, "
+                          f"so nothing in this call was saved. {said.removeprefix('Not written: ')}"), None
         new = step
         done.append(said if len(operations) == 1 else " ".join(said.split()))
         written = entry or written
-    if new == text:
-        return "\n".join(done)
-
     cap = CAPS.get(filename)
     size = len(new.strip())
     # A file already over its cap, written some other way, may still shrink.
-    if cap and size > cap and size > len(text.strip()):
-        return (f"Not written: {filename} would be {size} characters, over its {cap} cap. "
-                f"Free at least {size - cap}: one memory_write whose operations remove or "
-                f"shorten entries and then add, saved together. Current entries:\n{_listing(text)}")
+    if new != text and cap and size > cap and size > len(text.strip()):
+        return None, (f"Not written: {filename} would be {size} characters, over its {cap} cap. "
+                      f"Free at least {size - cap}: one memory_write whose operations remove or "
+                      f"shorten entries and then add, saved together. Current entries:\n{_listing(text)}"), None
+    return new, "\n".join(done), written
 
-    import checkpoints
-    checkpoints.before_write(path)
-    path.write_text(new, encoding="utf-8")
-    checkpoints.after_write(path)
-    last_written = (filename, written) if written else None
-    return "\n".join(done)
+
+def check_batch(filename: str, operations: list, today: Optional[str] = None) -> str:
+    """Why apply_batch would refuse these edits now, or "" if they would be saved. Writes nothing."""
+    try:
+        text = (config.MEMORY_DIR / filename).read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    new, said, _ = _result(filename, text, operations, today)
+    return said if new is None else ""
 
 
 def fullness(filename: str) -> str:
