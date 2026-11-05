@@ -34,7 +34,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | `session_search` | `search_history`, `around` | LIKE over FTS5, at this size. |
 | Context compression | `compression.py` | Folds on eviction, since there is one endless conversation. |
 | Fallback providers | `llm.create` | Cerebras is wired in; the user declined it, since it asks for payment details. |
-| Approvals | `approvals.py` | No "smart" mode: a model call per command. |
+| Approvals | `approvals.py` | No "smart" mode: a model call per command. A no can say what to do instead, as in Hermes 0.23, and invisible characters ask first. Its pipe-to-shell, cloud-metadata and credential-upload checks have nothing to catch: the shell has no network, and a download piped into a shell is refused outright. |
 | Sandboxed commands | `sandbox.py` | Bubblewrap, not Docker: the host has about 500 MB free. |
 | Checkpoints, `/rollback` | `checkpoints.py` | Files only; the conversation is not rewound. |
 | File-mutation verifier | Receipts under each reply | |
@@ -47,7 +47,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | Browser, Lightpanda engine | `browser.py`, `browser` | Lightpanda only: Chromium does not fit. Steps in one call instead of model-written Python, so nothing the model writes runs on the host. Reads, clicks, types and searches, and refuses password fields and anything but GET, so no logins, purchases or posts; Hermes' vault and real-profile logins are left out with them. Private networks blocked by the engine. No screenshots, one page. Waits on Lightpanda on the host. |
 | Kanban | `board.py`, `board` | One board and one worker, on 20b, 8 runs a day, with read-only tools: no profiles, tenants, review column, parallel fan-out or workspaces. Parents, comments, restart recovery and blocking on two failures are all there. A worker ends with its reply or `[BLOCKED: why]`, not a tool call, for the budget. |
 | Plugins, `register(ctx)` | `plugins.py`, `plugin_runner.py` | The same folder format, off until enabled. `register_tool`, `register_command` and `register_hook` work; `plugins` names what else one asked for. Each call is a sandboxed process rather than in the agent with its keys, so a plugin that imports Hermes' own modules, or needs its `ctx.llm`, does not load or run here. No installer or catalog: Claude Code or the user places it. None is placed yet. |
-| Voice and image input, document extraction | `agents/inbound.py` | A long document is summarised on arrival; paging one does not fit the budget. PowerPoint, EPUB and OpenDocument with the standard library, where Hermes installs a converter, so no old `.doc` or `.ppt`, RTF or SQLite. A file that unpacks past 100 MB is refused. |
+| Voice and image input, document extraction | `agents/inbound.py` | Hermes' no-speech phrases are silence, so a quiet clip is not heard as "Thank you." A long document is summarised on arrival; paging one does not fit the budget. PowerPoint, EPUB and OpenDocument with the standard library, where Hermes installs a converter, so no old `.doc` or `.ppt`, RTF or SQLite. A file that unpacks past 100 MB is refused. |
 | Syntax checks on `write_file` and `patch` | `_syntax_note` | Python only: IGOR's file tools write nothing but `.py` and `.md`. Kept and reported, and only what the edit broke, as Hermes does for Python. |
 | URL safety | `url_safety.py` | |
 | MCP server | `mcp_server.py` | Read-only, over SSH. |

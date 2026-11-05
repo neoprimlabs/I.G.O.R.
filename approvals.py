@@ -24,7 +24,17 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 300
 _YES = frozenset({"yes", "y", "approve", "approved", "ok", "okay", "go", "do it", "run it"})
-_NO = frozenset({"no", "n", "deny", "denied", "cancel", "stop", "don't", "dont"})
+_NO = frozenset({"no", "nope", "n", "deny", "denied", "cancel", "stop", "don't", "dont"})
+# Hermes 0.23: "No, and tell Hermes what to do instead." A no with more after it settles the
+# request, and the rest reaches the waiting turn as the user's own instruction, rather than
+# waiting five minutes behind it as a new message.
+_NO_BUT = re.compile(r"^\s*(?:no|nope|n|deny|cancel|stop|don'?t)\b[\s,.:;!-]+(?P<instead>\S.*)$",
+                     re.IGNORECASE | re.DOTALL)
+INSTEAD = "the user said no, and said instead: "
+_INSTEAD_CAP = 500
+_instead = ""
+# What hides from the approval message is what the user cannot judge (Hermes 0.21.6).
+_INVISIBLE = re.compile("[​-‏‪-‮⁠-⁤﻿]")
 
 # (why, pattern), checked against the lowercased command.
 _RISKY = (
@@ -56,6 +66,8 @@ def set_sender(send: Callable[[str], Awaitable[object]]) -> None:
 def risk(command: str) -> Optional[str]:
     """Why a command needs the user's approval, or None."""
     text = (command or "").lower()
+    if _INVISIBLE.search(text):
+        return "it contains invisible characters, so what it does may not be what it shows"
     for why, pattern in _RISKY:
         if re.search(pattern, text):
             return why
@@ -64,20 +76,23 @@ def risk(command: str) -> Optional[str]:
 
 async def ask(command: str, why: str) -> tuple[bool, str]:
     """Wait for the user's yes or no. (approved, reason it did not run)."""
-    global _pending
+    global _pending, _instead
     if _send is None:
         return False, "approvals cannot reach the user from here"
     if _pending is not None and not _pending[1].done():
         return False, "another command is already waiting for the user's approval"
     future = asyncio.get_running_loop().create_future()
-    _pending = (command, future)
+    _pending, _instead = (command, future), ""
     shown = command if len(command) <= 400 else command[:400] + " ..."
+    shown = _INVISIBLE.sub("[hidden character]", shown)
     try:
         await _send(f"IGOR wants to run a command that needs your OK, because {why}:\n"
-                    f"`{shown}`\nReply **yes** to run it or **no** to stop it. "
-                    f"No reply in {TIMEOUT_S // 60} minutes counts as no.")
+                    f"`{shown}`\nReply **yes** to run it or **no** to stop it, or say no and what "
+                    f"to do instead. No reply in {TIMEOUT_S // 60} minutes counts as no.")
         approved = await asyncio.wait_for(asyncio.shield(future), timeout=TIMEOUT_S)
-        return approved, "" if approved else "the user said no"
+        if approved:
+            return True, ""
+        return False, INSTEAD + _instead if _instead else "the user said no"
     except asyncio.TimeoutError:
         return False, f"the user did not answer within {TIMEOUT_S // 60} minutes"
     except Exception as e:
@@ -90,6 +105,7 @@ async def ask(command: str, why: str) -> tuple[bool, str]:
 def answer(text: str) -> Optional[str]:
     """If a command is waiting and this message is a yes or no, settle it and return
     the reply to send. Anything else returns None and is handled as a normal message."""
+    global _instead
     if _pending is None or _pending[1].done():
         return None
     word = re.sub(r"[.!]+$", "", (text or "").strip().lower())
@@ -101,6 +117,12 @@ def answer(text: str) -> Optional[str]:
         _pending[1].set_result(False)
         logger.info("Approval refused: %s", _pending[0][:120])
         return "Stopped. It will not run."
+    but = _NO_BUT.match(text or "")
+    if but:
+        _instead = " ".join(but.group("instead").split())[:_INSTEAD_CAP]
+        _pending[1].set_result(False)
+        logger.info("Approval refused, with what to do instead: %s", _pending[0][:120])
+        return "Stopped. It will not run. IGOR has what you said instead."
     return None
 
 

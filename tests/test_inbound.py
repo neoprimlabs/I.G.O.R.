@@ -133,6 +133,35 @@ def test_voice() -> None:
     _check("an oversized note is refused before download", "over the 25 MB" in _run([big])[0][0] and big.reads == 0)
 
 
+def test_quiet_audio_is_silence() -> None:
+    """Hermes 0.22: Whisper writes a stock phrase for a clip with no speech, so a tap of the talk
+    button or a pocket recording reached IGOR as "Thank you." from the user."""
+    from types import SimpleNamespace
+    from agents import inbound, react
+    heard = []
+
+    class _Client:
+        class audio:
+            class transcriptions:
+                @staticmethod
+                async def create(**kwargs):
+                    return SimpleNamespace(text=heard[-1])
+
+    real = react._get_client
+    react._get_client = lambda: _Client()
+    try:
+        for said in ("Thank you.", "Thanks for watching!", "  you  ", "Thank you. Thank you. Thank you.", "...",
+                     "Okay, okay.", "Bye!", ""):
+            heard.append(said)
+            _check(f"silence: {said!r}", asyncio.run(inbound._transcribe(b"x", "v.ogg")) == "")
+        for said in ("Thank you for checking the kettle.", "You can stop now.", "Okay, set a reminder for five.",
+                     "The end of the month works.", "1 2 3"):
+            heard.append(said)
+            _check(f"speech: {said!r}", asyncio.run(inbound._transcribe(b"x", "v.ogg")) == said)
+    finally:
+        react._get_client = real
+
+
 def test_images() -> None:
     seen = []
 

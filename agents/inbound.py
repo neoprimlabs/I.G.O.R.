@@ -443,7 +443,29 @@ def _split(answer: str, count: int) -> list[str]:
 _GROQ_AUDIO = (".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".opus", ".wav", ".webm")
 
 
+# What Whisper writes for a clip with no speech in it, learned from captioned video: Hermes' list
+# (tools/voice_mode_transcript.py, filtered since v0.22.0). A transcript that is only one of these,
+# or only filler like "Thank you. Thank you.", or no letter or digit at all, is silence. A user
+# who says only "thank you" is taken as silent too, as in Hermes.
+_NO_SPEECH = frozenset({
+    "thank you", "thanks for watching", "subscribe to my channel", "like and subscribe", "please subscribe",
+    "thank you for watching", "bye", "you", "the end", "продолжение "
+    "следует", "sous-titres",
+    "sous-titres réalisés par la communauté d'amara.org", "sottotitoli creati dalla comunità amara.org",
+    "untertitel von stephanie geiges", "amara.org", "www.mooji.org",
+    "ご視聴ありがとうございました"})
+_NO_SPEECH_REPEAT = re.compile(r"^(?:thank you|thanks|bye|you|ok|okay|the end|\.|\s|,|!)+$", re.IGNORECASE)
+
+
+def _no_speech(text: str) -> bool:
+    cleaned = (text or "").strip().lower()
+    return (not re.search(r"[^\W_]", cleaned) or cleaned.rstrip(".!") in _NO_SPEECH
+            or bool(_NO_SPEECH_REPEAT.match(cleaned)))
+
+
 async def _transcribe(data: bytes, filename: str) -> str:
+    """What was said, or "" for no speech: a quiet clip comes back as one of Whisper's stock phrases,
+    which would otherwise reach IGOR as something the user said."""
     from agents.react import _get_client
     name = (filename or "").split("?")[0]
     if not name.lower().endswith(_GROQ_AUDIO):
@@ -451,7 +473,11 @@ async def _transcribe(data: bytes, filename: str) -> str:
     result = await _get_client().audio.transcriptions.create(
         model=config.MODELS["speech"], file=(name, data),
         language="en", response_format="json")
-    return (getattr(result, "text", "") or "").strip()
+    text = (getattr(result, "text", "") or "").strip()
+    if text and _no_speech(text):
+        logger.info("Transcript taken as silence, a known no-speech phrase: %s", text[:60])
+        return ""
+    return text
 
 
 async def _ffmpeg(folder: Path, program: str, *args: str) -> tuple[Optional[int], str]:

@@ -44,6 +44,8 @@ def test_what_needs_approval() -> None:
         _check(f"asks first: {command}", approvals.risk(command) is not None)
     for command in safe:
         _check(f"runs freely: {command}", approvals.risk(command) is None, str(approvals.risk(command)))
+    _check("a command with an invisible character asks first, whatever it is",
+           "invisible" in (approvals.risk("ls​ -la") or ""), str(approvals.risk("ls​ -la")))
 
 
 async def _flow() -> None:
@@ -70,6 +72,32 @@ async def _flow() -> None:
     approvals.answer("no")
     approved, reason = await task
     _check("a no is a refusal with the reason", approved is False and "said no" in reason, reason)
+
+    task = asyncio.create_task(approvals.ask("rm -rf build/", "it deletes recursively"))
+    await asyncio.sleep(0)
+    _check("the request says a no can carry what to do instead", "what to do instead" in sent[-1], sent[-1])
+    said = approvals.answer("No, just move it to old/ instead")
+    approved, reason = await task
+    _check("a no with more after it settles the request", approved is False and said.startswith("Stopped"), said)
+    _check("and the rest goes to the waiting turn as the user's words",
+           reason == approvals.INSTEAD + "just move it to old/ instead", reason)
+    task = asyncio.create_task(approvals.ask("kill 7", "it stops or kills processes"))
+    await asyncio.sleep(0)
+    approvals.answer("nope")
+    _check("a later plain no carries nothing over", (await task)[1] == "the user said no")
+    task = asyncio.create_task(approvals.ask("kill 7", "it stops or kills processes"))
+    await asyncio.sleep(0)
+    _check("a word that only starts like no is not an answer", approvals.answer("nothing yet, what is it?") is None
+           and approvals.answer("noted") is None)
+    approvals.answer("no")
+    await task
+
+    hidden = "rm -rf build/​"
+    task = asyncio.create_task(approvals.ask(hidden, approvals.risk(hidden)))
+    await asyncio.sleep(0)
+    _check("an invisible character is shown, not hidden", "[hidden character]" in sent[-1] and "​" not in sent[-1], sent[-1])
+    approvals.answer("no")
+    await task
 
     approvals.TIMEOUT_S = 0.05
     approved, reason = await approvals.ask("chmod 777 x", "it opens up file permissions")
@@ -104,6 +132,15 @@ async def _shell_flow() -> None:
         out = await react._execute_tool("shell", {"command": "rm -rf old_logs"})
         _check("a refused risky command does not run", ran == [] and out.startswith("NOT RUN"), out)
         _check("and React is told not to retry", "Do not retry" in out)
+
+        async def send_and_redirect(text):
+            asyncio.get_running_loop().call_soon(approvals.answer, "no, list the folder first")
+            return True
+
+        approvals.set_sender(send_and_redirect)
+        out = await react._execute_tool("shell", {"command": "rm -rf old_logs"})
+        _check("a no with what to do instead reaches React in the same turn, as an instruction",
+               ran == [] and out.startswith("NOT RUN") and '"list the folder first"' in out and "Do that now" in out, out)
 
         async def send_and_approve(text):
             asyncio.get_running_loop().call_soon(approvals.answer, "yes")

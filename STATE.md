@@ -351,6 +351,7 @@ still picked one asking "1-5 years of professional software engineering experien
 `## Most years asked` (set to 0) now drops such postings in code, in the watch and in React's search. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
+**Hermes v0.23 checked 11-05:** besides the full-file room above, a no to an approval can now carry what to do instead ("no, move it to old/"), which reaches the waiting turn rather than queueing behind it for five minutes; a command with invisible characters asks first; and a transcript that is only one of Whisper's stock no-speech phrases ("Thank you.") is silence, for voice notes, videos and the dashboard's Talk. Not yet exercised live.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead

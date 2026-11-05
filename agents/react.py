@@ -1895,6 +1895,10 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
         why = None if _hardline_refusal(command) else approvals.risk(command)
         if why:
             approved, reason = await approvals.ask(command, why)
+            if not approved and reason.startswith(approvals.INSTEAD):
+                return (f"NOT RUN: the user said no to this command and told you what to do instead, in "
+                        f"their own words: \"{reason[len(approvals.INSTEAD):]}\". Do that now, in this turn, "
+                        "if your tools can. Do not run the refused command.")
             if not approved:
                 return (f"NOT RUN: this command needs the user's approval because {why}, and "
                         f"{reason}. Do not retry it in this turn. Tell the user what you wanted to "

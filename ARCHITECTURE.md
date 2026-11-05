@@ -112,13 +112,13 @@ A Discord DM travels this path every time:
 1. **`interfaces/discord_bot.py` `on_message`** - ignores its own messages and
    anything that is not a DM, caches the channel for proactive sends. The user's
    attachments go through `agents/inbound.py` first: voice notes become text
-   (Whisper), up to 3 images are described by qwen inside untrusted markers, and
+   (Whisper; a stock no-speech phrase is silence), up to 3 images are described by qwen inside untrusted markers, and
    PDFs, Word, Excel, PowerPoint, EPUB, OpenDocument, notebooks and text are saved to `memory/inbox/` (untrusted)
    with the text in the message; a long one goes to React with a 20b summary instead. A video goes the same way:
    ffmpeg, sandboxed, gives Whisper its sound and qwen 3 frames. Without ffmpeg it says so.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
-   returns `None`: silent drop, no reply, no acknowledgment. This is the only
-   auth check in the system; everything downstream trusts it. A yes or no to a
+   returns `None`, a silent drop. The only auth check: everything downstream
+   trusts it. A yes or no to a
    waiting approval comes next, then `commands.py` (Hermes' gateway commands: the whole
    message, no model). Other messages take one turn at a time, in order (Hermes' queue
    mode); `stop` ends the turn in flight at its next step. `steer <note>` reaches it there as
@@ -166,7 +166,7 @@ A Discord DM travels this path every time:
    when applicable. Each agent gets the running summary, the last 6 conversation
    messages, then the last 3 posts, within its budget, stamped with their time.
 8. **`discord_bot`** - `_sanitize` maps typographic punctuation to ASCII, then
-   chunks to Discord's 2000-char limit, hard-splitting over-long single lines.
+   chunks to Discord's 2000-char limit.
 9. **`orchestrator.follow_through`** - once a React reply is sent, `followthrough.py`
    may run more rounds on it (see the summary), typing in Discord while one runs.
 
@@ -235,7 +235,8 @@ home wipes, fork bomb, `mkfs`, `dd` onto a device, a download piped into a shell
 plus the repo, memory, sudoers, the deploy machinery and force-push. Unparseable quoting fails closed.
 Hermes' middle tier (`approvals.py`): recursive
 deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
-and git resets wait for the user's yes in Discord; 5 minutes of silence is a no.
+git resets and invisible characters wait for the user's yes in Discord; "no, do X" hands X
+to the turn; 5 minutes of silence is a no.
 `scheduled_message` and `goal` close after a web read too.
 
 **Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. Blocked
