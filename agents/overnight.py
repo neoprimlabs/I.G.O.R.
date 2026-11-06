@@ -548,6 +548,10 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             if checked:
                 write_user += ("\n\nThese ideas have been checked for proof of income. Where one stays on "
                                f"the shortlist, use exactly this name for it: {checked}")
+            unearned = proof.unearned(ledger)
+            if unearned:
+                write_user += ("\n\nThe searches found no one earning from these, so neither the summary nor "
+                               f"any section may say or suggest that they earn: {unearned}")
         else:
             body = text[-_WRITE_INPUT_CHARS:]
             system = _WRITE_SYSTEM

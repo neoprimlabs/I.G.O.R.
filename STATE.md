@@ -213,7 +213,9 @@ stays weak, so a quote can be real and beside the point. **Verdict 11-03, tuning
 nights on the real paper found nothing independent - TrustMRR "similar product" lines and "no income
 shown" - and the user was told these ideas cannot be proven from public sources. The paper still runs
 nightly (11-03: 2 writing calls, ~10000 tokens of 120b, and 22 calls, ~45000 of 20b). Left as is: its
-summary claims earnings for ideas its own proof check marks "no income shown".
+summary claims earnings for ideas its own proof check marks "no income shown" (on 11-06, regulatory alerts and
+farm data feeds). Fixed 11-06: the writer only ever saw the checked names, and is now also told which ones no one was
+found earning from, and that no part of the paper may say they earn. Tested offline; not yet seen on a real revision.
 **Memory review built 11-01** (`memory_review.py`, Hermes' background review with write approval
 on), the next open parity item: the night's self-improvement session reads the user's own typed
 messages and raises at most 3 proposals. Live once on real messages in the throwaway copy, about

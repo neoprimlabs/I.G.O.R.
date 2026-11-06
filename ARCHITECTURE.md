@@ -436,12 +436,11 @@ A pass moves the old paper to `versions/`; the change note comes from headings, 
 PLAN also sees.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
-research widens: 3 fixed searches through Exa's excerpts (TrustMRR, earnings data,
-failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
+research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
 intact, and is money received of $1000 to $20M or a failure on this idea, and overrides the source for personal posts,
 hosts the paper cites and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` and the labels (independent, mixed, similar product, self-reported,
-no income shown, unchecked, against).
+no income shown, unchecked, against). The writer is told which show no earner.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;

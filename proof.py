@@ -235,6 +235,13 @@ def names(ledger: dict) -> str:
     return "; ".join(e.get("name", "") for e in ledger.values() if e.get("searches"))[:_NAMES_CAP]
 
 
+def unearned(ledger: dict) -> str:
+    """Ideas the searches found no one earning from. Live 2026-11-06 the summary still listed
+    "earnings from" two ideas marked "no income shown": the writer only ever saw their names."""
+    return "; ".join(e.get("name", "") for e in ledger.values()
+                     if e.get("searches") and label(e) in ("no income shown", "against"))[:_NAMES_CAP]
+
+
 def hosts(links) -> frozenset:
     return frozenset(_host(link) for link in links)
 

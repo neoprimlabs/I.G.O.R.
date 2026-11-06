@@ -338,6 +338,10 @@ def test_it_works_down_the_list_then_widens() -> None:
     sent = stub.writes[0]
     _check("the writer never sees the proof section", "## Proof checked" not in sent, sent[:400])
     _check("it is given the names to keep", "use exactly this name" in sent and "Kettle price alerts" in sent, sent[-300:])
+    unearned = sent.split("found no one earning from these", 1)[-1]
+    _check("and told which ideas no one was found earning from",
+           "found no one earning from these" in sent and "Kettle price alerts" in unearned
+           and "Birdhouse" not in unearned, sent[-400:])
     text = (folder / "paper.md").read_text(encoding="utf-8")
     _check("the section survives the revision", "## Proof checked" in text and "Birdhouse plan e-books" in text, text)
     _check("a renamed idea keeps what was found", "Kettle alerts** - priced (evidence: no income shown)" in text, text)
