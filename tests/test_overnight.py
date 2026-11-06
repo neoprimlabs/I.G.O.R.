@@ -244,6 +244,30 @@ def test_trim_to_fit() -> None:
            cut is None and dropped == [], str(dropped))
     _check("a paper that fits is left whole", overnight.trim_to_fit(paper, 10000) == (paper, []))
 
+    # 2026-11-06: the cut on sources alone dropped the one idea with independent proof.
+    links = lambda n, k: " ".join(f"([s](https://e.example/{k}/{j}))" for j in range(n))
+    paper = ("# Paper\n\nSummary.\n\n"
+             "## Kettle descaling kits\n" + "word " * 200 + links(1, "a") + "\n\n"
+             "## Teapot price alerts\n" + "word " * 200 + links(3, "b") + "\n\n"
+             "## Vendor list of kettle stores\n" + "word " * 200 + links(5, "c") + "\n\n"
+             "## Mug warmer resale\n" + "word " * 200 + links(2, "d") + "\n\n"
+             "## Ranked shortlist\n1. A\n\n## What I am unsure about\nMuch.\n")
+    earned = {"what": "earned", "from": "third party"}
+    ledger = {"a": {"name": "Kettle descaling kits", "searches": 3, "read": 3, "evidence": [earned]},
+              "b": {"name": "Teapot price alerts", "searches": 3, "read": 3, "evidence": []},
+              "d": {"name": "Mug warmer resale", "searches": 3, "read": 3,
+                    "evidence": [{"what": "earned", "from": "verified"}]}}
+    cut, dropped = overnight.trim_to_fit(paper, len(paper) - 1000, ledger)
+    _check("with a proof ledger, an unchecked idea goes before a checked one, however many links",
+           dropped == ["Vendor list of kettle stores"], str(dropped))
+    cut, dropped = overnight.trim_to_fit(paper, len(paper) - 2100, ledger)
+    _check("then no income shown, and the proven idea stays though it cites least",
+           dropped == ["Teapot price alerts", "Vendor list of kettle stores"] and "## Kettle descaling kits" in cut,
+           str(dropped))
+    _check("without a ledger it cuts on sources as before",
+           overnight.trim_to_fit(paper, len(paper) - 1000)[1] == ["Kettle descaling kits"],
+           str(overnight.trim_to_fit(paper, len(paper) - 1000)[1]))
+
 
 def test_overlong_revision_is_cut_to_fit() -> None:
     overnight, goals, work, tmp, _ = _fresh()

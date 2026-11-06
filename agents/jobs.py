@@ -610,7 +610,8 @@ def _asks(description: str) -> str:
     # proficiency in;" for "<span>Strong proficiency in </span><span>React</span>".
     text = _BLOCK_TAG.sub("\n", html.unescape(description or ""))
     text = re.sub(r"<[^>]+>", "", text).replace("\u00ad", "")
-    parts = [re.sub(r"\s+", " ", p).strip(" .;") for p in re.split(r"\n|(?<=[.!?;])\s+", _repair(text))]
+    # "!" too: 2026-11-06 sent "No previous AI or robotics experience required!." to the user.
+    parts = [re.sub(r"\s+", " ", p).strip(" .;!") for p in re.split(r"\n|(?<=[.!?;])\s+", _repair(text))]
     hits = [p for p in parts if 8 < len(p) < 200 and not p.endswith(":")
             and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)
             and not (_ELIGIBILITY.search(p) and not _YEARS_RE.search(p))]

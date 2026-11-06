@@ -240,7 +240,10 @@ with the user's go-ahead, and they are harmless (igor-only, no new ones), so the
 and last 2000, cut mid-sentence, and all six FAILs from 10-19 to 11-06 were complete overnight papers (6275 to 10638
 characters, each with its shortlist and unsure section) failed as "cut off" or "no shortlist". Each lost that night's
 revision. It now sees up to 16000 whole, which fits 20b's 8000 a minute, and cuts longer ones at line ends
-(`tests/test_evaluator.py`). Not yet seen: a real night's paper passing.
+(`tests/test_evaluator.py`). Seen the same night: the 11-06 revision passed, and its summary said "sources
+document pricing" where it had claimed earnings. It also showed the cut to fit dropping five sections by link count,
+Bot-Template (the only independent idea) among them, for three unchecked vendor lists. The cut now goes by the
+proof label first, weakest first in the shortlist's order, then links. Tested offline; not yet seen on a real night.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

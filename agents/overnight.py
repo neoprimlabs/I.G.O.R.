@@ -130,14 +130,16 @@ def paper_is_finished(text: str, findings: Optional[str] = None) -> tuple[bool, 
 _UNSURE_HEADING = "what i am unsure about"
 
 
-def trim_to_fit(paper: str, cap: int) -> tuple[Optional[str], list[str]]:
+def trim_to_fit(paper: str, cap: int, ledger: Optional[dict] = None) -> tuple[Optional[str], list[str]]:
     """The paper cut to `cap` by dropping whole sections, and the headings dropped.
 
     Asked for 800 words and then for 650, the writer still delivered 904 to 1220 on
     seven drafts running, and the paper went three nights without a revision. Code
-    cuts instead: the sections citing the fewest sources go first, the latest of
-    equals first, never the unsure section or a ranked shortlist, never more than
-    half of what can go. (None, []) when that is not enough.
+    cuts instead: the ideas the proof check found weakest go first, in the shortlist's
+    order, then the sections citing the fewest sources, the latest of equals first,
+    never the unsure section or a ranked shortlist, never more than half of what can
+    go. (None, []) when that is not enough. Live 2026-11-06, cutting on sources alone
+    dropped the one idea with independent proof and kept three unchecked vendor lists.
     """
     head, *parts = re.split(r"(?m)^(?=## )", paper)
     sections = [(p.splitlines()[0][3:].strip(), p) for p in parts]
@@ -146,8 +148,10 @@ def trim_to_fit(paper: str, cap: int) -> tuple[Optional[str], list[str]]:
         h = heading.lower()
         return h.startswith(_UNSURE_HEADING) or "shortlist" in h or "ranked" in h
 
+    labels = proof.labels_for([h for h, _ in sections], ledger or {})
     droppable = [i for i, (h, _) in enumerate(sections) if not keep(h)]
-    order = sorted(droppable, key=lambda i: (len(_LINK_RE.findall(sections[i][1])), -i))
+    order = sorted(droppable, key=lambda i: (-_EVIDENCE_KINDS.index(labels.get(i + 1, "unchecked")),
+                                             len(_LINK_RE.findall(sections[i][1])), -i))
     dropped: set = set()
     text = paper
     for i in order:
@@ -570,7 +574,7 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             if ok and current:
                 ok, why = revision_keeps(current, paper)
             if ok and len(paper) > _PAPER_MAX_CHARS:
-                trimmed, cut = trim_to_fit(paper, _PAPER_MAX_CHARS)
+                trimmed, cut = trim_to_fit(paper, _PAPER_MAX_CHARS, ledger)
                 if trimmed and (not current or revision_keeps(current, trimmed)[0]):
                     paper = trimmed
             if ok and len(paper) > _PAPER_MAX_CHARS:

@@ -329,6 +329,10 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
            text)
     _check("with what the posting asks, in its own words",
            "Asks for: 2+ years of experience with CI pipelines." in text and "Fits the deploy" not in text, text)
+    entry = jobs._entry({"title": "Video Labeller", "company": "Kettleworks", "url": "https://x/d",
+                         "description": "<p>We label video.</p><p>No previous kettle experience required!</p>"})
+    _check("a post's exclamation mark does not come out as '!.'",
+           entry.endswith("Asks for: No previous kettle experience required."), entry)
     _check("and the rest are counted, not listed", "2 other new postings did not fit" in text, text)
     text = jobs.format_for_discord(three, "9. Something that matches no posting.")
     _check("a pick number that matches nothing falls back to the plain listing",
