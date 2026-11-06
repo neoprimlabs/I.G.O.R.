@@ -318,7 +318,10 @@ def test_with_the_real_engine():
                 "<form method='get' action='#found'><input name='q'><button>Search</button></form>"
                 "<form method='post' action='#sent'><input type='password' name='pw'><button type='submit'>Log in</button></form>")
         try:
-            said = await browser.run_tool({"steps": [{"js": f"document.body.innerHTML = {json.dumps(page)}; 'set'"}]})
+            # Lightpanda 1.0's about:blank has no body, so the fixture makes one.
+            body = ("(document.body || (document.documentElement || document.appendChild(document.createElement('html')))"
+                    ".appendChild(document.createElement('body')))")
+            said = await browser.run_tool({"steps": [{"js": f"{body}.innerHTML = {json.dumps(page)}; 'set'"}]})
             _check("it starts and runs a script", "js: set" in said, said[:300])
             _check("the snapshot reads text and numbers elements", "Two in stock." in said and "link: First" in said, said)
             said = await browser.run_tool({"steps": [{"type": "input[name=pw]", "text": "hunter2"}, {"click": "form[method=post] button"},

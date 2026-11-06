@@ -115,7 +115,7 @@ A Discord DM travels this path every time:
    (Whisper; a stock no-speech phrase is silence), up to 3 images are described by qwen inside untrusted markers, and
    PDFs, Word, Excel, PowerPoint, EPUB, OpenDocument, notebooks and text are saved to `memory/inbox/` (untrusted)
    with the text in the message; a long one goes to React with a 20b summary instead. A video goes the same way:
-   ffmpeg, sandboxed, gives Whisper its sound and qwen 3 frames. Without ffmpeg it says so.
+   ffmpeg, sandboxed, gives Whisper its sound and qwen 3 frames.
 2. **`orchestrator.process`** - security gate. `user_id != AUTHORIZED_USER_ID`
    returns `None`, a silent drop. The only auth check: everything downstream
    trusts it. A yes or no to a

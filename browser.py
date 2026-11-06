@@ -42,7 +42,9 @@ _MAX_STEPS = 12
 _MAX_RSS_MB = 400
 _TEXT_CAP = 5000
 _ELEMENTS_CAP = 40
-_ADDRESS_SPACE_MB = 16384
+# Lightpanda 1.0.2 on the host, 2026-11-06: under 64 GB its V8 dies at start ("Oilpan: CagedHeap
+# reservation"); at 64 GB and up it starts holding 16 MB. Reserved, not used: _MAX_RSS_MB is the limit.
+_ADDRESS_SPACE_MB = 131072
 _SETTLE_PAUSE_S = 0.3
 _WATCH_EVERY_S = 5
 _STILL_S = 2
@@ -85,9 +87,11 @@ _GET_ONLY_JS = r"""(() => {
   window.__igorGetOnly = true;
   const refuse = (m) => { throw new Error('IGOR only reads: ' + m + ' refused'); };
   const realFetch = window.fetch;
+  // A refused fetch rejects, as a failed one does, so the page's own catch sees it: thrown, it
+  // escaped the promise, and on Lightpanda 1.0.2 ended the step before the next one ran.
   if (realFetch) window.fetch = function (input, init) {
     const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-    if (method !== 'GET' && method !== 'HEAD') refuse(method);
+    if (method !== 'GET' && method !== 'HEAD') return Promise.reject(new TypeError('IGOR only reads: ' + method + ' refused'));
     return realFetch.apply(this, arguments);
   };
   const X = window.XMLHttpRequest;
@@ -261,12 +265,18 @@ def _flags(help_text: str) -> Optional[list[str]]:
     return None
 
 
+async def _help(binary: str, *topic: str) -> str:
+    probe = await asyncio.create_subprocess_exec(binary, "help", *topic, stdout=asyncio.subprocess.PIPE,
+                                                 stderr=asyncio.subprocess.STDOUT)
+    printed, _ = await asyncio.wait_for(probe.communicate(), 10)
+    return printed.decode("utf-8", "replace")
+
+
 async def _spawn() -> tuple:
     """(the sandboxed Lightpanda, its port)."""
     binary = shutil.which("lightpanda")
-    probe = await asyncio.create_subprocess_exec(binary, "help", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-    printed, _ = await asyncio.wait_for(probe.communicate(), 10)
-    flags = _flags(printed.decode("utf-8", "replace"))
+    # 1.0 lists serve's options only under "help serve"; the nightly before it listed them in "help".
+    flags = _flags(await _help(binary, "serve")) or _flags(await _help(binary))
     if flags is None:
         raise RuntimeError("this Lightpanda cannot block private networks, so it is not started")
     port = _free_port()

@@ -279,8 +279,8 @@ streamed; a webhook delivered once, refused no signature and skipped a repeat; a
 sender, or an app on the API.
 
 **2026-11-02: the user kept Hermes level as the goal** when asked, so the last things buildable without them went in:
-video (`agents/inbound.py`, waits on `sudo apt-get install -y --no-install-recommends ffmpeg`, which the auto-mode
-classifier will not let Claude Code run; `tests/test_inbound.py` tests the real thing once it is there), plugins
+video (`agents/inbound.py`; ffmpeg 4.4 installed 2026-11-06 at the user's yes, and `tests/test_inbound.py`'s real-ffmpeg
+test passes on the host), plugins
 (`plugins.py`, none placed) and the board (`board.py`). See ARCHITECTURE. docs/HERMES_PARITY.md lists what is left, and all
 of it needs the user: ffmpeg, a Cerebras key, accounts, the app, or a larger host. Scoring is stricter than the count
 suggests: built and unseen, or built and off, is "part way" in the artifact.
@@ -291,9 +291,11 @@ start inside any copy of IGOR under /tmp, which every live test uses; fixed in s
 in all, more than planned, because one script re-ran another by importing it.
 
 **Browser** (`browser.py`, same day): Hermes' Lightpanda engine, steps over CDP, read-only by rule. Built and offline-tested
-against a fake CDP server; the real-engine half of tests/test_browser.py runs where Lightpanda is installed. It is not
-yet: `sudo curl -fL -o /usr/local/bin/lightpanda https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux && sudo chmod 755 /usr/local/bin/lightpanda`
-on the server, which the auto-mode classifier will not let Claude Code run. Nightly, so the flag spelling is read from `lightpanda help`.
+against a fake CDP server. Lightpanda 1.0.2 (stable, checksum checked) installed 2026-11-06 at the user's yes. Its first
+real run found what the fake could not: 1.0 lists serve's flags under `help serve`, so IGOR refused to start it; its V8
+dies at start under 64 GB of reserved address space (cap now 128 GB, the 400 MB watchdog is the real limit); and a
+refused fetch threw instead of rejecting. All three fixed; the real-engine tests pass on the host, private-network block
+included, at about 30 MB. Not yet used by a real turn.
 
 **Dashboard** (`dashboard.py`, 2026-11-02): status and chat, at `/dashboard` on the HTTP server, which always listens on
 loopback, in the NeoPrimLabs look the user approved. The user opens it with `IGOR Dashboard` on the PC's desktop, which
