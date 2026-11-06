@@ -227,6 +227,13 @@ stayed up on the previous commit and the user got the webhook alert. The folder 
 now skips `memory/` (deploy.sh, backup `deploy.sh.bak-20261101` beside it), because nothing there is imported and a
 typo in a scheduled script must not block a deploy. Checked on a fixture tree that the gate still fails broken code
 outside `memory/`. `prestart.sh` was already safe: `memory/` is gitignored, so it never looks there.
+**The test suite littered /tmp, found 11-05:** 29273 folders, 620 MB, about 300 a deploy, from tests that `mkdtemp`
+and never remove it. Gate 3 now runs with its own `TMPDIR`, removed after (deploy.sh, backup
+`deploy.sh.bak-20261105-tmp`; the master copy in `C:\Dev\IGOR_backup\deploy-machinery\` is updated); a dry run left
+one, from test_hooks naming `/tmp`, now removed by the test. Checked before any deleting: none of the 512 `.env` in them
+is the real one, no real message or private file; three old copies (09-21, 10-12) of the real `tasks.md` were found,
+nothing since. The old folders are still there: deleting them was refused by Claude Code's permission check, so it
+waits for the user's word.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

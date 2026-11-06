@@ -222,6 +222,7 @@ def test_real_sandbox() -> None:
         reply = asyncio.run(hooks.pre_tool("shell", {"command": "ls"}))
         _check("in the real sandbox it reads its input and sees no keys", reply and "shell keys:0" in reply, str(reply))
     finally:
+        shutil.rmtree(config.MEMORY_DIR, ignore_errors=True)
         config.MEMORY_DIR = keep
 
 
