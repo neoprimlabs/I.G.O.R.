@@ -626,8 +626,9 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     asked.clear()
     _check("no shortlist, no call", _run(overnight.audit_evidence("# P\n\n## Findings\nx\n", answers)) == {} and not asked)
 
+    # Not an income goal: on one, only the proof check labels (test_proof).
     overnight_mod, goals, work, tmp, calls = _fresh()
-    goals.add("Ways an agent could earn money, ranked shortlist", "research")
+    goals.add("Ways to keep a kettle free of scale, ranked shortlist", "research")
     gid = _first_id(goals)
     s = _Stubs(findings_per_step=5)
     s.shortlist = True
@@ -640,7 +641,7 @@ def test_shortlist_says_what_backs_each_idea() -> None:
     tmp.cleanup()
 
     overnight_mod, goals, work, tmp, calls = _fresh()
-    goals.add("Ways an agent could earn money, ranked shortlist", "research")
+    goals.add("Ways to keep a kettle free of scale, ranked shortlist", "research")
     gid = _first_id(goals)
     s = _Stubs(findings_per_step=5)
     s.shortlist, s.audit_fails = True, True
@@ -677,6 +678,10 @@ def test_paper_citations_are_plain_links() -> None:
            joined == "MRR <https://a.example/x> <https://b.example/y> <https://c.example/z>", joined)
     change = overnight._heading_change("# P\n", "# P\n## New\n")
     _check("one section added reads as one", change == "1 section added, 0 dropped", change)
+    change = overnight._heading_change("# P\n## Kettle-Repair Kits\n## Ranked shortlist of kettles\n",
+                                       "# P\n## Kettle\u2011Repair Kits\n## Ranked Shortlist of Kettles\n## Teapots\n")
+    _check("a heading that only changed its hyphen or capitals is not counted as cut and added",
+           change == "1 section added, 0 dropped", change)
     tmp.cleanup()
 
 

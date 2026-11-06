@@ -243,7 +243,15 @@ revision. It now sees up to 16000 whole, which fits 20b's 8000 a minute, and cut
 (`tests/test_evaluator.py`). Seen the same night: the 11-06 revision passed, and its summary said "sources
 document pricing" where it had claimed earnings. It also showed the cut to fit dropping five sections by link count,
 Bot-Template (the only independent idea) among them, for three unchecked vendor lists. The cut now goes by the
-proof label first, weakest first in the shortlist's order, then links. Tested offline; not yet seen on a real night.
+proof label first, weakest first in the shortlist's order, then links.
+**Nights are now rehearsed before they run (11-06).** A read-only replay of every check over all stored papers,
+drafts and 148 logged sessions, then this morning's revision rerun on a throwaway copy with the real models (about
+5600 of 120b, 4700 of 20b, counted in the ledger). Since 10-30: 8 revisions kept, 3 drafts, two of them the evaluator
+cut. The rerun found the shortlist labels wrong: the writer's "Name - description", with an en dash, was read as one long name,
+matched no proof record, and Bot-Template (independent) went out "no income shown". This morning's paper only had
+them right because the next proof session relabels the file. The writer's text is now cleaned before any check
+(the same cause gave "6 sections added, 7 dropped"), and on an income goal only the proof check labels, so an
+unsearched idea says "unchecked". Scripts: `replay_night.py`, `replay_write_live.py` in the Claude scratchpad.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

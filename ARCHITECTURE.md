@@ -418,27 +418,26 @@ Standing goals worked while the user is away.
 **Tick** (`monitor._overnight_tick`, cron at minute 20 of every hour, one instance):
 `overnight.tick()` returns at once outside 00:00-06:59 local, after a stop, at the
 budget, or with no active goal. Otherwise it runs one session for the active goal
-reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed, so it cannot wedge the
-rotation. A session is a fixed pipeline: model calls with no tools, web search by code,
-files written by code only under `memory/work/` plus `next_action` in `memory/goals.md`.
-Its only outbound call is the web search. The paper write uses `OVERNIGHT_WRITE_MODEL`
+reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed.
+A session is a fixed pipeline: model calls with no tools, web search by code (its only outbound call),
+files written by code only under `memory/work/` plus `next_action` in `memory/goals.md`. The paper write uses `OVERNIGHT_WRITE_MODEL`
 (120b), the rest `OVERNIGHT_MODEL`; the budget counts both.
 
 **Research session**: up to 3 PLAN / SEARCH / DISTILL steps (ResearchLoop prompts)
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
 sessions the goal's one living `paper.md` is written, then revised (under 7500 chars;
-code cuts a long draft's least-sourced sections, never the shortlist or unsure).
+code cuts the weakest-proven, then least-sourced sections, never the shortlist or unsure).
 Code checks a "What I am unsure about" heading, 3 distinct links from the
 findings or paper and a revision keeping a third of its links, one retry told why,
 then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
-item it can (unchecked if that fails); code sorts strongest first.
+item it can (unchecked if that fails; on an income goal, only the proof check); code sorts strongest first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
 research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
-intact, and is money received of $1000 to $20M or a failure on this idea, and overrides the source for personal posts,
-hosts the paper cites and TrustMRR. `proof.json` outlives revisions; code writes
+intact, money received of $1000 to $20M or a failure on this idea, and sets the source for personal posts,
+cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` and the labels (independent, mixed, similar product, self-reported,
 no income shown, unchecked, against). The writer is told which show no earner.
 

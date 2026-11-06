@@ -67,6 +67,8 @@ class _Stub:
         self.searches, self.judged, self.writes, self.plans = [], [], [], 0
         self.search_fails = False
         self.raises = None
+        self.dashes = False
+        self.audits = 0
 
     async def search(self, query, max_results=5, **kwargs):
         self.searches.append((query, kwargs))
@@ -84,12 +86,14 @@ class _Stub:
             self.plans += 1
             return f"query {self.plans}"
         if system.startswith("You check the evidence"):
-            return "{}"
+            self.audits += 1
+            return '{"2": {"shows": "price", "from": "seller"}}'
         if system.startswith("You turn raw search results"):
             return "\n".join(f"- fact {self.plans}-{i} (https://e.example/{self.plans}/{i})" for i in range(5))
         self.writes.append(user)
+        dash = " \u2013 " if self.dashes else " - "
         return ("# Paper\n\n## Findings\nClaim <https://e.example/1/0> <https://e.example/1/1> <https://e.example/1/2>.\n"
-                "\n## Ranked shortlist\n1. **Kettle alerts** - priced\n2. **Rain gauges** - new\n"
+                f"\n## Ranked shortlist\n1. **Kettle alerts**{dash}priced\n2. **Rain gauges**{dash}new\n"
                 "\n## What I am unsure about\nMuch.\n")
 
 
@@ -355,6 +359,26 @@ def test_it_works_down_the_list_then_widens() -> None:
     tmp.cleanup()
 
 
+def test_the_models_dashes_do_not_hide_an_idea_from_its_proof() -> None:
+    """Replayed live 2026-11-06: the writer put "Name - description" with an en dash (U+2013), the
+    whole line was read as the name, it matched nothing in the ledger, and the one idea with
+    independent proof went out labelled "no income shown". Its text is cleaned first now."""
+    overnight, folder, tmp = _setup()
+    stub = _Stub(replies=["NONE", "NONE", "NONE", _row()])
+    stub.dashes = True
+    for _ in range(3):
+        asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
+    _check("the third session writes the paper", len(stub.writes) == 1, str(len(stub.writes)))
+    text = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("the label still comes from the ledger",
+           "Kettle alerts** - priced (evidence: no income shown)" in text, text[-400:])
+    _check("and the paper on file has no long dash", "\u2013" not in text)
+    _check("an idea the check has not searched says unchecked, not 'no income shown'",
+           "Rain gauges** - new (evidence: unchecked)" in text, text[-400:])
+    _check("and on an income goal the older evidence audit is not asked", stub.audits == 0, str(stub.audits))
+    tmp.cleanup()
+
+
 def test_failures_do_not_become_findings() -> None:
     overnight, folder, tmp = _setup()
     stub = _Stub()
@@ -521,6 +545,7 @@ if __name__ == "__main__":
     test_size()
     test_a_session_tests_the_next_idea()
     test_it_works_down_the_list_then_widens()
+    test_the_models_dashes_do_not_hide_an_idea_from_its_proof()
     test_failures_do_not_become_findings()
     test_budgets()
     test_what_it_leaves_alone()

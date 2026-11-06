@@ -356,8 +356,15 @@ def _headings(text: str) -> list[str]:
 
 
 def _heading_change(old: str, new: str) -> str:
-    """What a revision changed, worked out in code so the digest cannot invent it."""
-    before, after = set(_headings(old)), set(_headings(new))
+    """What a revision changed, worked out in code so the digest cannot invent it.
+
+    Blind to case and punctuation: the paper on disk has been through clean() and the new
+    draft has not, so on 2026-11-06 a U+2011 hyphen against a plain one
+    and a recapitalised shortlist heading made "6 sections added, 7 dropped" out of 3 and 4."""
+    def key(heading: str) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", heading.lower()).strip()
+
+    before, after = {key(h) for h in _headings(old)}, {key(h) for h in _headings(new)}
     added = len(after - before)
     return f"{added} section{'' if added == 1 else 's'} added, {len(before - after)} dropped"
 
@@ -568,7 +575,9 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             candidate = await complete(system, write_user + retry, _WRITE_BUDGET, cap=_WRITE_BUDGET)
             if not candidate:
                 break
-            paper = normalize_shortlist(candidate)
+            # Cleaned before any check reads it, so every check sees what goes on file. Replayed
+            # live 2026-11-06, "Name - description" with an en dash (U+2013) hid each idea's name from its proof record.
+            paper = normalize_shortlist(_for_file(candidate))
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
             if ok and current:
@@ -586,7 +595,10 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 break
         if paper:
             if ok:
-                labels = await audit_evidence(paper, complete)
+                # On an income goal the proof check is the judge, and an idea it has not searched is
+                # "unchecked". Replayed live 2026-11-06, the audit marked two such ideas "no income
+                # shown", which the paper's own legend defines as searched and found nothing.
+                labels = {} if proof.applies(goal["statement"]) else await audit_evidence(paper, complete)
                 labels.update(proof.labels_for(_shortlist_names(paper), ledger))
                 paper = normalize_shortlist(paper, labels)
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
