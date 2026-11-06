@@ -64,6 +64,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 - **Prompt caching does nothing here.** Groq's documentation offers it; measured on this account, identical calls show no cached tokens.
 - **No `todo_list`.** Hermes' plan tool costs a model call per update here, since 120b makes one tool call a step, for work that is rare (5 turns out of steps in two weeks). A turn out of steps says what is still open, and a follow-through round ends by saying what is left, which serves the same purpose for nothing.
 - **No @ references.** Hermes' documentation calls them primarily a CLI feature and says its gateway passes them through unexpanded, so its Discord has none either. Its source hints a gateway path may exist, unresolved. React reads a file or a link with a tool.
+- **Hermes 0.23's cron stop and catch-up setting.** A run takes seconds, and a missed message already goes out late with a note. Of 17 since August, none failed.
 - **No image or video generation.** Left out by the user's choice; both would also need a paid provider.
 
 ## Parked by the user
