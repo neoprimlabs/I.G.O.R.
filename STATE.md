@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-05**
+Last updated: **2026-11-06**
 
 ---
 
@@ -232,8 +232,13 @@ and never remove it. Gate 3 now runs with its own `TMPDIR`, removed after (deplo
 `deploy.sh.bak-20261105-tmp`; the master copy in `C:\Dev\IGOR_backup\deploy-machinery\` is updated); a dry run left
 one, from test_hooks naming `/tmp`, now removed by the test. Checked before any deleting: none of the 512 `.env` in them
 is the real one, no real message or private file; three old copies (09-21, 10-12) of the real `tasks.md` were found,
-nothing since. The old folders are still there: deleting them was refused by Claude Code's permission check, so it
-waits for the user's word.
+nothing since. The old folders are still there: Claude Code's permission check refused the delete three times, even
+with the user's go-ahead, and they are harmless (igor-only, no new ones), so they are left. Not a job for the user.
+**The evaluator rejected complete papers, fixed 11-06.** It showed a response over 6000 characters as its first 4000
+and last 2000, cut mid-sentence, and all six FAILs from 10-19 to 11-06 were complete overnight papers (6275 to 10638
+characters, each with its shortlist and unsure section) failed as "cut off" or "no shortlist". Each lost that night's
+revision. It now sees up to 16000 whole, which fits 20b's 8000 a minute, and cuts longer ones at line ends
+(`tests/test_evaluator.py`). Not yet seen: a real night's paper passing.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

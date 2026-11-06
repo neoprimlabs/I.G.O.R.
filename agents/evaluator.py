@@ -42,6 +42,25 @@ Style:
 - No casual filler phrases ("Sure!", "Of course!", "Happy to help!")"""
 
 
+# The evaluator model is an 8000 TPM bucket. 16000 characters is about 5300 tokens even at
+# 3 a token, which leaves room for the task, this prompt and max_tokens. Until 2026-11-06 a
+# response over 6000 was shown as two windows cut mid-sentence, and every FAIL in the month
+# before was a complete overnight paper rejected as cut off or missing its shortlist.
+_WHOLE_CHARS = 16000
+_HEAD_CHARS = 10000
+_TAIL_CHARS = 4000
+
+
+def _shown(response: str) -> str:
+    if len(response) <= _WHOLE_CHARS:
+        return response
+    head = response[:_HEAD_CHARS].rsplit("\n", 1)[0]
+    tail = response[-_TAIL_CHARS:].split("\n", 1)[-1]
+    omitted = len(response) - len(head) - len(tail)
+    return (f"{head}\n\n[The evaluation harness left out {omitted} characters here. They are part of "
+            f"the response, not missing from it.]\n\n{tail}")
+
+
 def _get_system_prompt() -> str:
     path = config.MEMORY_DIR / "prompt_evaluator.md"
     if path.exists():
@@ -60,17 +79,7 @@ async def evaluate(task: str, response: str, label: str = "Evaluator",
     Fails open: any error in the evaluator itself counts as a pass, so the
     evaluator can degrade IGOR's output quality checks but never its availability.
     """
-    if len(response) > 6000:
-        body = (
-            f"Task:\n{task[:1500]}\n\n"
-            f"The response is long, so this evaluation harness shows you its beginning and its ending. "
-            f"The omitted middle and these harness instructions are NOT part of the response - "
-            f"do not penalize the response for them.\n\n"
-            f"Response beginning:\n{response[:4000]}\n\n"
-            f"Response ending:\n{response[-2000:]}"
-        )
-    else:
-        body = f"Task:\n{task[:1500]}\n\nResponse:\n{response}"
+    body = f"Task:\n{task[:1500]}\n\nResponse:\n{_shown(response)}"
     messages = [
         {"role": "system", "content": _get_system_prompt()},
         {"role": "user", "content": body},
