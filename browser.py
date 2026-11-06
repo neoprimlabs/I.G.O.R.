@@ -46,6 +46,9 @@ _ELEMENTS_CAP = 40
 # reservation"); at 64 GB and up it starts holding 16 MB. Reserved, not used: _MAX_RSS_MB is the limit.
 _ADDRESS_SPACE_MB = 131072
 _SETTLE_PAUSE_S = 0.3
+# What Reddit, Indeed's Cloudflare check and the like showed in place of the page, 2026-11-05.
+_BLOCKED = re.compile(r"request (?:has been|was) blocked|verify (?:that )?you(?: are|'re) (?:a )?human|are you a robot"
+                      r"|additional verification required|access denied|enable javascript and cookies to continue", re.I)
 _WATCH_EVERY_S = 5
 _STILL_S = 2
 
@@ -54,31 +57,72 @@ _lock = asyncio.Lock()
 _watchers: set = set()
 
 # Run in the page. Elements get a number the model can click by; text skips scripts and styles, since with no
-# layout engine innerText may not be there.
+# layout engine innerText may not be there. Real sites open with menus: on 2026-11-05 the first 40 elements of
+# Amazon, Wikipedia and a job board were all site navigation, and up to 3500 characters of the text. So page
+# chrome is left out of the text and listed last, by markup, as Lightpanda's own "shell" strip mode reads it
+# (nav, aside, dialog, page-level header and footer), with the whole page when that would leave little of it.
 _SNAPSHOT_JS = r"""(() => {
-  const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG']);
-  const parts = [];
-  const walk = (node) => {
-    if (node.nodeType === 3) { const t = node.textContent.replace(/\s+/g, ' ').trim(); if (t) parts.push(t); return; }
-    if (node.nodeType !== 1 || skip.has(node.tagName)) return;
-    for (const child of node.childNodes) walk(child);
-    if (/^(P|DIV|LI|TR|H[1-6]|SECTION|ARTICLE|BR|TABLE|UL|OL)$/.test(node.tagName)) parts.push('\n');
+  const skip = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'SELECT', 'OPTION', 'DATALIST']);
+  const edgeRoles = new Set(['navigation', 'banner', 'contentinfo', 'complementary', 'dialog', 'alertdialog', 'menu', 'menubar']);
+  const hidden = (el) => el.hidden || el.getAttribute('aria-hidden') === 'true' || /display\s*:\s*none/i.test(el.getAttribute('style') || '');
+  const pageLang = (document.documentElement.getAttribute('lang') || '').split('-')[0].toLowerCase();
+  const edge = (el) => {
+    const tag = el.tagName;
+    if (tag === 'NAV' || tag === 'ASIDE' || tag === 'DIALOG' || edgeRoles.has((el.getAttribute('role') || '').toLowerCase())) return true;
+    // A language switcher: Wikipedia's 77 links to itself in other languages sat inside its main content.
+    const hreflang = tag === 'A' ? (el.getAttribute('hreflang') || '').split('-')[0].toLowerCase() : '';
+    if (hreflang && pageLang && hreflang !== pageLang) return true;
+    if (tag !== 'HEADER' && tag !== 'FOOTER') return false;
+    for (let up = el.parentElement; up; up = up.parentElement)
+      if (/^(ARTICLE|SECTION|MAIN)$/.test(up.tagName) || up.getAttribute('role') === 'main') return false;
+    return true;
   };
-  if (document.body) walk(document.body);
-  const text = parts.join(' ').replace(/ *\n[\n ]*/g, '\n').trim();
-  const found = [];
-  let n = 0;
+  const read = (root, strip) => {
+    const parts = [];
+    const walk = (node) => {
+      if (node.nodeType === 3) { const t = node.textContent.replace(/\s+/g, ' ').trim(); if (t) parts.push(t); return; }
+      if (node.nodeType !== 1 || skip.has(node.tagName) || hidden(node) || (strip && edge(node))) return;
+      for (const child of node.childNodes) walk(child);
+      if (/^(P|DIV|LI|TR|H[1-6]|SECTION|ARTICLE|BR|TABLE|UL|OL)$/.test(node.tagName)) parts.push('\n');
+    };
+    if (root) walk(root);
+    return parts.join(' ').replace(/ *\n[\n ]*/g, '\n').trim();
+  };
+  const full = read(document.body, false);
+  const stripped = read(document.body, true);
+  const main = document.querySelector('main, [role=main]');
+  const inMain = main ? read(main, true) : '';
+  let text = inMain && inMain.length * 3 >= stripped.length ? inMain : stripped;
+  const trimmed = text.length * 5 >= full.length && text.length < full.length;
+  if (!trimmed) text = full;
+  for (const el of document.querySelectorAll('[data-igor-ref]')) el.removeAttribute('data-igor-ref');
+  const listed = [], seen = new Set();
+  let fieldsFirst = 4;
+  const typed = (el) => el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|email|url|tel|number|)$/.test((el.getAttribute('type') || '').toLowerCase()));
   for (const el of document.querySelectorAll('a[href], button, input, select, textarea, [role=button], [onclick]')) {
     if (el.type === 'hidden') continue;
-    n += 1;
-    el.setAttribute('data-igor-ref', String(n));
-    const label = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || el.getAttribute('name')
-                   || el.getAttribute('value') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    let atEdge = false, gone = false;
+    for (let up = el; up && up !== document.body; up = up.parentElement) {
+      if (hidden(up)) { gone = true; break; }
+      if (!atEdge && edge(up)) atEdge = true;
+    }
+    if (gone) continue;
+    const label = (el.getAttribute('aria-label') || (el.tagName === 'SELECT' ? '' : el.textContent) || el.getAttribute('placeholder')
+                   || el.getAttribute('name') || el.getAttribute('value') || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 80);
     const kind = el.tagName === 'A' ? 'link' : el.tagName === 'INPUT' ? 'input ' + (el.type || 'text') : el.tagName.toLowerCase();
     const where = el.tagName === 'A' ? ' -> ' + (el.getAttribute('href') || '').slice(0, 120) : '';
-    found.push(n + '. ' + kind + ': ' + (label || '(no label)') + where);
+    const key = kind + label + where;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const field = typed(el) && fieldsFirst > 0;
+    if (field) fieldsFirst -= 1;
+    listed.push({el, line: kind + ': ' + (label || '(no label)') + where, group: field ? 0 : atEdge ? 2 : 1});
   }
-  return JSON.stringify({url: location.href, title: document.title, text, elements: found});
+  const found = [0, 1, 2].flatMap(g => listed.filter(x => x.group === g)).map((x, i) => {
+    x.el.setAttribute('data-igor-ref', String(i + 1));
+    return (i + 1) + '. ' + x.line;
+  });
+  return JSON.stringify({url: location.href, title: document.title, text, trimmed, elements: found});
 })()"""
 
 # Only GET leaves the page from here on. A page's own script can undo it, which is why the docstring says best effort.
@@ -332,7 +376,13 @@ def _page(snapshot: str) -> str:
         text = text[:_TEXT_CAP] + f"\n[cut at {_TEXT_CAP} characters; use a read step with a selector for one part]"
     elements = data.get("elements") or []
     listing = "\n".join(elements[:_ELEMENTS_CAP]) + (f"\n[and {len(elements) - _ELEMENTS_CAP} more]" if len(elements) > _ELEMENTS_CAP else "")
-    return (f"Page: {data.get('title') or '(no title)'}\nAt: {data.get('url')}\n\n{text or '(no text)'}\n\n"
+    title = str(data.get("title") or "")
+    note = ""
+    if len(text) < 1500 and (title.strip() == "Just a moment..." or _BLOCKED.search(text)):
+        note = "[This site seems to block automated browsers. fetch_url, which can go through a search service, may still reach it.]\n"
+    elif data.get("trimmed"):
+        note = "[The site's menus, sidebars and page edges are left out of this text; their links are listed last.]\n"
+    return (f"Page: {title or '(no title)'}\nAt: {data.get('url')}\n{note}\n{text or '(no text)'}\n\n"
             f"Things to click or fill, by number:\n{listing or '(none)'}")
 
 

@@ -439,8 +439,20 @@ def test_a_ceiling_on_years_asked() -> None:
                         ("0-2 years of experience", 0),
                         ("Must be at least 18 years of age", None),
                         ("For over 20 years, Kettle Co has grown", None),
-                        ("Experience in customer service required", None)):
-        _check(f"years asked in: {text[:40]}", jobs._years_asked(text) == years, str(jobs._years_asked(text)))
+                        ("Experience in customer service required", None),
+                        # From the live feeds, 2026-11-05: each of these dropped a posting under a ceiling of 0.
+                        ("Required Qualifications 0â\u0080\u00933 years of experience in product design", 0),
+                        ("Typically 1â\u0080\u00935 years of professional software engineering", 1),
+                        ("Software engineering foundation: Up to two years of professional software development", None),
+                        ("1-month paid sabbatical after 5 years of continuous employment", None),
+                        ("ideally with at least one or two years of your studies remaining", None),
+                        ("We have 30+ years of real-world experience, which", None),
+                        ("Up to one or two years of experience is welcome", None),
+                        ("Less than a year? 2 years of experience in kettle repair required", 2),
+                        ("Minimum of 3 years of digital communications. Sabbatical after 5 years of continuous employment", 3),
+                        ("You have 3+ years of experience for more than one kettle brand", 3),
+                        ("Café kettles, 2 years of experience", 2)):
+        _check(f"years asked in: {text[:40]!a}", jobs._years_asked(text) == years, str(jobs._years_asked(text)))
 
     _fresh()
     _check("no ceiling unless one is set", jobs._most_years() is None)

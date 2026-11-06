@@ -295,7 +295,14 @@ against a fake CDP server. Lightpanda 1.0.2 (stable, checksum checked) installed
 real run found what the fake could not: 1.0 lists serve's flags under `help serve`, so IGOR refused to start it; its V8
 dies at start under 64 GB of reserved address space (cap now 128 GB, the 400 MB watchdog is the real limit); and a
 refused fetch threw instead of rejecting. All three fixed; the real-engine tests pass on the host, private-network block
-included, at about 30 MB. Not yet used by a real turn.
+included, at about 30 MB. **Checked ahead on 10 real sites, 11-05:** 8 opened (Reddit and Indeed's Cloudflare block it,
+now said so with fetch_url offered), peak 136 MB, host never under 414 MB free. But the first 40 things to click on
+Amazon, Wikipedia and a job board were all site menus, and up to 3500 characters of the text, so a real turn would have
+had nothing to click. Hermes does not filter (its model writes Python to dig); Lightpanda's own LP.getMarkdown and
+getInteractiveElements came back unfiltered at 50-460 KB. The snapshot now leaves out nav, aside, dialog, page-level
+header and footer, select options and other-language links, as Lightpanda's "shell" strip mode reads chrome, keeping
+the whole page if that would leave under a fifth of it; text boxes come first, menus last. Replayed: each page opens on
+its content. Not yet used by a real turn.
 
 **Dashboard** (`dashboard.py`, 2026-11-02): status and chat, at `/dashboard` on the HTTP server, which always listens on
 loopback, in the NeoPrimLabs look the user approved. The user opens it with `IGOR Dashboard` on the PC's desktop, which
@@ -350,10 +357,14 @@ as `user.md` is full, and approving it would only have asked the user which line
 file is now staged with the lines 120b chose to drop (`make_room`; 20b chose badly twice, 120b chose the dated status line, and p12 now waits for the user's approve), one yes for both, as Hermes does. Then a 19:40 check-in on old code asked after "the entry-level opportunities you received",
 so the own-posts filter now covers that wording. Re-ranking that day's 10 postings with the new preference
 still picked one asking "1-5 years of professional software engineering experience", so job_search.md's
-`## Most years asked` (set to 0) now drops such postings in code, in the watch and in React's search. Not
+`## Most years asked` (set to 0) now drops such postings in code, in the watch and in React's search. Checked
+ahead on that day's live feeds (1,576 postings, no model): it wrongly dropped "0-3 years" (RemoteOK's broken dash hid
+the range), "up to two years", a benefit after 5 years of employment, years of a student's studies and a company's 30
+years; fixed, 8 of 211 matching postings changed, none senior let through. Only 1 new posting reached the ranking
+that day, so an empty 11:30 is likely and is the filter working. Not
 reachable from the phone: that needs a private network such as Tailscale. The first step of IGOR's own app
 (GAMEPLAN I.1).
-**Hermes v0.23 checked 11-05:** besides the full-file room above, a no to an approval can now carry what to do instead ("no, move it to old/"), which reaches the waiting turn rather than queueing behind it for five minutes; a command with invisible characters asks first; and a transcript that is only one of Whisper's stock no-speech phrases ("Thank you.") is silence, for voice notes, videos and the dashboard's Talk. Not yet exercised live.
+**Hermes v0.23 checked 11-05:** besides the full-file room above, a no to an approval can now carry what to do instead ("no, move it to old/"), which reaches the waiting turn rather than queueing behind it for five minutes; a command with invisible characters asks first; and a transcript that is only one of Whisper's stock no-speech phrases ("Thank you.") is silence, for voice notes, videos and the dashboard's Talk. Checked ahead the same day on made clips: Groq's Whisper gives no_speech_prob 0.0 for everything and wrote "Thank you." for digital silence as surely as for a spoken one, so a voice note or Talk whose transcript is only "okay", "thanks", "thank you" or "bye" is kept when ffmpeg finds sound shaped like speech in it (a loud stretch 12 dB over its own quiet ones); 12 clips sorted right, quiet speech included, about 0.25 s each. Videos still drop them, as Hermes does. Not yet exercised live.
 **MCP client built 11-01** (`mcp_client.py`, ARCHITECTURE), dormant: no server is configured, and with none it
 imports nothing and adds nothing to a prompt. Checked on the server against the real protocol, a local command
 through the real sandbox and HTTP to a fixture on loopback: only read-only tools reached the list, and a dead
@@ -1363,7 +1374,8 @@ user, not made quietly.
    while it is gone. 20b and qwen are still unmeasured (the overnight loop's first
    daily-cap stop will measure 20b). Since `_rate_limit_reply`
    the user is told it is the daily allowance and Groq's actual wait, and chat no
-   longer retries a daily cap for 90s first.
+   longer retries a daily cap for 90s first. Real use, 10-30 to 11-05 from the journal: 120b's busiest day 29%
+   of its cap, median 20%; 20b's busiest 61372 tokens. The days it ran dry were days of live testing.
 3. Still on Oracle Always Free, so an entitlement change can terminate the
    instance again. See ARCHITECTURE.md, the safety stack does not cover this.
 4. **FIXED 2026-10-19.** A dropped Discord connection with a live process now

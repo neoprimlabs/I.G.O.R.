@@ -25,11 +25,13 @@ the vision model, and what they report is the text. It is anyone's file and a de
 ffmpeg runs in the sandbox with no network, no memory folder and only the clip's own folder to write.
 """
 
+import array
 import asyncio
 import base64
 import html
 import io
 import logging
+import math
 import os
 import posixpath
 import re
@@ -445,8 +447,9 @@ _GROQ_AUDIO = (".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".opus
 
 # What Whisper writes for a clip with no speech in it, learned from captioned video: Hermes' list
 # (tools/voice_mode_transcript.py, filtered since v0.22.0). A transcript that is only one of these,
-# or only filler like "Thank you. Thank you.", or no letter or digit at all, is silence. A user
-# who says only "thank you" is taken as silent too, as in Hermes.
+# or only filler like "Thank you. Thank you.", or no letter or digit at all, is silence. Hermes
+# drops a user who says only "thanks" or "okay" too; a voice note keeps them when the clip itself
+# has speech in it (_clip_has_speech), since IGOR's user answers by voice.
 _NO_SPEECH = frozenset({
     "thank you", "thanks for watching", "subscribe to my channel", "like and subscribe", "please subscribe",
     "thank you for watching", "bye", "you", "the end", "продолжение "
@@ -463,9 +466,54 @@ def _no_speech(text: str) -> bool:
             or bool(_NO_SPEECH_REPEAT.match(cleaned)))
 
 
-async def _transcribe(data: bytes, filename: str) -> str:
+# Of those, what a person really answers with. "you", "the end" and the caption lines never are.
+_SAYABLE = re.compile(r"^(?:thank you|thanks|bye|ok|okay|[\s,.!])+$", re.IGNORECASE)
+_LEVEL_WINDOW = 800  # 50 ms at 16 kHz
+
+
+def _speech_shaped(pcm: bytes) -> bool:
+    """Whether 16 kHz mono 16-bit samples hold sound shaped like speech: a loud stretch well above the
+    clip's own quiet ones. Measured 2026-11-05 on Groq: Whisper gives no_speech_prob 0.0 for digital
+    silence and writes "Thank you." for it as surely as for a spoken one, and a clip's average level puts
+    quiet speech under steady hiss, since its pauses pull it down. Hiss and room noise stay within a few
+    dB of themselves; silence has no level at all."""
+    samples = array.array("h")
+    samples.frombytes(pcm[:len(pcm) // 2 * 2])
+    levels = []
+    for start in range(0, len(samples) - _LEVEL_WINDOW + 1, _LEVEL_WINDOW):
+        window = samples[start:start + _LEVEL_WINDOW]
+        power = sum(s * s for s in window) / _LEVEL_WINDOW
+        levels.append(10 * math.log10(power / 32768 ** 2) if power else -120.0)
+    if len(levels) < 4:
+        return False
+    levels.sort()
+    loud, quiet = levels[-4], levels[len(levels) // 10]
+    return loud >= -50 and loud - quiet >= 12
+
+
+async def _clip_has_speech(data: bytes) -> bool:
+    """False when it cannot tell, which leaves the transcript taken as silence, as Hermes takes it."""
+    if not shutil.which("ffmpeg"):
+        return False
+    try:
+        with tempfile.TemporaryDirectory(prefix="igor-voice-") as held:
+            folder = Path(held)
+            (folder / "clip").write_bytes(data)
+            code, _ = await _ffmpeg(folder, "ffmpeg", "-t", "30", "-i", f"{_VIDEO_INSIDE}/clip", "-vn", "-ac", "1", "-ar", "16000",
+                                    "-f", "s16le", "-y", f"{_VIDEO_INSIDE}/clip.raw")
+            raw = folder / "clip.raw"
+            pcm = raw.read_bytes() if code == 0 and raw.is_file() else b""
+        return bool(pcm) and _speech_shaped(pcm)
+    except Exception as e:
+        logger.warning("A clip's sound could not be measured - %s: %s", type(e).__name__, e)
+        return False
+
+
+async def _transcribe(data: bytes, filename: str, spoken: bool = False) -> str:
     """What was said, or "" for no speech: a quiet clip comes back as one of Whisper's stock phrases,
-    which would otherwise reach IGOR as something the user said."""
+    which would otherwise reach IGOR as something the user said. spoken: a voice note or the
+    dashboard's Talk, where the user may really say only "okay"; not a video's sound, where music
+    is what Whisper most often fills with "Thank you."."""
     from agents.react import _get_client
     name = (filename or "").split("?")[0]
     if not name.lower().endswith(_GROQ_AUDIO):
@@ -475,6 +523,9 @@ async def _transcribe(data: bytes, filename: str) -> str:
         language="en", response_format="json")
     text = (getattr(result, "text", "") or "").strip()
     if text and _no_speech(text):
+        if spoken and re.search(r"[^\W_]", text) and _SAYABLE.match(text) and await _clip_has_speech(data):
+            logger.info("Kept a transcript Whisper also writes for silence, as the clip has speech in it: %s", text[:60])
+            return text
         logger.info("Transcript taken as silence, a known no-speech phrase: %s", text[:60])
         return ""
     return text
@@ -609,6 +660,7 @@ async def read(attachments, transcribe=None, describe=None,
     Never raises: a part that fails says so in the message, so IGOR can tell the
     user instead of answering as if nothing had been attached.
     """
+    hear = transcribe or (lambda data, name: _transcribe(data, name, spoken=True))
     transcribe = transcribe or _transcribe
     describe = describe or _describe
     digest = digest or _digest
@@ -626,7 +678,7 @@ async def read(attachments, transcribe=None, describe=None,
             parts.append(f"[A voice note, {a.filename}, is {_size(a.size)}, over the 25 MB that can be transcribed]")
             continue
         try:
-            text = await transcribe(await a.read(), a.filename)
+            text = await hear(await a.read(), a.filename)
             parts.append(f"(voice note) {text}" if text else "[A voice note came through with no speech in it]")
         except Exception as e:
             logger.error("Transcription failed - %s: %s", type(e).__name__, e)

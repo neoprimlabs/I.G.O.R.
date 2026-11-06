@@ -76,7 +76,7 @@ class _Fake:
             return value(json.dumps(["complete", self.url]))
         if expr == "JSON.stringify(location.href)":
             return value(json.dumps(self.url))
-        if "data-igor-ref', String(n)" in expr:
+        if "data-igor-ref', String(i + 1)" in expr:
             title, text, elements = self.pages.get(self.url, ("", "", []))
             return value(json.dumps({"url": self.url, "title": title, "text": text, "elements": elements}))
         if "__igorGetOnly" in expr:
@@ -265,6 +265,19 @@ def test_the_page_is_capped():
     _check("an unreadable snapshot is said plainly", browser._page("not json") == "[the page could not be read]")
 
 
+def test_what_the_page_says_about_itself():
+    def page(**fields):
+        return browser._page(json.dumps({"url": "https://example.com/", "title": "Kettles", "text": "Two in stock.", "elements": [], **fields}))
+    _check("menus left out are said", "menus, sidebars and page edges are left out" in page(trimmed=True), page(trimmed=True))
+    _check("and not when nothing was", "left out" not in page(trimmed=False))
+    blocked = page(title="Just a moment...", text="Additional Verification Required\nYour Ray ID is 123")
+    _check("a block page is named, with what may still work", "seems to block automated browsers" in blocked and "fetch_url" in blocked, blocked)
+    blocked = page(title="Blocked", text="whoa there, pardner!\nYour request has been blocked due to a network policy.")
+    _check("so is a refusal in other words", "seems to block" in blocked, blocked)
+    article = page(text="Access denied is what a server says when... " + "more about kettles. " * 100)
+    _check("a long page that mentions it is not", "seems to block" not in article, article[:300])
+
+
 def test_only_an_engine_that_blocks_private_networks():
     _check("the newer spelling", browser._flags("Options:\n  --block-private-networks  Block ...") == ["--block-private-networks"])
     _check("the older spelling", browser._flags("--block_private_networks") == ["--block_private_networks"])
@@ -334,6 +347,26 @@ def test_with_the_real_engine():
                                                      {"js": f"fetch('http://127.0.0.1:{port}/').then(r => r.text()).catch(e => 'blocked')"}]})
             _check("a page script cannot POST", "js: refused" in said, said)
             _check("nor reach a private address", "js: blocked" in said and not hits, f"{hits} {said[:400]}")
+            site = ("<header><a href='/a'>Shop menu one</a><a href='/b'>Shop menu two</a><input type='search' name='q' placeholder='Search shop'>"
+                    "<select name='dept'><option>Every department listed</option></select></header>"
+                    "<nav><a href='/c'>Side menu three</a></nav>"
+                    "<main><h1>Kettles</h1><p>" + "The steel kettle boils fast. " * 8 + "</p><a href='/k1'>Steel kettle</a>"
+                    "<input type='checkbox' name='prime'><div><a href='/de' hreflang='de'>Deutsch</a></div></main>"
+                    "<aside><a href='/d'>Related four</a></aside><footer><a href='/e'>Footer five</a></footer>")
+            html = "document.documentElement.setAttribute('lang', 'en'); document.body"
+            said = await browser.run_tool({"steps": [{"js": f"{html}.innerHTML = {json.dumps(site)}; 'set'"}]})
+            text = said.split("Things to click", 1)[0]
+            listing = said.split("Things to click or fill, by number:\n", 1)[-1].splitlines()
+            _check("a real site's menus are left out of the text", "The steel kettle boils fast." in text
+                   and not any(w in text for w in ("Shop menu", "Side menu", "Related four", "Footer five", "Every department", "Deutsch")), text)
+            _check("and it says so", "page edges are left out" in said, said[:400])
+            _check("a search box comes first, then the page's own links", listing[:2] == ["1. input search: Search shop", "2. link: Steel kettle -> /k1"], listing)
+            _check("menus and other languages are listed after", listing.index("3. input checkbox: prime") < next(
+                i for i, line in enumerate(listing) if "Shop menu one" in line) and any("Deutsch" in line for line in listing[4:]), listing)
+            bare = "<nav>" + "".join(f"<a href='/{i}'>Section {i} of the guide</a>" for i in range(30)) + "</nav><p>Short note.</p>"
+            said = await browser.run_tool({"steps": [{"js": f"document.body.innerHTML = {json.dumps(bare)}; 'set'"}]})
+            _check("a page that is mostly menu keeps all its text", "Section 29 of the guide" in said and "Short note." in said
+                   and "left out" not in said, said[:500])
             rss = browser._descendants_rss_mb(browser._session.process.pid)
             print(f"  info  the browser holds {rss:.0f} MB")
             _check("it fits the memory limit", 0 < rss < browser._MAX_RSS_MB, str(rss))

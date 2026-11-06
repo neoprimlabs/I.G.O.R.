@@ -72,8 +72,9 @@ def test_hearing_picks_the_name_from_the_type():
         from agents import inbound
         seen = []
 
-        async def fake(data, name):
+        async def fake(data, name, spoken=False):
             seen.append(name)
+            _check("the Talk button is heard as speech, so a spoken okay is kept", spoken)
             return "hello there"
 
         real, inbound._transcribe = inbound._transcribe, fake

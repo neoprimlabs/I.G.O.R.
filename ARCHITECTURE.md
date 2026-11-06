@@ -112,7 +112,7 @@ A Discord DM travels this path every time:
 1. **`interfaces/discord_bot.py` `on_message`** - ignores its own messages and
    anything that is not a DM, caches the channel for proactive sends. The user's
    attachments go through `agents/inbound.py` first: voice notes become text
-   (Whisper; a stock no-speech phrase is silence), up to 3 images are described by qwen inside untrusted markers, and
+   (Whisper; a stock no-speech phrase is silence unless the clip has speech), up to 3 images are described by qwen inside untrusted markers, and
    PDFs, Word, Excel, PowerPoint, EPUB, OpenDocument, notebooks and text are saved to `memory/inbox/` (untrusted)
    with the text in the message; a long one goes to React with a 20b summary instead. A video goes the same way:
    ffmpeg, sandboxed, gives Whisper its sound and qwen 3 frames.
@@ -393,9 +393,9 @@ while Orpheus is refused (its terms, a 429). No addresses, code or markdown are 
 in the sealed `memory/private/cron_scripts/plugins/`, off until `enable plugin x`. Each call is a fresh process in
 the sandbox: network, no memory, no key but what it names, never IGOR's. Tools count as web tools. None is placed.
 
-**Browser** (`browser.py`, Hermes' browser on its Lightpanda engine): one session over CDP, in the sandbox with
+**Browser** (`browser.py`, Hermes' Lightpanda engine): one session over CDP, in the sandbox with
 `--block-private-networks`, closed after 2 idle minutes or past 400 MB. A call is a list of steps. No password
-fields, no non-GET form or script request. A web tool.
+fields, no non-GET request. Menus go last. A web tool.
 
 **Board** (`board.py`, `memory/board.db`, Hermes' Kanban): tasks wait on parents. A 60-second dispatcher runs one
 at a time on 20b with read-only tools, 8 a day. A parent's result reaches a child as untrusted text. Two failures

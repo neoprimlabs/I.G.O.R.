@@ -119,11 +119,36 @@ def _most_years() -> Optional[int]:
     return None
 
 
+# Years that are not asked of anyone, from the live feeds on 2026-11-05: "Up to two years of professional
+# software development" (a ceiling), "sabbatical after 5 years of continuous employment" (a benefit),
+# "at least one or two years of your studies remaining" (a student post), "We have 30+ years of real-world
+# experience" (the company). Each dropped a posting under a ceiling of 0.
+_NOT_ASKED_BEFORE = re.compile(r"(?:\bup to|\bno more than|\bless than|\bunder|\bmaximum of|\bat most|\bafter|\bwe have|"
+                               r"\bwe've|\bfor over)\s*(?:\w+\s+or\s+)?$", re.IGNORECASE)
+_NOT_ASKED_AFTER = re.compile(r"\s*(?:(?:continuous|full[- ]time|active)\s+)?(?:employment|service|tenure)\b"
+                              r"|\s*(?:your|their)\s+(?:studies|study|degree|program)\b"
+                              r"|\s*(?:our\s+)?(?:business|operation|existence|history)\b", re.IGNORECASE)
+# One UTF-8 character read as latin-1, as RemoteOK sends some descriptions: "0â\u0080\u00933 years"
+# for "0-3 years" hid the range, so a Junior Product Designer post asking 0-3 read as asking 3.
+_BROKEN_CHARACTER = re.compile("[Â-ô][\u0080-¿]{1,3}")
+
+
+def _unbreak(text: str) -> str:
+    def one(match):
+        try:
+            return match.group(0).encode("latin-1").decode("utf-8")
+        except UnicodeDecodeError:
+            return match.group(0)
+    return _BROKEN_CHARACTER.sub(one, text)
+
+
 def _years_asked(description: str) -> Optional[int]:
     """The most years of experience a posting asks for, counting a range from its low end, or None."""
-    text = re.sub(r"<[^>]+>", " ", html.unescape(description or ""))
+    text = _unbreak(re.sub(r"<[^>]+>", " ", html.unescape(description or "")))
     asked = [int(m.group(1)) if m.group(1).isdigit() else _NUMBER_WORDS[m.group(1).lower()]
-             for m in _YEARS_ASKED.finditer(text)]
+             for m in _YEARS_ASKED.finditer(text)
+             if not _NOT_ASKED_BEFORE.search(text, max(0, m.start() - 40), m.start())
+             and not _NOT_ASKED_AFTER.match(text, m.end())]
     return max(asked) if asked else None
 
 

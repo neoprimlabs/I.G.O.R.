@@ -49,7 +49,7 @@ async def hear(data: bytes, content_type: str) -> str:
     if name is None:
         raise ValueError(f"not a recording type Whisper reads: {content_type!r}")
     from agents import inbound
-    return await inbound._transcribe(data, name)
+    return await inbound._transcribe(data, name, spoken=True)
 
 
 _FENCE = re.compile(r"```.*?(?:```|$)", re.DOTALL)

@@ -158,8 +158,112 @@ def test_quiet_audio_is_silence() -> None:
                      "The end of the month works.", "1 2 3"):
             heard.append(said)
             _check(f"speech: {said!r}", asyncio.run(inbound._transcribe(b"x", "v.ogg")) == said)
+        heard.append("Okay.")
+        _check("a voice note that cannot be measured is silence, as in Hermes",
+               asyncio.run(inbound._transcribe(b"not audio", "v.ogg", spoken=True)) == "")
     finally:
         react._get_client = real
+
+
+def _pcm(*stretches) -> bytes:
+    """16 kHz mono 16-bit: each stretch is (seconds, level in dB below full scale or None for silence, tone or hiss)."""
+    import array
+    import math
+    import random
+    rng = random.Random(5)
+    out = array.array("h")
+    for seconds, level, kind in stretches:
+        amp = 0 if level is None else 32767 * 10 ** (level / 20)
+        for i in range(int(16000 * seconds)):
+            wave = math.sin(2 * math.pi * 220 * i / 16000) * math.sqrt(2) if kind == "tone" else rng.gauss(0, 1)
+            out.append(max(-32767, min(32767, int(amp * wave))))
+    return out.tobytes()
+
+
+def _wav(pcm: bytes) -> bytes:
+    import wave
+    held = io.BytesIO()
+    with wave.open(held, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(pcm)
+    return held.getvalue()
+
+
+def test_a_spoken_okay_is_kept() -> None:
+    """Groq's Whisper wrote "Thank you." for 5 s of digital silence and for a spoken one alike (2026-11-05),
+    so a voice note's clip is looked at: speech rises well above its own quiet stretches, and hiss does not."""
+    from types import SimpleNamespace
+    from agents import inbound, react
+    shaped = inbound._speech_shaped
+    _check("digital silence", not shaped(_pcm((3, None, ""))))
+    _check("steady hiss", not shaped(_pcm((4, -40, "hiss"))))
+    _check("loud steady noise", not shaped(_pcm((4, -20, "hiss"))))
+    _check("a word, then the pause after it", shaped(_pcm((0.2, None, ""), (0.4, -12, "tone"), (1.5, None, ""))))
+    _check("a quiet word over room hiss", shaped(_pcm((1, -60, "hiss"), (0.4, -38, "tone"), (2, -60, "hiss"))))
+    _check("too faint to be anyone", not shaped(_pcm((1, None, ""), (0.4, -58, "tone"), (1, None, ""))))
+    _check("a click is not a word", not shaped(_pcm((1, -55, "hiss"), (0.06, -6, "tone"), (2, -55, "hiss"))))
+    _check("too short to say", not shaped(_pcm((0.1, -12, "tone"))))
+    _check("nothing", not shaped(b""))
+
+    heard, measured = [], []
+
+    class _Client:
+        class audio:
+            class transcriptions:
+                @staticmethod
+                async def create(**kwargs):
+                    return SimpleNamespace(text=heard[-1])
+
+    async def has_speech(data):
+        measured.append(data)
+        return speech
+
+    real_client, real_measure = react._get_client, inbound._clip_has_speech
+    react._get_client, inbound._clip_has_speech = (lambda: _Client()), has_speech
+    try:
+        speech = True
+        for said in ("Okay.", "Thanks!", "Thank you. Thank you.", "ok, bye"):
+            heard.append(said)
+            _check(f"a voice note with speech in it keeps {said!r}", asyncio.run(inbound._transcribe(b"x", "v.ogg", spoken=True)) == said)
+        for said in ("Thanks for watching!", "you", "The end.", "Sous-titres", "..."):
+            heard.append(said)
+            _check(f"never anyone's answer: {said!r}", asyncio.run(inbound._transcribe(b"x", "v.ogg", spoken=True)) == "")
+        heard.append("Okay.")
+        _check("a video's sound still drops it", asyncio.run(inbound._transcribe(b"x", "sound.ogg")) == "")
+        speech = False
+        _check("and a quiet clip still does", asyncio.run(inbound._transcribe(b"x", "v.ogg", spoken=True)) == "")
+        measured.clear()
+        heard.append("Set a reminder for noon.")
+        asyncio.run(inbound._transcribe(b"x", "v.ogg", spoken=True))
+        _check("ordinary words are not measured", not measured)
+    finally:
+        react._get_client, inbound._clip_has_speech = real_client, real_measure
+
+    seen = []
+
+    async def fake(data, name, spoken=False):
+        seen.append(spoken)
+        return "Okay."
+
+    real = inbound._transcribe
+    inbound._transcribe = fake
+    try:
+        asyncio.run(inbound.read([_Att("voice-message.ogg", "audio/ogg", b"OggS")], now=NOW))
+        _check("a Discord voice note is heard as speech", seen == [True], str(seen))
+    finally:
+        inbound._transcribe = real
+
+    import shutil as _shutil
+    if not (_shutil.which("ffmpeg") and _shutil.which("bwrap")):
+        print("  skip  ffmpeg or bubblewrap is not here")
+        return
+    word = _wav(_pcm((0.3, -60, "hiss"), (0.4, -14, "tone"), (1.5, -60, "hiss")))
+    _check("a real clip with a word in it, through ffmpeg in the sandbox", asyncio.run(inbound._clip_has_speech(word)))
+    _check("a real silent one", not asyncio.run(inbound._clip_has_speech(_wav(_pcm((3, None, ""))))))
+    _check("a real hiss", not asyncio.run(inbound._clip_has_speech(_wav(_pcm((3, -35, "hiss"))))))
+    _check("and one that is not audio at all", not asyncio.run(inbound._clip_has_speech(b"not audio at all")))
 
 
 def test_images() -> None:
