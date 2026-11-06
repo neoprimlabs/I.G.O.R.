@@ -491,7 +491,7 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
     stopped = ""
     for _ in range(min(proof.left(idea, ledger), searches_left)):
         if token_room - (work.overnight_tokens() - start) < proof.RESERVE:
-            stopped = "waits for budget"
+            stopped = "more searches when budget allows"
             break
         state["searches"] += 1
         stopped = await proof.step(idea, ledger, search, complete, sellers)

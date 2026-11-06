@@ -75,6 +75,23 @@ _MIN_WITHOUT_SCRIPT = 180
 # the latest output; three, because Thursday repeating Tuesday is the same failure.
 _KEEP_RECENT = 3
 _RECENT_CHARS = 600
+# 2026-10-27 and 11-04, 10-28 and 11-05, 10-29 and 11-06: each weekday idea came back eight days on,
+# when compose's subject rotation reached its area again and the three above had moved past it. What
+# falls out of them is kept as one line, enough to know what was said: four weeks for about 1000 tokens.
+_KEEP_GISTS = 20
+_GIST_CHARS = 160
+
+
+def _gist(body: str) -> str:
+    """A post as one line: its first sentence, after its title when it opens with one."""
+    lines = [re.sub(r"[*_`#]+", "", line).strip() for line in (body or "").splitlines()]
+    lines = [line for line in lines if line]
+    if not lines:
+        return ""
+    text = lines[0]
+    if len(text) < 60 and len(lines) > 1:
+        text = f"{text.rstrip(':.')}: {lines[1]}"
+    return re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:_GIST_CHARS]
 _JOB_FIELDS = ("script", "script_only", "context_from", "keep_only")
 _MAX_SOURCES = 3
 _OUTPUT_CHARS = 1500
@@ -619,7 +636,8 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
             writer = compose
             if writer is None:
                 from agents.compose import write as writer
-            extra = {"recent": entry.get("recent") or []} if entry.get("repeat") else {}
+            extra = ({"recent": (entry.get("recent") or []) + (entry.get("earlier") or [])}
+                     if entry.get("repeat") else {})
             material = _material(script, printed, entry.get("context_from"))
             if material:
                 extra["material"] = material
@@ -678,7 +696,11 @@ async def deliver_due(send_fn: Callable[[str], Awaitable[bool]],
                                                kept["repeat"], now).isoformat()
                 kept["attempts"] = 0
                 if produced:
-                    kept["recent"] = ([body[:_RECENT_CHARS]] + (kept.get("recent") or []))[:_KEEP_RECENT]
+                    held = kept.get("recent") or []
+                    kept["recent"] = ([body[:_RECENT_CHARS]] + held)[:_KEEP_RECENT]
+                    gone = [g for g in (_gist(p) for p in held[_KEEP_RECENT - 1:]) if g]
+                    if gone:
+                        kept["earlier"] = (gone + (kept.get("earlier") or []))[:_KEEP_GISTS]
                 logger.info("Scheduled message %s %s, next %s", entry["id"],
                             "stayed silent" if silent else "kept" if keep else "delivered", kept["due"])
             else:

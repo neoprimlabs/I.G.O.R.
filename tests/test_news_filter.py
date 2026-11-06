@@ -149,6 +149,19 @@ def test_a_story_is_not_told_twice() -> None:
     kept = monitor._drop_repeats(text, ["Google DeepMind Gemini 4 Carbon", "GPT 6.1 Terra"])
     _check("what was told goes, what was not stays",
            "Particle-1" in kept and "Gemini" not in kept and "Terra" not in kept, kept)
+    # 2026-11-04 and 11-06: no bullet had its label, so neither day's stories were kept.
+    bare = ("- Kettle Labs releases Brew-2, a 40B model for tea. Source: https://a.example/brew\n"
+            "- Steam 3 Mini is a 7B model that runs on a phone. Source: https://b.example/steam\n"
+            "- OpenAI has announced GPT-7 Kettle, a model for kitchens. Source: [3]")
+    _check("a bullet with no label is named by its opening words",
+           monitor._bullet_topics(bare) == ["Kettle Labs releases Brew-2", "Steam 3 Mini", "OpenAI has announced GPT-7 Kettle"],
+           str(monitor._bullet_topics(bare)))
+    _check("so the same story told later, labelled or not, is caught",
+           monitor._drop_repeats("- GPT-7 Kettle: Kitchens again. Source: [1]\n- Kettle Labs Brew-2: Tea again. Source: [2]"
+                                 "\n- Mug Works Saucer 5: A new one. Source: [3]",
+                                 monitor._bullet_topics(bare)) == "- Mug Works Saucer 5: A new one. Source: [3]")
+    _check("a short bullet's own sentence is not taken as its label",
+           monitor._story_name("- Steam 3 Mini ships today. Source: [2]") == "Steam 3 Mini ships today")
 
     config.MEMORY_DIR = Path(tempfile.mkdtemp())
     results = [dict(RELEASE, url=f"https://site{n}.example/stories/story-{n}") for n in range(3)]

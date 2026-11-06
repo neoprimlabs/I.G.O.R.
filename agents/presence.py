@@ -471,6 +471,24 @@ _ABOUT_ITS_OWN_POSTS = re.compile(
     r"you (?:received|got from me)|I (?:sent|found|shared|passed along|flagged))\b", re.IGNORECASE)
 
 
+# Words a check-in uses whatever it is about, so sharing one says nothing about its subject.
+_FORM_WORDS = frozenset("""
+    about after again anything been before could doing during every everything feeling going hoping have
+    just like might more much over really recent since something still that their there these they this
+    those through today tonight tomorrow yesterday what when where which while with would your yours
+    afternoon evening morning night weekend week days hours time progress change notice finding holding
+    settling smoothly proceeding trust things thing quiet moments middle mentioned earlier given wanted
+    checking check smooth better gentle treating consider question hanging finally getting sounds
+""".split())
+# 2026-11-03, 11-04 and 11-06 all asked after the same price watch, in new words each time, past a check
+# that compared only wording. The prompt already said not to reuse a subject.
+_SUBJECT_CHECKINS = 3
+
+
+def _subject_words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z]+", text.lower()) if len(w) >= 5 and w not in _FORM_WORDS}
+
+
 def _stale(text: str, openings: list[str], earlier: list[str], checkin: bool = False) -> Optional[str]:
     """Why a message reads like the ones before it, or None. Shown its last check-ins
     and told not to reuse their wording, the model replayed 2026-10-29 still opened
@@ -479,6 +497,13 @@ def _stale(text: str, openings: list[str], earlier: list[str], checkin: bool = F
     if hit:
         return (f"\"{hit.group(0)}\" is about something you sent or keep. Ask after the person: "
                 "something they told you, how they are, or the day itself.")
+    words = _subject_words(text)
+    for old in earlier[-_SUBJECT_CHECKINS:]:
+        shared = sorted(words & _subject_words(old))
+        if shared:
+            named = ", ".join(f'"{w}"' for w in shared)
+            return (f"{named}: the subject of one of your last check-ins. Do not ask about it again yet: "
+                    "ask after something else they told you, how they are, or the day itself.")
     if _opening(text) in openings:
         return f"Your last messages opened with: {'; '.join(openings)}. Open differently."
     words = re.findall(r"[a-z']+", text.lower())
@@ -531,19 +556,27 @@ async def consider(reason: str, now: Optional[datetime] = None,
     earlier = state.get("checkins", []) if reason == "checkin" else []
     checkin = reason == "checkin"
     why = _stale(message, recent, earlier, checkin) if message else None
+    refused = ""
     if why:
+        again = None
         try:
             again = _tidy(await (ask or _default_ask)(facts + f"\n\n{why}"))
             state["calls"] = state.get("calls", 0) + 1
-            if again and not _stale(again, recent, earlier, checkin):
-                message = again
         except Exception as e:
             logger.warning("Presence (%s) retry for a fresh opening failed - %s", reason, type(e).__name__)
-    # A worn opening still beats silence. A message about IGOR's own posts, drafts or proposals does
-    # not, whichever trigger wrote it: the lull judgement gets no retry, silence being its usual answer.
+        if again and not _stale(again, recent, earlier, checkin):
+            message = again
+        elif _stale(message, [], earlier, checkin):
+            # A worn opening still beats silence. The same subject or words again does not: 2026-11-06
+            # the retry repeated too, and the first answer, a third question on that watch, went out anyway.
+            logger.warning("Presence (%s) repeated an earlier message twice, staying silent: %s",
+                           reason, message[:120])
+            message, refused = None, "it repeated an earlier check-in twice"
+    # A message about IGOR's own posts, drafts or proposals is never sent, whichever trigger wrote it:
+    # the lull judgement gets no retry, silence being its usual answer.
     if message and _ABOUT_ITS_OWN_POSTS.search(message):
         logger.warning("Presence (%s) was about its own posts, staying silent: %s", reason, message[:120])
-        message = None
+        message, refused = None, "it was about IGOR's own posts"
     if message:
         state["openings"] = (recent + [_opening(message)])[-5:]
     if message is None:
@@ -552,6 +585,11 @@ async def consider(reason: str, now: Optional[datetime] = None,
         level = logger.warning if reason in _COMPOSE_TRIGGERS else logger.info
         level("Presence (%s): %s", reason,
               "returned nothing in write mode" if reason in _COMPOSE_TRIGGERS else "silent")
+        # Refused, not failed: asked again ten minutes later it writes the same from the same facts,
+        # two calls a tick up to the day's cap. An empty answer may still be retried.
+        if refused and checkin and isinstance(state.get("checkin"), dict):
+            state["checkin"].update({"sent": True, "skipped": refused})
+        _save_state(state)
         return None
 
     state["sent"] = state.get("sent", 0) + 1

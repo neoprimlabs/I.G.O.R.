@@ -668,8 +668,15 @@ def _is_listing(url: str) -> bool:
 _NEWS_TOPICS = "news_topics.json"
 _TOPIC_RE = re.compile(r"\s*-\s*\**\[?([^\]:*\n]{2,80}?)\]?\**\s*:")
 _TOPIC_NOISE = {"a", "an", "the", "new", "ai", "model", "models", "release", "releases",
-                "released", "launch", "launches", "update", "announces", "announced"}
+                "released", "launch", "launches", "update", "announces", "announced",
+                "has", "have", "introduces", "introduced", "unveils", "unveiled", "debuts", "ships",
+                "its", "of", "for", "with", "and", "to", "in", "on"}
 _TOPICS_SHOWN = 30
+# 2026-11-04 and 11-06 every bullet came without its "Topic:" ("Tencent releases Hy4, its latest ...",
+# "Inkling 2 Small is a 594B ..."), so no story from either day was kept and each could run again.
+# Without the label, the name is the opening words, up to the first comma, bracket or "is".
+_LEAD_END = re.compile(r",|;|\(|:|\s-\s|\s(?:is|are|was|were)\s")
+_LEAD_WORDS = 8
 
 
 def _topic_words(topic: str) -> set:
@@ -682,13 +689,23 @@ def _same_story(a: str, b: str) -> bool:
     return min(len(x), len(y)) >= 2 and (x <= y or y <= x)
 
 
+def _story_name(block: str) -> str:
+    """The bullet's "Topic:" label, or else its opening words. A short bullet's whole first sentence
+    can reach "Source:", which is not a label."""
+    m = _TOPIC_RE.match(block)
+    if m and not m.group(1).rstrip().lower().endswith("source"):
+        return m.group(1).strip()
+    text = re.sub(r"^\s*-\s*\**", "", block).split("Source:")[0]
+    return " ".join(_LEAD_END.split(text, maxsplit=1)[0].split()[:_LEAD_WORDS]).strip(" .*")
+
+
 def _drop_repeats(text: str, told: list) -> str:
     """The prompt lists what was told, and code holds to it."""
     kept = []
     for block in re.split(r"\n(?=\s*-\s)", (text or "").strip()):
-        m = _TOPIC_RE.match(block)
-        if m and any(_same_story(m.group(1), old) for old in told):
-            logger.info("AI news: dropped a story already told: %s", m.group(1))
+        name = _story_name(block) if block.strip().startswith("-") else ""
+        if name and any(_same_story(name, old) for old in told):
+            logger.info("AI news: dropped a story already told: %s", name)
             continue
         kept.append(block)
     return "\n".join(kept)
@@ -696,7 +713,7 @@ def _drop_repeats(text: str, told: list) -> str:
 
 def _bullet_topics(text: str) -> list:
     blocks = re.split(r"\n(?=\s*-\s)", (text or "").strip())
-    return [m.group(1).strip() for m in (_TOPIC_RE.match(b) for b in blocks) if m]
+    return [name for name in (_story_name(b) for b in blocks if b.strip().startswith("-")) if name]
 
 
 def _filter_news_results(results, seen_urls, exclusions):

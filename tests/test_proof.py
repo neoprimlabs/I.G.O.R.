@@ -513,7 +513,7 @@ def test_budgets() -> None:
     stub = _Stub()
     work.log_session(folder.name, "research", "earlier", config.OVERNIGHT_TOKENS - proof.RESERVE + 1, 0, [], [], now=NIGHT_TIME)
     out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
-    _check("with too little token room it does not search", not stub.searches and "waits for budget" in out, out)
+    _check("with too little token room it does not search", not stub.searches and "more searches when budget allows" in out, out)
     tmp.cleanup()
 
 

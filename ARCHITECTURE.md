@@ -308,13 +308,13 @@ to speak only if something is so; the run answers `[SILENT]` and nothing goes (H
 
 A second brief due within 5 minutes of a pending one is merged into it. A correction
 is `update`, which edits a pending message in place by id. `repeat` (daily, weekdays, weekly) moves
-the entry to the next occurrence on the local calendar, so 09:00 stays 09:00 across
+the entry to its next local occurrence, so 09:00 stays 09:00 across
 daylight saving; an interval (3 hours at the shortest, 5 minutes with a script) steps by its
 minutes. `times` limits the runs; a run ending `[DONE]` on its own line ends the series (Hermes'
-LOOP_COMPLETE) and says so; one ending a line is dropped. After downtime it sends one late message, never a backlog; resuming
-a paused entry skips what was missed. Repeating messages are never merged, and each
-delivery spends daily tokens on 120b. Each run sees the series' last three
-messages, marked sent, never built. An IGOR
+LOOP_COMPLETE) and says so; one ending a line is dropped. After downtime: one late message, never a backlog; resuming
+a paused entry skips what was missed. Repeating messages are never merged; each
+delivery spends 120b tokens and sees the series' last three messages and a line
+each of the 20 before, marked sent, never built. An IGOR
 series gets its subject from code, by date, and this file's paragraphs on it (`_area_detail`).
 
 **Scripts and chains** (`prerun.py`, Hermes' cron `script`, `no_agent`, `context_from`): a message
@@ -327,10 +327,11 @@ messages' latest output (`scheduled_outputs.json`); `keep_only` keeps a result u
 sees all this as outside text.
 
 Presence writes on 120b. Gates in code before any model call: silent 03:00-11:00 local, 4h
-between messages, 2 a day, 6 model calls a day, never within 20 minutes of a live
-conversation; the daily check-in waits until 2h after the user last spoke. It sees
-the user's own messages from 3 days, `user.md` and its last 5 check-ins; both triggers get the
-standing preferences and no tasks or drafts, and a message about IGOR's own posts is not sent.
+between messages, 2 a day, 6 calls a day, never within 20 minutes of a live
+conversation; the daily check-in waits 2h after the user last spoke. It sees
+the user's messages from 3 days, `user.md` and its last 5 check-ins; both triggers get the
+standing preferences and no tasks or drafts. Not sent: a message on IGOR's own posts, or a
+check-in on a subject of its last 3.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
 `heartbeat every 1h <request with links>`, 15m to 7d, up to 3 pages, one at a time,

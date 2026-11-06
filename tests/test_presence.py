@@ -509,6 +509,61 @@ async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
         _check(f"while this still goes out: {text[:40]}", presence._ABOUT_ITS_OWN_POSTS.search(text) is None)
 
 
+async def test_a_checkin_does_not_repeat_its_subject() -> None:
+    """2026-11-03, 11-04 and 11-06 asked after the same price watch in new words each time, and on
+    11-06 the retry repeated too and the first answer went out anyway. Content invented."""
+    from agents import presence
+    now = datetime(2026, 10, 31, 18, 30, tzinfo=timezone.utc)
+    before = ["Any progress on tuning the kettle alert you were adjusting this afternoon?",
+              "Did the recent changes to the kettle alert behave as you expected?"]
+    again = "Do you notice any difference in the kettle alert since yesterday?"
+
+    def state():
+        s = _state(day="2026-10-31")
+        s["checkin"] = {"day": "2026-10-31", "at": now.isoformat(), "sent": False}
+        s["checkins"] = list(before)
+        return s
+
+    for replies, expected, name in (
+            ([again, "How was the walk along the river yesterday?"], "How was the walk along the river yesterday?",
+             "a repeated subject is asked for again, and the fresh one goes out"),
+            ([again, "Has the kettle alert settled down?"], None, "repeated twice, IGOR stays silent")):
+        path = _fresh(state())
+        asked = []
+
+        async def model(bundle):
+            asked.append(bundle)
+            return replies[min(len(asked), len(replies)) - 1]
+
+        out = await presence.consider("checkin", now=now, ask=model)
+        _check(name, out == expected and len(asked) == 2, f"{out!r} {len(asked)}")
+    _check("the retry is told which subject", "\"kettle\"" in asked[1] and "the subject of one of your last" in asked[1], asked[1][-250:])
+    saved = json.loads((path / "presence_state.json").read_text(encoding="utf-8"))
+    _check("a refused check-in closes the day, not asked again every ten minutes",
+           saved["checkin"].get("sent") is True and "repeated" in saved["checkin"].get("skipped", ""), str(saved["checkin"]))
+    _check("and both calls are counted", saved.get("calls") == 2, str(saved.get("calls")))
+    _check("so the next tick does not ask again", "checkin" not in presence.due_triggers(now + timedelta(minutes=10)))
+
+    _fresh(state())
+    asked = []
+
+    async def worn(bundle):
+        asked.append(bundle)
+        return "Do you have plans for the evening?"
+    s = state()
+    s["openings"] = ["do you have"]
+    _fresh(s)
+    out = await presence.consider("checkin", now=now, ask=worn)
+    _check("a worn opening alone still goes out after its retry", out == "Do you have plans for the evening?", repr(out))
+
+    _check("words any check-in uses are not a subject",
+           presence._stale("How are you feeling this afternoon?", [],
+                           ["How is your evening going, given the late night?"], checkin=True) is None)
+    _check("only the last three check-ins count for a subject",
+           presence._stale("Has the kettle alert settled?", [],
+                           ["Did you sort out that alert for the kettle?", "a", "b", "c"], checkin=True) is None)
+
+
 async def test_a_lull_about_its_own_bookkeeping_is_not_sent() -> None:
     """2026-11-05, 2:51am, from a lull: a message that a saved cover letter was ready whenever the user
     wanted it (the fixture below invents the contract). The user had said, in so many words, that
@@ -763,6 +818,7 @@ if __name__ == "__main__":
     asyncio.run(test_silence_and_cleanup())
     asyncio.run(test_a_fresh_opening())
     asyncio.run(test_a_checkin_about_its_own_posts_is_not_sent())
+    asyncio.run(test_a_checkin_does_not_repeat_its_subject())
     asyncio.run(test_a_lull_about_its_own_bookkeeping_is_not_sent())
     asyncio.run(test_a_checkin_sees_the_last_few_days())
     print("\ntriggers")

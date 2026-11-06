@@ -217,8 +217,21 @@ async def test_continuity() -> None:
     _check("the first run of a series has nothing before it", seen[0] == [], str(seen))
     _check("each later run sees what the series already said, newest first",
            seen[2] == ["idea number 2", "idea number 1"], str(seen))
-    _check("and only the last three", seen[3] == ["idea number 3", "idea number 2", "idea number 1"]
+    _check("the last three in full", seen[3] == ["idea number 3", "idea number 2", "idea number 1"]
            and len(seen[3]) == 3, str(seen))
+    # 2026-10-27 and 11-04: an idea came back once three newer ones had pushed it out.
+    for day in (3, 4):
+        await scheduled.deliver_due(send, now=datetime(2026, 11, day, 14, 0, 30, tzinfo=timezone.utc),
+                                    compose=writer)
+    _check("and older ones still, as one line each, newest first",
+           seen[5] == ["idea number 5", "idea number 4", "idea number 3", "idea number 2", "idea number 1"],
+           str(seen[5:]))
+    _check("a post becomes its title and first sentence",
+           scheduled._gist("**Kettle Descaler Reminder**\n\nAdd a reminder for the kettle. It runs weekly.\n\n1. More")
+           == "Kettle Descaler Reminder: Add a reminder for the kettle.")
+    _check("or its first sentence alone",
+           scheduled._gist("I have been thinking about a kettle log that runs nightly. It would read notes.")
+           == "I have been thinking about a kettle log that runs nightly.")
 
     one_off = []
 
