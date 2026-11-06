@@ -119,6 +119,12 @@ ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "
    behaviour yourself, run `scripts/e2e_isolated.py` on the server as igor: it uses a
    throwaway copy of the code and memory. Never point a live run at the real tree.
    Each run spends the user's daily 120b budget - one or two, not four.
+   **A change to the overnight paper (`agents/overnight.py`, `proof.py`) is rehearsed
+   before it is called done:** `scripts/rehearse_paper.py` on the server as igor reruns
+   the last real revision with the new code on a throwaway copy (about 6000 of 120b),
+   and you read the paper it prints. Do not tell the user a fix "will be seen tonight".
+   For days every night was the first real test and found the next fault; one
+   rehearsal on 2026-11-06 found three in an hour.
 7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
    `/opt/igor` so `write_file` cannot reach it. Beside it, `prestart.sh` runs before
    every start of the service and restores the tree the last deploy approved, so a
