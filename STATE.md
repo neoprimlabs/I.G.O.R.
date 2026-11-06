@@ -251,7 +251,10 @@ cut. The rerun found the shortlist labels wrong: the writer's "Name - descriptio
 matched no proof record, and Bot-Template (independent) went out "no income shown". This morning's paper only had
 them right because the next proof session relabels the file. The writer's text is now cleaned before any check
 (the same cause gave "6 sections added, 7 dropped"), and on an income goal only the proof check labels, so an
-unsearched idea says "unchecked". Scripts: `replay_night.py`, `replay_write_live.py` in the Claude scratchpad.
+unsearched idea says "unchecked". A second rerun on the fixed code (about 6000 of 120b, 2200 of 20b) had every label
+right and the cut keeping the proven ideas, but its summary said sources "describe earnings from ... agricultural
+data", against the instruction (1 run in 3). Code now replaces such a summary sentence with a pointer to the proof
+section, checked on both reruns' real text. Scripts: `replay_night.py`, `replay_write_live.py` in the Claude scratchpad.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

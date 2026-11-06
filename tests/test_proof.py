@@ -69,6 +69,7 @@ class _Stub:
         self.raises = None
         self.dashes = False
         self.audits = 0
+        self.summary = ""
 
     async def search(self, query, max_results=5, **kwargs):
         self.searches.append((query, kwargs))
@@ -92,7 +93,7 @@ class _Stub:
             return "\n".join(f"- fact {self.plans}-{i} (https://e.example/{self.plans}/{i})" for i in range(5))
         self.writes.append(user)
         dash = " \u2013 " if self.dashes else " - "
-        return ("# Paper\n\n## Findings\nClaim <https://e.example/1/0> <https://e.example/1/1> <https://e.example/1/2>.\n"
+        return (f"# Paper\n\n{self.summary}## Findings\nClaim <https://e.example/1/0> <https://e.example/1/1> <https://e.example/1/2>.\n"
                 f"\n## Ranked shortlist\n1. **Kettle alerts**{dash}priced\n2. **Rain gauges**{dash}new\n"
                 "\n## What I am unsure about\nMuch.\n")
 
@@ -379,6 +380,46 @@ def test_the_models_dashes_do_not_hide_an_idea_from_its_proof() -> None:
     tmp.cleanup()
 
 
+def test_the_summary_does_not_claim_income_the_check_did_not_find() -> None:
+    """A live rerun on 2026-11-06 opened with "Sources describe earnings from ... agricultural
+    data" though the writer had been told no one was found earning from it."""
+    from agents import overnight
+    paper = ("# Kettle money\n\n**Summary**  \nAn agent can run a range of recurring-revenue services. "
+             "Sources describe earnings from birdhouse plans and kettle price alerts. "
+             "Kettle price alerts show no revenue yet. Pricing is listed for rain gauge kits. "
+             "Rain gauge kits earned $5,000 last year. The rain gauge video course made $900.  \n\n"
+             "## Findings\nKettle price alerts earned $40 <https://e.example/1>.\n\n"
+             "## Ranked shortlist\n1. **Kettle price alerts** - priced\n2. **Birdhouse plan e-books** - sold\n"
+             "3. **Rain gauge video course** - new\n4. **Rain gauge kits** - sold\n\n## What I am unsure about\nMuch.\n")
+    labels = {1: "no income shown", 2: "independent", 3: "unchecked", 4: "similar product"}
+    out, named = overnight.drop_unearned_claims(paper, labels)
+    summary = out.split("## ", 1)[0]
+    _check("a sentence saying an idea with no income on record earned is replaced by the pointer, once",
+           "describe earnings from birdhouse" not in summary and summary.count(overnight.SUMMARY_NOTE) == 1, summary)
+    _check("an unchecked idea is held to the same", "video course made" not in summary, summary)
+    _check("and both are named", named == ["Kettle price alerts", "Rain gauge video course"], str(named))
+    _check("a sentence that says there is no revenue stays", "show no revenue yet" in summary, summary)
+    _check("a price is not a claim of income", "Pricing is listed for rain gauge kits." in summary, summary)
+    _check("an earned idea that shares words with an unchecked one keeps its sentence",
+           "Rain gauge kits earned $5,000 last year." in summary, summary)
+    _check("a line of revenue talk naming no idea stays", "recurring-revenue services." in summary, summary)
+    _check("the markdown line break is kept", "made $900" not in summary and summary.rstrip("\n").endswith("  "),
+           repr(summary[-40:]))
+    _check("nothing outside the summary changes", out.split("## ", 1)[1] == paper.split("## ", 1)[1])
+    _check("a summary with nothing to drop is left alone",
+           overnight.drop_unearned_claims(paper, {i: "independent" for i in range(1, 5)}) == (paper, []))
+
+    overnight, folder, tmp = _setup()
+    stub = _Stub(replies=["NONE", "NONE", "NONE", _row()])
+    stub.summary = "Sources describe earnings from kettle price alerts and birdhouse plan e-books.\n\n"
+    for _ in range(3):
+        asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
+    text = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("the night's paper on file carries the pointer, not the claim",
+           overnight.SUMMARY_NOTE in text and "describe earnings" not in text, text[:300])
+    tmp.cleanup()
+
+
 def test_failures_do_not_become_findings() -> None:
     overnight, folder, tmp = _setup()
     stub = _Stub()
@@ -546,6 +587,7 @@ if __name__ == "__main__":
     test_a_session_tests_the_next_idea()
     test_it_works_down_the_list_then_widens()
     test_the_models_dashes_do_not_hide_an_idea_from_its_proof()
+    test_the_summary_does_not_claim_income_the_check_did_not_find()
     test_failures_do_not_become_findings()
     test_budgets()
     test_what_it_leaves_alone()

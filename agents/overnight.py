@@ -405,6 +405,64 @@ def _shortlist_names(text: str) -> list[str]:
             for block in _shortlist_items(text)]
 
 
+_MONEY_RE = re.compile(r"\b(?:earn\w*|revenues?|income|profits?|paid out|made \$)", re.IGNORECASE)
+_HEDGE_RE = re.compile(r"\b(?:no|not|without|lacks?|unclear|unproven|unverified|neither|nor)\b", re.IGNORECASE)
+_STOP_WORDS = frozenset(("for", "and", "the", "of", "to", "in", "on", "with", "a", "an", "via", "from"))
+_EARNED_KINDS = ("independent", "mixed", "similar product", "self-reported")
+SUMMARY_NOTE = "Which of these ideas have income on record is listed under Proof checked."
+
+
+def _stems(words) -> set:
+    return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words} - _STOP_WORDS
+
+
+def drop_unearned_claims(paper: str, labels: dict) -> tuple[str, list[str]]:
+    """The summary without sentences saying money came from an idea with no income on record,
+    the first replaced by a pointer to the proof section; and the ideas they named.
+
+    Told which ideas no one was found earning from, the writer still opened a live rerun on
+    2026-11-06 with "Sources describe earnings from ... agricultural data". `labels` is by
+    shortlist position, so this runs before the shortlist is re-sorted. An idea is matched on
+    the words that set it apart from the earned ones, so "art licensing" does not hit "video
+    licensing"; a sentence that hedges ("no revenue shown") stays."""
+    names = _shortlist_names(paper)
+    keys = [_stems(proof._words(name)) for name in names]
+    earned = set().union(*(k for i, k in enumerate(keys, 1) if labels.get(i) in _EARNED_KINDS))
+    targets = {}
+    for i, (name, key) in enumerate(zip(names, keys), 1):
+        distinct = key - earned
+        if labels.get(i) not in _EARNED_KINDS and distinct:
+            targets[name] = distinct
+    named: list[str] = []
+    noted = False
+
+    def fix(line: str) -> str:
+        nonlocal noted
+        body, tail = re.match(r"(.*?)(\s*)$", line).groups()
+        if not body or body.lstrip().startswith("#") or re.fullmatch(r"\s*\*\*[^*]+\*\*:?", body):
+            return line
+        kept = []
+        for sentence in re.split(r"(?<=[.!?])\s+", body):
+            words = _stems(re.findall(r"[a-z0-9]+", sentence.lower()))
+            hits = [n for n, d in targets.items() if len(d & words) >= max(1, len(d) // 2)]
+            if hits and _MONEY_RE.search(sentence) and not _HEDGE_RE.search(sentence):
+                named.extend(h for h in hits if h not in named)
+                if not noted:
+                    kept.append(SUMMARY_NOTE)
+                    noted = True
+                continue
+            kept.append(sentence)
+        return " ".join(kept) + tail
+
+    if not targets:
+        return paper, []
+    head, *parts = re.split(r"(?m)^(?=## )", paper)
+    head = "\n".join(fix(line) for line in head.split("\n"))
+    parts = ["\n".join(fix(line) for line in part.split("\n"))
+             if part.split("\n", 1)[0][3:].strip().lower() == "summary" else part for part in parts]
+    return head + "".join(parts), named
+
+
 
 
 def _unique(folder, stem: str, night: str):
@@ -600,6 +658,10 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                 # shown", which the paper's own legend defines as searched and found nothing.
                 labels = {} if proof.applies(goal["statement"]) else await audit_evidence(paper, complete)
                 labels.update(proof.labels_for(_shortlist_names(paper), ledger))
+                if proof.applies(goal["statement"]):
+                    paper, claims = drop_unearned_claims(paper, labels)
+                    if claims:
+                        logger.info("Overnight: summary claims of income dropped for %s", "; ".join(claims))
                 paper = normalize_shortlist(paper, labels)
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")

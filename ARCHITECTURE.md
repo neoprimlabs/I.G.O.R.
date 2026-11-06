@@ -439,7 +439,7 @@ research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b s
 intact, money received of $1000 to $20M or a failure on this idea, and sets the source for personal posts,
 cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` and the labels (independent, mixed, similar product, self-reported,
-no income shown, unchecked, against). The writer is told which show no earner.
+no income shown, unchecked, against). Code drops a summary sentence crediting income to one without.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
