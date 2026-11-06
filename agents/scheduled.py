@@ -84,12 +84,14 @@ _GIST_CHARS = 160
 
 def _gist(body: str) -> str:
     """A post as one line: its first sentence, after its title when it opens with one."""
-    lines = [re.sub(r"[*_`#]+", "", line).strip() for line in (body or "").splitlines()]
+    # Markdown marks go, the underscore inside `python_run` stays.
+    lines = [re.sub(r"[*`#]+|(?<![A-Za-z0-9])_+|_+(?![A-Za-z0-9])", "", line).strip()
+             for line in (body or "").splitlines()]
     lines = [line for line in lines if line]
     if not lines:
         return ""
     text = lines[0]
-    if len(text) < 60 and len(lines) > 1:
+    if (len(text) < 60 or text.endswith(":")) and len(lines) > 1:
         text = f"{text.rstrip(':.')}: {lines[1]}"
     return re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:_GIST_CHARS]
 _JOB_FIELDS = ("script", "script_only", "context_from", "keep_only")

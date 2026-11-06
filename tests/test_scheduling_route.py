@@ -232,6 +232,13 @@ async def test_continuity() -> None:
     _check("or its first sentence alone",
            scheduled._gist("I have been thinking about a kettle log that runs nightly. It would read notes.")
            == "I have been thinking about a kettle log that runs nightly.")
+    _check("names keep their underscores",
+           scheduled._gist("Add a gate for any `python_run` call that writes a _kettle_ file.")
+           == "Add a gate for any python_run call that writes a kettle file.")
+    _check("an opening that leads into its title keeps the title",
+           scheduled._gist("Here is a practical addition that builds on the kettle log without repeating it:\n\n"
+                           "**Kettle Summariser**\n\n- More")
+           == "Here is a practical addition that builds on the kettle log without repeating it: Kettle Summariser")
 
     one_off = []
 
