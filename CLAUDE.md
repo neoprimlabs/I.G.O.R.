@@ -124,7 +124,10 @@ ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "
    the last real revision with the new code on a throwaway copy (about 6000 of 120b),
    and you read the paper it prints. Do not tell the user a fix "will be seen tonight".
    For days every night was the first real test and found the next fault; one
-   rehearsal on 2026-11-06 found three in an hour.
+   rehearsal on 2026-11-06 found three in an hour. The same goes for the other posts IGOR
+   sends unprompted: `scripts/rehearse_posts.py checkin` or `series <id>` writes today's
+   check-in or a scheduled series' next run the same way, and reading the posts already
+   sent (`[sent proactively]` rows in `context.db`) costs nothing and comes first.
 7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
    `/opt/igor` so `write_file` cannot reach it. Beside it, `prestart.sh` runs before
    every start of the service and restores the tree the last deploy approved, so a
