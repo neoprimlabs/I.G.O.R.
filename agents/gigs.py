@@ -418,6 +418,10 @@ def collect(now: Optional[datetime] = None, fetchers=None, topic_fetch=None) -> 
             if not _TOPIC.search(text):
                 dropped.append(url)
                 continue
+            if _body_words(gig) < _MIN_BODY_WORDS:
+                logger.info("Gig watch: %s says too little to judge", url)
+                dropped.append(url)
+                continue
             found.append(gig)
     if dropped:
         watchers.remember(_SEEN, dropped, now=now, days=_SEEN_DAYS)
@@ -425,8 +429,21 @@ def collect(now: Optional[datetime] = None, fetchers=None, topic_fetch=None) -> 
     return found, status
 
 
+# 2026-11-07 the one pick sent was the whole of "Please help me regarding n8n Workflows and AI assistant .
+# I can pay your fee": nothing about the work to judge a fit on. Of 69 live hiring posts that day it had 15
+# words and the next fewest 34.
+_MIN_BODY_WORDS = 25
+
+
+def _body_words(gig: dict) -> int:
+    body, title = gig.get("body") or "", gig.get("title") or ""
+    if title and body.startswith(title):
+        body = body[len(title):]
+    return len(_clean(body, 100000).split())
+
+
 _OPENING_CHARS = 200
-_ROLE_LINE = re.compile(r"\b(?:the|this) (?:role|job|position) (?:is|involves|includes|covers)\b", re.IGNORECASE)
+_ROLE_LINE =re.compile(r"\b(?:the|this) (?:role|job|position) (?:is|involves|includes|covers)\b", re.IGNORECASE)
 
 _RANK_SYSTEM = """You screen freelance gig postings for one person and pick the ones worth pitching.
 

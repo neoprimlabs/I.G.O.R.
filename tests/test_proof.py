@@ -221,6 +221,35 @@ def test_who_says_it() -> None:
     _check("a news host stays as judged", source("https://news.example/a") == "third party")
     _check("and a seller's story stays a seller's", source("https://news.example/a", model_says="seller") == "seller")
 
+    # 2026-11-07, both of the paper's "independent" ideas.
+    def kept(quote, url="https://news.example/a", title="A report"):
+        row = proof.parse_judgement(_row(quote=quote))[0]
+        return proof._kept(row, [_page(url=url, title=title, body=f"Shops said: {quote} Good.")], frozenset(),
+                           "2026-11-07")
+    claimed = kept("KettleCo, a kettle licensing platform, claims $40,000 in total revenue")
+    _check("a company's claim passed on by a newsletter is its own", claimed and claimed["from"] == "seller", str(claimed))
+    _check("a sum across many sellers is no one's earnings",
+           kept("Total service revenue recorded across all of them: $40,000.") is None)
+    named = kept("All-time revenue $40,000", url="https://trustmrr.com/startup/kettle",
+                 title="Kettlegenie.ai revenue: $5,464 in the last 30 days | TrustMRR")
+    _check("a TrustMRR title gives the product's name, not the start of its sentence",
+           named and named["product"] == "Kettlegenie.ai", str(named))
+
+    folder = Path(tempfile.mkdtemp())
+    (folder / "proof.json").write_text(json.dumps({"kettle": {"name": "Kettle licensing", "searches": 3, "read": 3, "evidence": [
+        {"url": "https://news.example/a", "quote": "KettleCo claims $40,000 in total revenue", "what": "earned",
+         "from": "third party", "many": False, "product": "", "at": "2026-11-06"},
+        {"url": "https://news.example/b", "quote": "Total service revenue recorded across all of them: $40,000.",
+         "what": "earned", "from": "third party", "many": False, "product": "", "at": "2026-11-06"},
+        {"url": "https://trustmrr.com/startup/k", "quote": "All-time revenue $40,000", "what": "earned",
+         "from": "verified", "many": False, "product": "Kettlegenie.ai revenue: $5,464 in the last ", "at": "2026-11-06"},
+    ]}}), encoding="utf-8")
+    entry = proof.load(folder)["kettle"]
+    _check("evidence kept before these rules is held to them",
+           [r["from"] for r in entry["evidence"]] == ["seller", "verified"]
+           and entry["evidence"][1]["product"] == "Kettlegenie.ai", str(entry["evidence"]))
+    _check("so the idea is no longer called independent", proof.label(entry) == "similar product", proof.label(entry))
+
 
 def test_tools_and_ideas() -> None:
     def kept(idea, business, url="https://trustmrr.com/startup/x", who="the earner"):

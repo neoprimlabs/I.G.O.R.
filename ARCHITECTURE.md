@@ -343,8 +343,8 @@ the US counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a user's job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
-posts; red flags drop in code or a daily 120b screen, blocking the poster; a failed
-screen holds the gigs; picks go out in the post's own words.
+posts; red flags drop in code or a 120b screen, blocking the poster; a post under 25 words
+drops; a failed screen holds the gigs; picks go out in the post's own words.
 
 ### ConfigEdit
 
@@ -436,8 +436,8 @@ PLAN also sees.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
 research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
-intact, money received of $1000 to $20M or a failure on this idea, and sets the source for personal posts,
-cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
+intact, money one earner received, $1000 to $20M, or a failure on this idea, and sets the source for personal
+posts, claims, cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` and the labels (independent, mixed, similar product, self-reported,
 no income shown, unchecked, against). Code drops a summary sentence crediting income to one without.
 

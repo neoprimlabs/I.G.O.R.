@@ -52,10 +52,14 @@ N8N_LIST = json.dumps({"topic_list": {"topics": [
 ]}})
 
 BODIES = {
-    322445: ("boston_young", "We fix Shopify tracking and build n8n automations. HubSpot later. Paid hourly."),
+    322445: ("boston_young", "We run a small online store and need our Shopify tracking fixed, then n8n automations "
+                             "built for orders, refunds and stock alerts. HubSpot comes later. Paid hourly, about ten "
+                             "hours a week to start."),
     321881: ("Vojtech_Minarik", "I'd like to help with one small case for free. Free pilot, no payment required."),
     321496: ("pony_weft", "To be clear: I'm validating the service and there is no active project yet."),
-    322016: ("Shyamvijay", "Build a video conferencing automation with n8n, webhooks and HubSpot. Budget 800 GBP."),
+    322016: ("Shyamvijay", "Build a video conferencing automation with n8n, webhooks and HubSpot: when a call is "
+                           "booked, create the room, send the invites and log the recording link back to the "
+                           "contact. Budget 800 GBP."),
 }
 
 REDDIT = """<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">
@@ -63,7 +67,7 @@ REDDIT = """<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org
 <title>[Hiring] AI chatbot for my dental clinic website &amp; booking reminders, $800 fixed</title>
 <link href="https://www.reddit.com/r/forhire/comments/a1/chatbot/"/>
 <published>2026-10-18T20:00:00+00:00</published>
-<content type="html">&lt;p&gt;Need a Python or n8n chatbot that answers FAQs.&lt;/p&gt; submitted by /u/dental_owner [link]</content></entry>
+<content type="html">&lt;p&gt;Need a Python or n8n chatbot that answers FAQs on our dental clinic website, books appointments into our calendar and sends reminder texts the day before. We have the FAQ list ready.&lt;/p&gt; submitted by /u/dental_owner [link]</content></entry>
 <entry><author><name>/u/va_seeker</name></author>
 <title>[Hiring] Virtual Assistant, Remote USA, $20/hour</title>
 <link href="https://www.reddit.com/r/forhire/comments/a2/va/"/>
@@ -105,7 +109,9 @@ class _Topics:
 
     def __call__(self, topic_id):
         self.calls.append(topic_id)
-        return BODIES.get(topic_id, ("someone", "An n8n automation job."))
+        return BODIES.get(topic_id, ("someone", "An n8n automation job: connect our form to the CRM, send a welcome "
+                                                "email and post a summary to Slack. Paid hourly, a few hours a week, "
+                                                "remote, with clear steps for each part."))
 
 
 def test_parsers() -> None:
@@ -211,6 +217,28 @@ def test_collect_filters_and_blocks() -> None:
            and "private chat" in accounts["reddit:quick_cash"]["why"], str(accounts))
     _check("each source reports what it returned", status.get("n8n") == "6 posts" and status.get("reddit") == "4 posts",
            str(status))
+    tmp.cleanup()
+
+
+def test_a_post_too_short_to_judge_is_not_sent() -> None:
+    """2026-11-07 the one pick sent was the whole post: "Please help me regarding n8n Workflows and AI
+    assistant . I can pay your fee". Of 69 live hiring posts that day, the next shortest had 34 words."""
+    gigs, tmp = _fresh()
+    listing = json.dumps({"topic_list": {"topics": [
+        {"id": 400001, "title": "Need help regarding n8n AI assistant and workflow. Please help i can pay you",
+         "slug": "need-help", "created_at": "2026-10-18T09:00:00.000Z", "pinned": False},
+        {"id": 400002, "title": "[HIRING] n8n workflow for a kettle shop, $30/hr", "slug": "kettle-shop",
+         "created_at": "2026-10-18T09:00:00.000Z", "pinned": False}]}})
+    bodies = {400001: ("asker", "Need help regarding n8n AI assistant and workflow. Please help i can pay you "
+                                "Please help me regarding n8n Workflows and AI assistant . I can pay your fee"),
+              400002: ("kettle_shop", BODIES[322445][1])}
+    found, _ = gigs.collect(NOW, [("n8n", lambda: gigs._from_n8n_list(listing))], lambda topic: bodies[topic])
+    urls = [g["url"] for g in found]
+    _check("a post that says nothing of the work is held back", not any("400001" in u for u in urls), str(urls))
+    _check("one that says what the work is comes through", any("400002" in u for u in urls), str(urls))
+    _check("the short one is not blocked, only passed over", "n8n:asker" not in gigs.blocked(), str(gigs.blocked()))
+    import watchers
+    _check("and is not opened again", any("400001" in u for u in watchers.load_seen(gigs._SEEN)))
     tmp.cleanup()
 
 

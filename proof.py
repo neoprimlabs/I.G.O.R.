@@ -112,7 +112,13 @@ _OBJECT_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
 # A figure someone hopes for, plans or guesses, and words that never mean money received.
 _WISHFUL_RE = re.compile(r"\b(could|can|might|may|potential|potentially|up to|projected|projection|est|estimated?"
                          r"|estimates?|targets?|targeting|expected|forecast|tam|market size|combined|aggregate"
-                         r"|industry|sector)\b", re.IGNORECASE)
+                         r"|industry|sector|across all|all of them|across (?:these|those|them))\b", re.IGNORECASE)
+# 2026-11-07 "Troveo ... claims $20M in total revenue" went out independent: a company's own figure,
+# passed on by a newsletter. The prompt already called that the earner's, and 20b answered "news".
+_CLAIMED_RE = re.compile(r"\b(claims?|claimed|claiming|boasts?|boasted|touts?|touted)\b", re.IGNORECASE)
+# TrustMRR titles read "Vidgenie.ai revenue: $5,464 in the last 30 days", which a 40-character cut left
+# as the product's name on 11-07.
+_PRODUCT_END_RE = re.compile(r"\s+[-|]\s+|\s+revenue\b|:\s", re.IGNORECASE)
 _RECEIVED_RE = re.compile(r"\b(revenues?|income|earn|earns|earned|earning|earnings|made|makes?|making|sales|sold"
                           r"|profits?|royalt\w+|mrr|arr|payouts?|paid out|last 30 days)\b", re.IGNORECASE)
 _MONEY_RE = re.compile(r"[$€£]\s?(\d[\d,]*(?:\.\d+)?)\s*(k|m|b|thousand|million|billion)?\b", re.IGNORECASE)
@@ -149,7 +155,26 @@ def load(folder) -> dict:
     except (OSError, ValueError) as e:
         logger.warning("Proof ledger unreadable, treating as empty: %s", e)
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    for entry in data.values():
+        if isinstance(entry, dict) and isinstance(entry.get("evidence"), list):
+            entry["evidence"] = [r for r in (_restated(row) for row in entry["evidence"]) if r]
+    return data
+
+
+def _restated(row) -> Optional[dict]:
+    """A stored row under today's quote rules, so evidence kept before a rule was added is held to it."""
+    if not isinstance(row, dict):
+        return None
+    quote = str(row.get("quote", ""))
+    if row.get("what") == "earned" and out_of_range(quote):
+        return None
+    if row.get("what") == "earned" and row.get("from") == _THIRD and _CLAIMED_RE.search(quote):
+        row = {**row, "from": _SELLER}
+    if row.get("product"):
+        row = {**row, "product": _PRODUCT_END_RE.split(str(row["product"]))[0].strip()}
+    return row
 
 
 def save(folder, ledger: dict) -> None:
@@ -357,7 +382,7 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
     if _on(host, _VERIFIED_HOSTS):
         if what == "earned" and (business == "idea" or software):
             source = _VERIFIED
-            product = re.split(r"\s+[-|]\s+", str(page.get("title", "")))[0][:40]
+            product = _PRODUCT_END_RE.split(str(page.get("title", "")))[0].strip()[:40]
         else:
             source = _SELLER
     # A host the paper already cites is there for its prices. Live 2026-10-31 the paper's one
@@ -369,8 +394,8 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
     # to API wrappers for "93% of startups ultimately shut down", from a firm selling shutdowns.
     many = (str(row.get("scope", "")).strip().lower() == "many" and bool(re.search(r"\d", quote))
             and _speaks_of(idea, f"{page.get('title', '')} {quote}"))
-    return {"url": page.get("url", ""), "quote": clean(quote), "what": what, "from": source, "many": many,
-            "product": clean(product), "at": today}
+    return _restated({"url": page.get("url", ""), "quote": clean(quote), "what": what, "from": source,
+                      "many": many, "product": clean(product), "at": today})
 
 
 def _strength(row: dict) -> tuple:
