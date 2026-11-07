@@ -271,6 +271,13 @@ only. Rehearsed with the new `scripts/rehearse_posts.py`: the check-in left the 
 (3963 tokens); Monday's idea, on the overnight loop, repeated none of the 15 before it (5242). Already fixed before
 this pass: the 2:51am message, the job post fragments, "1 sections added". Not changed: ideas still run 250-330 words
 with numbered lists, against the 200-word line in their prompt.
+**React's later steps wait less (11-07, 111cec9).** A week of the journal, read free: every restart was a deploy, no
+crashes; in the user's own React turns each step after the first waited 25-50s, because one call is about 5500 of
+120b's 8000 a minute. `scheduled_message` and `memory_write`, about 4600 characters of every call with their rules, now
+load on request: a hint in the message opens either from the first step (82% of 134 stored user messages match
+neither), and a forced or pre-opened one brings its rules into the prompt. Live in the throwaway copy, 11122 tokens: a
+reminder routed TASK opened the tool from the hint, set 08:00 local right, second step 22s. Not yet measured: a real
+turn that opens neither. The 11-06 "Proof reply unreadable" was not a loss: the second try read it (2 of 2 read).
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
