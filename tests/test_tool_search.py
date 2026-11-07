@@ -29,8 +29,7 @@ def _check(name: str, condition: bool, detail: str = "") -> None:
         _failures.append(name)
 
 
-CORE = {"search", "fetch_url", "read_file", "memory_read", "search_memory", "memory_write",
-        "scheduled_message", "shell"}
+CORE = {"search", "fetch_url", "read_file", "memory_read", "search_memory", "shell"}
 
 
 def _names(call) -> set:
@@ -157,6 +156,40 @@ def test_others_are_left_alone() -> None:
     _check("a worker gets no bridge", "load_tools" not in _names(calls[0]) and "search_files" in _names(calls[0]))
     reply, calls, _ = _handle(["Done."], force_tool="goal")
     _check("a forced tool is offered from the start", "goal" in _names(calls[0]) and calls[0].get("tool_choice"), str(_names(calls[0])))
+
+
+def test_the_tools_with_their_own_routes_open_when_asked_for() -> None:
+    """2026-11-07: each React call was about 5500 of 120b's 8000 a minute, so each step after the
+    first waited 25-50s. The scheduling and saving schemas were 4100 characters of every call."""
+    from agents import react
+    reply, calls, _ = _handle(["Done."], message="What is the capital of Peru?")
+    system = calls[0]["messages"][0]["content"]
+    _check("a plain question offers neither", not {"scheduled_message", "memory_write"} & _names(calls[0]),
+           str(_names(calls[0])))
+    _check("and carries neither one's rules", "Rules for tools already open" not in system
+           and "never add a second one" not in system)
+    for message, tool, rule in (("Remind me tomorrow at 9am to call the kettle shop", "scheduled_message", "in_minutes"),
+                                ("Can you check in every weekday around noon?", "scheduled_message", "set repeat"),
+                                ("Add a line to my notes about the kettle", "memory_write", "make room"),
+                                ("Remember that I prefer the blue kettle", "memory_write", "copying its text")):
+        reply, calls, _ = _handle(["Done."], message=message)
+        _check(f"{message!r} opens {tool} from the first step", tool in _names(calls[0]), str(_names(calls[0])))
+        _check("with its rules in the prompt", rule in calls[0]["messages"][0]["content"])
+    reply, calls, _ = _handle([("scheduled_message", {"action": "list"}), "Done."], message="Message me at 5",
+                              force_tool="scheduled_message")
+    _check("the scheduling route's forced tool brings its rules too",
+           "use update on its id" in calls[0]["messages"][0]["content"])
+    tools = react._openai_tools()
+    _check("loading it later returns the same rules",
+           "never add a second one" in react._load_tools(["scheduled_message"], tools, set())
+           and "make room" in react._load_tools(["memory_write"], tools, set()))
+    prompt = react._DEFAULT_SYSTEM_PROMPT
+    _check("the prompt still says when to reach for each",
+           "memory_write (load it first)" in prompt and "scheduled_message (load it first)" in prompt)
+    reply, calls, ran = _handle([("load_tools", {"names": ["memory_write"]}),
+                                 ("memory_write", {"file": "tasks.md", "action": "add", "content": "kettle"}), "Saved."],
+                                message="Could you jot that down")
+    _check("a request the hints miss still saves, one step later", ran == ["memory_write"], str(ran))
 
 
 def test_only_the_users_own_job_request_forces_a_search() -> None:

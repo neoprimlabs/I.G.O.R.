@@ -26,7 +26,7 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
 **React's 25 tools:** `search` (web, jobs), `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
-`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Seventeen load on
+`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Nineteen load on
 request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV.
 
 **Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
@@ -218,10 +218,9 @@ and promising a future action. Facts it may lack (a product, company or event to
 
 System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
-context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`,
-`memory_write`, `scheduled_message` and `shell` attach, with `load_tools` for the other
-seventeen (it returns their rules too; a direct call loads the tool and retries; a request for a
-file opens `send_file` at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
+context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory` and
+`shell` attach, with `load_tools` for the other nineteen (it returns their rules too; a direct
+call loads the tool and retries; a request for a file, a reminder or a save opens it at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier). A link in any
 reply must appear in what was read that turn, the message or the conversation (`links.py`);
 any other is taken out, with a line saying how many.

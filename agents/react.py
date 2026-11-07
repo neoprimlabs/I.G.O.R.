@@ -491,6 +491,31 @@ _DEFERRED_TOOLS = {
                    + _SELF_MODIFY),
     "patch_file": ("edit a file on the server by exact replacement", _SELF_MODIFY),
     "restart_self": ("tell the user a code change needs deploying", ""),
+    # Deferred 2026-11-07. Each React call was about 5500 tokens of 120b's 8000 a minute, so every
+    # step after the first waited 25-50s, and these two schemas were 4100 characters of it. Each has
+    # its own route that opens it (Schedule, Remember), and _OPENS opens it when a message points at it.
+    "scheduled_message": ("a message, reminder or check-in for the user later, once or repeating",
+                          "Use in_minutes for relative times; at is local time, as shown at the top of "
+                          "the prompt. You give a brief, and the words are written fresh when it sends, so "
+                          "do not show the user a draft; there is none. When the user corrects the time or "
+                          "changes what they want about a message already scheduled, use update on its id - "
+                          "never add a second one. list shows the ids. For \"every day\", \"every weekday\" "
+                          "or \"every Monday\", set repeat on the first occurrence."),
+    "memory_write": ("save, change or remove an entry in the user's notes and settings files",
+                     "Say in your reply exactly what you saved and to which file. When the user corrects "
+                     "something just saved, patch that entry, copying its text from your last reply - "
+                     "never add a second one. When a file is full, make room and save in one call with "
+                     "operations."),
+}
+
+# A wrong match costs what every call cost before; a miss costs one load_tools step.
+_OPENS = {
+    "scheduled_message": re.compile(
+        r"\b(remind\w*|schedul\w*|check-?ins?|tomorrow|tonight|later|every|daily|weekly|weekdays?"
+        r"|\d+\s*(am|pm)|at \d|in \d+\s*(m|mins?|minutes?|h|hrs?|hours?))\b", re.IGNORECASE),
+    "memory_write": re.compile(
+        r"\b(remember|save|saved|notes?|store|record|forget|remove|delete|add|update|patch|exclude"
+        r"|from now on|going forward|prefer\w*|user\.md|tasks?\.md|job_search)\b", re.IGNORECASE),
 }
 
 
@@ -547,8 +572,8 @@ When to use tools:
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - search_history (load it first): anything said in an earlier conversation. Your context holds only the last few turns, so search before saying you do not know
-- memory_write: when the user asks you to remember, add, store, or update something. Say in your reply exactly what you saved and to which file. When the user corrects something just saved, patch that entry, copying its text from your last reply - never add a second one. When a file is full, make room and save in one call with operations
-- scheduled_message: when the user wants a message, reminder or check-in later. Use in_minutes for relative times; at is local time, as shown at the top of this prompt. You give a brief, and the words are written fresh when it sends, so do not show the user a draft; there is none. When the user corrects the time or changes what they want about a message already scheduled, use update on its id - never add a second one. list shows the ids. For "every day", "every weekday" or "every Monday", set repeat on the first occurrence
+- memory_write (load it first): when the user asks you to remember, add, store, or update something
+- scheduled_message (load it first): when the user wants a message, reminder or check-in later
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 
 How to reason:
@@ -2213,6 +2238,14 @@ async def _handle(
             loaded.add("send_file")
         if commands.wants_board(message.split(_UNTRUSTED_OPEN)[0]):
             loaded.add("board")
+        asked = message.split(_UNTRUSTED_OPEN)[0]
+        loaded.update(name for name, hint in _OPENS.items() if hint.search(asked))
+        # A tool opened before the first step never passes through load_tools, which is where its rules
+        # come back, so they ride in the prompt instead.
+        rules = [f"- {name}: {_DEFERRED_TOOLS[name][1]}" for name in sorted(loaded)
+                 if name in _DEFERRED_TOOLS and _DEFERRED_TOOLS[name][1]]
+        if rules:
+            messages[0]["content"] += "\n\nRules for tools already open this turn:\n" + "\n".join(rules)
     empty_retried = False
     for i in range(max_iterations):
         if stop is not None and stop.is_set():
