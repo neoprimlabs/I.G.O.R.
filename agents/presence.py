@@ -558,6 +558,7 @@ async def consider(reason: str, now: Optional[datetime] = None,
     why = _stale(message, recent, earlier, checkin) if message else None
     refused = ""
     if why:
+        logger.info("Presence (%s): asked again, %s Was: %s", reason, why[:100], message[:100])
         again = None
         try:
             again = _tidy(await (ask or _default_ask)(facts + f"\n\n{why}"))

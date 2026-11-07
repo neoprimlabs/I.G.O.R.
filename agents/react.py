@@ -2166,7 +2166,9 @@ async def _handle(
     forced_done = force_tool is None
     length_retried = False
     seen_calls: set = set()
-    job_turn = _depth == 0 and _is_job_request(message)
+    # The user's own turn only. A scheduled run's task carries IGOR's architecture, which speaks of finding
+    # job postings: every weekday idea from 11-03 to 11-06 was forced to search, refused twice, 400 each time.
+    job_turn = _depth == 0 and allowed_tools is None and _is_job_request(message)
     if job_turn:
         # Live 2026-10-28, with the resume refused in code, React asked for it again and
         # again, read files by the wrong names, and hit its step limit having never

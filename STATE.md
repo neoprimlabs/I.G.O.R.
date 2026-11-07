@@ -254,7 +254,23 @@ them right because the next proof session relabels the file. The writer's text i
 unsearched idea says "unchecked". A second rerun on the fixed code (about 6000 of 120b, 2200 of 20b) had every label
 right and the cut keeping the proven ideas, but its summary said sources "describe earnings from ... agricultural
 data", against the instruction (1 run in 3). Code now replaces such a summary sentence with a pointer to the proof
-section, checked on both reruns' real text. Scripts: `replay_night.py`, `replay_write_live.py` in the Claude scratchpad.
+section, checked on both reruns' real text. The rerun is now `scripts/rehearse_paper.py`; its third run, on the
+final code, was clean (7540 tokens).
+**Unprompted posts read through and rehearsed (11-06 evening).** All 166 since 09-28, pulled read-only from
+`context.db`, the last two weeks read in full. A check-in asked after the same price watch on 11-03, 11-04 and 11-06:
+the repeat check compared wording only, and when its retry repeated too the first answer went out. Now a subject word
+shared with one of the last 3 check-ins is asked again, a second repeat is not sent, and the day closes rather than
+retrying each tick. Weekday ideas came back 8 days apart (router, safety gate, budget alert), which is the subject
+rotation's period, past the 3 posts kept; older posts are now kept as one line each, up to 20, seeded with the 12
+from 10-19 to 11-03 (backup `scheduled.json.bak-seed-20261107`). AI news remembered a story only by its "Topic:"
+label, which 11-04 and 11-06 lacked; unlabelled bullets are named by their opening words, replayed over all 39
+digests (every real repeat caught, nothing else), and the four missed stories added to `news_topics.json` (backup
+beside it). Every weekday idea run was treated as a job search, because its task carries the architecture's words on
+finding postings: a forced search, refused twice with a 400, 25-40s each run. Job handling is now the user's own turn
+only. Rehearsed with the new `scripts/rehearse_posts.py`: the check-in left the watch for another subject on its retry
+(3963 tokens); Monday's idea, on the overnight loop, repeated none of the 15 before it (5242). Already fixed before
+this pass: the 2:51am message, the job post fragments, "1 sections added". Not changed: ideas still run 250-330 words
+with numbered lists, against the 200-word line in their prompt.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

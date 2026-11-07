@@ -159,6 +159,18 @@ def test_others_are_left_alone() -> None:
     _check("a forced tool is offered from the start", "goal" in _names(calls[0]) and calls[0].get("tool_choice"), str(_names(calls[0])))
 
 
+def test_only_the_users_own_job_request_forces_a_search() -> None:
+    """2026-11-03 to 11-06: each weekday idea's task carried IGOR's architecture, which says the job
+    watch finds postings, so every run was forced to search and refused it twice."""
+    task = "What this message is for: an idea for the kettle.\n\nThe job watch helps find new postings each day."
+    reply, calls, _ = _handle(["An idea."], message=task, allowed_tools=["search", "fetch_url", "memory_read"])
+    _check("a scheduled run that names its own tools is not a job search",
+           reply == "An idea." and not calls[0].get("tool_choice"), str(calls[0].get("tool_choice")))
+    reply, calls, _ = _handle([("search", {"query": "kettle jobs"}), "Two found."], message="Find me kettle jobs")
+    _check("the user asking for jobs still searches first",
+           (calls[0].get("tool_choice") or {}).get("function", {}).get("name") == "search", str(calls[0].get("tool_choice")))
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
