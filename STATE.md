@@ -278,6 +278,15 @@ load on request: a hint in the message opens either from the first step (82% of 
 neither), and a forced or pre-opened one brings its rules into the prompt. Live in the throwaway copy, 11122 tokens: a
 reminder routed TASK opened the tool from the hint, set 08:00 local right, second step 22s. Not yet measured: a real
 turn that opens neither. The 11-06 "Proof reply unreadable" was not a loss: the second try read it (2 of 2 read).
+**The 11-07 posts, read with the user (f06087d).** Jobs found 2 new, picked none, sent nothing; the check-in is set for
+21:27 local; the news story was new. Both of the paper's "independent" ideas were wrong: video licensing on "Troveo ...
+claims $20M", a company's own figure via a newsletter (20b said "news"), and bot templates on a total "across all of
+them". Claim words now make a quote the earner's, a sum across many is not one earner's, and `proof.load` holds stored
+rows to today's rules; replayed on the real ledger, only those two changed, to similar product. The one gig sent was a
+15-word post with nothing about the work; under 25 words is now passed over (69 live posts: next fewest 34).
+`rehearse_paper.py` on the new code, 7274 tokens: labels right, TrustMRR names clean. Left: the shortlist line still
+called a vendor's own payout "Proven $3.2 M", and the rerun's summary said "document actual earnings" for three
+similar-product ideas, where the real 11-07 paper said "document pricing".
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
