@@ -317,6 +317,16 @@ hours), live and saved in `schedule_config.md`; a code route sends a routine's n
 the tool required; ConfigEdit no longer writes schedules. Live in the throwaway copy, 17290 tokens: "Run the price
 watch every 6 hours and the stock watch every 4 hours" skipped the router, made both changes and said so. The real
 timings are unchanged (price 2 hours, stock 1) until the user asks IGOR.
+**The 11-08 paper, read with the user (e96c4db).** It called two idea sites and a video "two independent sources",
+gave sponsors "often $100-$500 per issue" from no source, and listed 16 checked ideas for a paper of 5, one since
+renamed with unrelated TrustMRR quotes. Now, in code at every paper write and nightly re-save, "independent" comes
+off talk of sources, a bracket with a money figure the writer's findings and the revised paper lack is removed (one
+elsewhere is marked "(not in the sources)"), and Proof checked lists the paper's own ideas. Replayed first over all
+19 revisions: the same check found 5 more invented prices; its 2 false alarms (a shared scale, a range end without
+its $) were fixed. Rehearsed, 7832 tokens: the proof list matched the shortlist (6 of 17), nothing true was cut.
+Still open: the writer renames checked ideas despite being told not to ("AI-Agent Automated Contract Review
+Subscription" for "Automated Contract-Review Micro-SaaS"), so the shortlist calls a checked idea unchecked. The
+digest's 2 AI news items came from roundup sites; that is the search, working as built.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
