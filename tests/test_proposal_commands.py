@@ -121,11 +121,58 @@ def test_listing_in_code() -> None:
            reply.startswith(f"Rejected {pid}.") and "No proposals are waiting for you." in reply, reply)
 
 
+def test_a_bare_yes_to_one_proposal() -> None:
+    """2026-11-08 the user answered a listing of one proposal with "y". It went CHAT to Direct, which
+    replied "Approved. The proposal has been accepted." and the proposal stayed pending."""
+    import orchestrator
+    import proposals
+    for p in proposals.pending():
+        proposals.decide(p["id"], False)
+
+    async def notify(_):
+        pass
+
+    o = orchestrator.Orchestrator(notify)
+    asked = []
+
+    async def no_model(*a, **k):
+        asked.append(1)
+        raise RuntimeError("a model was called")
+
+    o._client.chat.completions.create = no_model
+    pid = proposals.add("prompt", "The kettle watch missed a restock", "evidence", "Check hourly.", "t")
+    o._context = [{"role": "user", "content": "What is the one proposal?"},
+                  {"role": "assistant", "content": proposals.brief_listing()}]
+    destination = asyncio.run(o._classify("y"))
+    reply = asyncio.run(o._route(destination, "y"))
+    _check("a bare y straight after the listing approves it, in code", destination == "ProposalDecision"
+           and not asked and reply.startswith(f"Approved {pid}") and proposals.pending() == [], f"{destination} {reply}")
+    other = proposals.add("prompt", "The kettle digest ran long", "evidence", "Shorter.", "t")
+    o._context[-1] = {"role": "assistant", "content": proposals.brief_listing()}
+    reply = asyncio.run(o._route(asyncio.run(o._classify("No.")), "No."))
+    _check("a bare no rejects it", reply == f"Rejected {other}." and proposals.pending() == [], reply)
+    one = proposals.add("prompt", "First kettle problem", "evidence", "Fix one.", "t")
+    two = proposals.add("prompt", "Second kettle problem", "evidence", "Fix two.", "t")
+    o._context[-1] = {"role": "assistant", "content": proposals.brief_listing()}
+    destination = asyncio.run(o._classify("yes"))
+    reply = asyncio.run(o._route(destination, "yes"))
+    _check("with two waiting, a bare yes decides nothing and asks which", destination == "ProposalWhich"
+           and f"approve {one}" in reply and len(proposals.pending()) == 2, f"{destination} {reply}")
+    o._context[-1] = {"role": "assistant", "content": "The digest is at 10:00."}
+    _check("a yes to anything else is not a decision", orchestrator._bare_decision("yes", o._last_reply()) is None)
+    o._context[-1] = {"role": "assistant", "content": proposals.brief_listing()}
+    _check("nor is a longer message after the listing",
+           orchestrator._bare_decision("yes but first tell me what it changes", o._last_reply()) is None)
+    for p in proposals.pending():
+        proposals.decide(p["id"], False)
+
+
 if __name__ == "__main__":
     test_parsing()
     test_ids_ignore_case()
     test_routed_in_code_without_the_model()
     test_listing_in_code()
+    test_a_bare_yes_to_one_proposal()
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")
         sys.exit(1)

@@ -3,7 +3,7 @@ import functools
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Optional
 
 import openai
 
@@ -359,6 +359,28 @@ def _proposal_decisions(text: str) -> list[tuple[str, bool]]:
     return out
 
 
+# 2026-11-08 the user answered a listing of one proposal with "y". It went CHAT to Direct, which has
+# no tools and replied "Approved. The proposal has been accepted." p12 stayed pending. A bare yes or
+# no straight after IGOR asked "approve pN or reject pN" is that decision, made in code.
+_BARE_YES = re.compile(r"^\s*(y|yes|yep|yeah|yup|sure|ok|okay|approved?(\s+it)?|accept(\s+it)?|do it|go ahead)"
+                       r"\s*[.!]*\s*$", re.IGNORECASE)
+_BARE_NO = re.compile(r"^\s*(n|no|nope|nah|reject(\s+it)?|decline(\s+it)?)\s*[.!]*\s*$", re.IGNORECASE)
+_ASKED_DECISION = re.compile(r'Reply "approve (p\d+)" or "reject \1"')
+_LISTED_ID = re.compile(r"^(p\d+) \(", re.MULTILINE)
+
+
+def _bare_decision(text: str, last_reply: str) -> Optional[list[tuple[str, bool]]]:
+    """[(id, approve)] for a yes or no to a listing of one proposal, [] for one to a listing of several
+    (which one is not said), None when the message is not such an answer."""
+    if not _ASKED_DECISION.search(last_reply or ""):
+        return None
+    approve = True if _BARE_YES.match(text or "") else False if _BARE_NO.match(text or "") else None
+    if approve is None:
+        return None
+    listed = list(dict.fromkeys(_LISTED_ID.findall(last_reply)))
+    return [(listed[0], approve)] if len(listed) == 1 else []
+
+
 def _spell_out_times(text: str) -> str:
     return _RUN_TOGETHER_TIME.sub(lambda m: f"{int(m.group(1))}:{m.group(2)}{m.group(3)}{m.group(4)}", text)
 
@@ -705,9 +727,9 @@ class Orchestrator:
             return "SecondOpinion"
         if _proposal_decisions(content):
             return "ProposalDecision"
-        from agents import pitch
-        if pitch.parse(content):
-            return "Pitch"
+        bare = _bare_decision(content, self._last_reply())
+        if bare is not None:
+            return "ProposalDecision" if bare else "ProposalWhich"
         if _asks_for_proposals(content):
             return "ProposalList"
         if commands.saves_skill(content):
@@ -865,20 +887,19 @@ class Orchestrator:
 
         if destination == "ProposalDecision":
             import proposals
-            done = "\n".join(proposals.decide(pid, approve)
-                             for pid, approve in _proposal_decisions(content))
+            decisions = _proposal_decisions(content) or _bare_decision(content, self._last_reply()) or []
+            done = "\n".join(proposals.decide(pid, approve) for pid, approve in decisions)
             # "show me proposals again and reject p3" (2026-10-27) got the rejection only.
             return f"{done}\n\n{proposals.brief_listing()}" if _asks_for_proposals(content) else done
-
-        if destination == "Pitch":
-            # Written by code from a model's four parts and the user's own approved lines, and sent
-            # by the user, never IGOR (agents/pitch.py).
-            from agents import pitch
-            return await pitch.command(content)
 
         if destination == "ProposalList":
             import proposals
             return proposals.brief_listing()
+
+        if destination == "ProposalWhich":
+            ids = list(dict.fromkeys(_LISTED_ID.findall(self._last_reply())))
+            return (f"{len(ids)} proposals are waiting, so say which: approve or reject with its number, "
+                    f"such as approve {ids[0]}.")
 
         if destination == "SkillSave":
             import skills
@@ -1081,6 +1102,11 @@ class Orchestrator:
         append("assistant", entry["content"])
         import compression
         compression.schedule()
+
+    def _last_reply(self) -> str:
+        """IGOR's last message in the conversation, unprompted posts included."""
+        return next((m.get("content") or "" for m in reversed(getattr(self, "_context", []))
+                     if m.get("role") == "assistant"), "")
 
     def _window(self, char_budget: int = _CONTEXT_BUDGET_REACT,
                 with_summary: bool = True) -> list[dict]:
