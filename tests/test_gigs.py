@@ -180,14 +180,18 @@ def test_only_hiring_posts() -> None:
 def test_red_flags_are_specific() -> None:
     gigs, tmp = _fresh()
     for text in ("Automate reminders for unpaid invoices", "Build a paid Telegram bot with OCR",
-                 "Budget is flexible", "Connect our WhatsApp Cloud API to HubSpot", "Use our account manager"):
+                 "Budget is flexible", "Connect our WhatsApp Cloud API to HubSpot", "Use our account manager",
+                 "We are a charity that coordinates volunteers and need an n8n workflow for their shifts, $400",
+                 "Show the results to the team weekly. Paid hourly."):
         _check(f"not a red flag: {text!r}", gigs.red_flag(text) == "", gigs.red_flag(text))
     for text in ("This is unpaid but great exposure", "Free pilot to start", "Contact me on Telegram",
                  "There is no active project yet", "Send a deposit for the starter kit",
                  "We will send you a check to deposit", "We rent your Upwork account", "Paid in crypto only",
                  "Commission-only role", "Please send your passport",
                  "Join our founding vendor cohort. Earnings depend on actual sales.",
-                 "Potential long-term partnership with revenue sharing"):
+                 "Potential long-term partnership with revenue sharing",
+                 "Volunteer AI ambassadors and advisers wanted (AI agents and operators), paid on results",
+                 "Results-based pay for each kettle sold", "Volunteers wanted to test our bot"):
         _check(f"red flag: {text!r}", gigs.red_flag(text) != "", text)
     _check("a revenue share on top of stated pay is not a red flag",
            gigs.red_flag("Part-time ongoing, $35/hr guaranteed + revenue share") == "")

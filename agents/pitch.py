@@ -61,10 +61,13 @@ Style:
 
 # A claim about the person, in the model's own words. The approved line is the only one allowed.
 _CLAIM_RE = re.compile(
-    r"\b(?:I've|I have|I had|I was|I am an?|I'm an?|years of|expert|expertise|proven|track record"
-    r"|specialist|speciali[sz]e|seasoned|my (?:experience|background|clients|portfolio|past|previous)"
+    r"\b(?:I've|I have|I had|I was|I am an?|I'm an?|my (?:experience|background|clients|portfolio|past|previous)"
     r"|I (?:built|made|created|delivered|developed|worked|did|helped|automated|designed|ran|shipped))\b",
     re.IGNORECASE)
+# These describe whoever does the work, so they are a claim unless the post asks for one: rehearsed on
+# live posts 2026-11-07, "You need a HubSpot specialist" was refused twice.
+_ROLE_RE = re.compile(r"\b(?:years of|experienced|expert|expertise|proven|track record|specialist|speciali[sz]e"
+                      r"|seasoned)\b", re.IGNORECASE)
 _FIGURE_RE = re.compile(r"[$€£]\s?\d[\d,.]*\s*[kKmM]?|\b\d+(?:[.,]\d+)?\s*(?:%|percent|hours?|hrs?|days?|weeks?"
                         r"|months?|minutes?|mins?)\b", re.IGNORECASE)
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
@@ -149,10 +152,11 @@ def problems(slots: dict, post: str, count: int) -> list[str]:
         found.append("QUESTION must be one question ending with a question mark")
     written = [slots["need"], *slots["steps"], slots["question"]]
     text = " ".join(written)
-    claims = sorted({m.group(0) for m in _CLAIM_RE.finditer(text)})
+    plain_post = re.sub(r"\s+", " ", post).lower()
+    claims = sorted({m.group(0) for m in _CLAIM_RE.finditer(text)}
+                    | {m.group(0) for m in _ROLE_RE.finditer(text) if m.group(0).lower() not in plain_post})
     if claims:
         found.append(f"it describes the person ({', '.join(claims)}): leave that to the numbered statement")
-    plain_post = re.sub(r"\s+", " ", post).lower()
     invented = sorted({m.group(0).strip() for m in _FIGURE_RE.finditer(text)
                        if re.sub(r"\s+", " ", m.group(0).strip()).lower() not in plain_post})
     if invented:

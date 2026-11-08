@@ -105,6 +105,17 @@ def test_the_model_never_describes_the_user() -> None:
     reply = _run(pitch, "pitch 1", ask)
     _check("refused twice, nothing is drafted", reply.startswith("I could not draft a pitch for 1") and "dozens" not in reply,
            reply)
+    # Rehearsed on live posts 2026-11-07: "You need a HubSpot specialist" was refused twice.
+    asked = dict(GIG, body=GIG["body"] + " We want a kettle automation specialist.")
+    pitch = _fresh(gigs=(asked,))
+    ask = _Ask(GOOD.replace("NEED: You need a message", "NEED: You need a kettle automation specialist for a message"))
+    reply = _run(pitch, "pitch 1", ask)
+    _check("a word the post itself uses for who it wants is not a claim", len(ask.prompts) == 1
+           and "specialist" in reply, reply)
+    pitch = _fresh()
+    ask = _Ask(GOOD.replace("STEP: Schedule", "STEP: As a seasoned expert, schedule"), GOOD)
+    _run(pitch, "pitch 1", ask)
+    _check("but one the post does not use is", len(ask.prompts) == 2 and "seasoned" in ask.prompts[1], ask.prompts[-1])
 
 
 def test_no_figures_the_post_does_not_give() -> None:

@@ -98,6 +98,11 @@ _RED_FLAGS = (
     ("a marketplace recruiting sellers, not a paid job",
      r"\bearnings depend on\b|\bcannot guarantee (customers|income|sales|earnings)\b|\bvendor (opportunity|cohort)\b"),
     ("equity or commission only", r"\b(equity|commission|revenue[- ]share)[- ]only\b|\bonly (equity|commission)\b"),
+    # 2026-11-07, rehearsing pitches: "Volunteer AI ambassadors and advisers wanted ..., paid on results"
+    # passed every check in code.
+    ("pay only on results, or volunteer work",
+     r"\bpaid (only )?(on|by|per) (results?|referrals?|conversions?)\b|\bresults?[- ]based (pay|payment|compensation)\b"
+     r"|\bvolunteer (role|position|basis|ambassadors?|advis[eo]rs?)\b|\bvolunteers? wanted\b"),
     ("asks the freelancer for money", r"\b(registration|application|training|onboarding|starter[- ]kit) fee\b"
                                       r"|\bupfront fee\b|\bpay to (apply|join|start)\b|\b(pay|send) (a|the) deposit\b"),
     ("asks for ID or bank details", r"\b(copy of your|send (me |us )?your) (id|passport|driver'?s licen[cs]e)\b"
