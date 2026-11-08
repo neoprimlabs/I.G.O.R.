@@ -705,6 +705,9 @@ class Orchestrator:
             return "SecondOpinion"
         if _proposal_decisions(content):
             return "ProposalDecision"
+        from agents import pitch
+        if pitch.parse(content):
+            return "Pitch"
         if _asks_for_proposals(content):
             return "ProposalList"
         if commands.saves_skill(content):
@@ -866,6 +869,12 @@ class Orchestrator:
                              for pid, approve in _proposal_decisions(content))
             # "show me proposals again and reject p3" (2026-10-27) got the rejection only.
             return f"{done}\n\n{proposals.brief_listing()}" if _asks_for_proposals(content) else done
+
+        if destination == "Pitch":
+            # Written by code from a model's four parts and the user's own approved lines, and sent
+            # by the user, never IGOR (agents/pitch.py).
+            from agents import pitch
+            return await pitch.command(content)
 
         if destination == "ProposalList":
             import proposals

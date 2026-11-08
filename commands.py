@@ -34,7 +34,8 @@ HELP = ("These take no model call. stop ends what I am working on. retry runs yo
         "side. second opinion, with a question, also asks my other models: that one spends tokens. board lists "
         "the task board; board add, with a task, puts work on it for a background worker, and show, comment, block, "
         "unblock, done, archive and link, with a task's id, change it. plugins lists plugins; enable plugin or "
-        "disable plugin, with a name, changes one.")
+        "disable plugin, with a name, changes one. pitch 1 drafts a pitch for the first gig in the latest gig "
+        "message, for you to send yourself, and sent 1 marks it sent.")
 
 
 # Hermes' /steer and /btw. A bare word first, so "steering wheel" and "btwn" stay ordinary.

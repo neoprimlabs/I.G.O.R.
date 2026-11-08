@@ -125,8 +125,8 @@ A Discord DM travels this path every time:
    a user message, or gets its own turn if too late (Hermes' /steer); `btw <question>` while
    one runs is answered by Direct on 20b (Hermes' /btw). Outside text can use neither.
 3. **File-mode sniff** - a `file:` prefix sets `file_mode` and is stripped. A
-   `file:` request skips the router and goes to React. Run-together clock times are
-   spelled out in code (`100am` -> `1:00am`, `_spell_out_times`).
+   `file:` request skips the router and goes to React. Run-together times are
+   spelled out (`100am` -> `1:00am`).
 4. **`orchestrator._classify`** - fast paths first, no model call:
 
    ```
@@ -137,6 +137,7 @@ A Discord DM travels this path every time:
    regex       "send that as a PDF"     -> FileExport (code, no model)
    regex       "second opinion on ..."  -> SecondOpinion (see Second opinion)
    regex       proposal decision / list -> ProposalDecision / ProposalList (code)
+   regex       pitch N / sent N         -> Pitch (code, one 120b call)
    regex       "save that as a skill"   -> SkillSave (code, one 20b call)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
@@ -144,15 +145,14 @@ A Discord DM travels this path every time:
    regex       found jobs / watch finds -> React / Watches (watch_history required)
    ```
 
-   `_SCHEDULING` matches request shapes ("message me at", "every weekday", "make
-   it 11:30"), never digest or watch changes; `_REMEMBERING` matches "remember
-   that" and a correction right after one. Each requires its tool (`tool_choice`)
+   `_SCHEDULING` matches request shapes, never digest or watch changes; `_REMEMBERING`
+   matches "remember that" and a correction right after one. Each requires its tool (`tool_choice`)
    on the first call, released if refused twice.
 
    Anything else goes to **one router call**: `MODELS["router"]`
    (`qwen/qwen3.8-27b`), `temperature=0`, `max_tokens=10`, `reasoning_effort`
    `none`, 15s timeout, on a bucket it has to itself. It returns one word, mapped
-   by `_VERDICT_MAP`. Without that effort setting the 10 tokens go on hidden reasoning.
+   by `_VERDICT_MAP`.
 
    Any failure - unparseable output, exception, timeout - falls through to React.
    The verdict is logged as `Router: <verdict> -> <destination>`.
@@ -193,11 +193,9 @@ It also owns `llm.model_params`, the per-model parameters that fail as a 200 OK 
 `reasoning_format` `hidden` for qwen, `reasoning_effort` `low` for both gpt-oss
 models. An explicit caller value still wins, so ResearchLoop keeps the `low` it
 measured. gpt-oss accepts low/medium/high and rejects `none` with a 400; qwen
-accepts `none`. React relies on `model_params`. `reasoning_format` has no
-openai-client parameter, so it goes in `extra_body`; as a keyword it raises TypeError.
+accepts `none`. React relies on `model_params`; `reasoning_format` goes in `extra_body`.
 
-React's main loop stays out (its `finish_reason` handling is tied to tool dispatch), as do
-its forced final answer (doubling could pass the bucket) and the router (one word, fails fast).
+React's main loop and forced final answer stay out (each handles `length` itself), as does the router.
 
 Exceptions propagate. On a rate limit the orchestrator notifies and sleeps, or on the daily cap
 answers at once with Groq's wait (`_rate_limit_reply`); the evaluator fails open, Monitor drops the
@@ -344,7 +342,9 @@ live, pay only as each posting states it; a user's job request forces that searc
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a 120b screen, blocking the poster; a post under 25 words
-drops; a failed screen holds the gigs; picks go out in the post's own words.
+drops; a failed screen holds the gigs; picks go out in the post's own words. `pitch N` (`agents/pitch.py`):
+120b fills need, steps, a question and an approved line's number (`private/pitch_facts.md`); code builds and
+checks it, refusing claims, figures and links the post lacks; the user sends it.
 
 ### ConfigEdit
 

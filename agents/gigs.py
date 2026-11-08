@@ -690,6 +690,8 @@ async def run(send, now: Optional[datetime] = None, fetchers=None, topic_fetch=N
         # Remember only once the picks reached the user, or a failed send loses them.
         watchers.remember(_SEEN, [g["url"] for g, _ in picks + skips], now=now, days=_SEEN_DAYS)
         record_found(picks, skips, status, now)
+        from agents import pitch
+        pitch.remember([g for g, _ in picks[:_MAX_REPORTED]], now)
         import history
         history.record("gigs", [(g.get("title", ""), "posted", g.get("source", ""), g.get("url", ""))
                                 for g, _ in picks], now)

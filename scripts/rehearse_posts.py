@@ -11,8 +11,11 @@ Nothing is sent and the real memory is not touched.
 On the server, as igor:
     cd /opt/igor && venv/bin/python scripts/rehearse_posts.py checkin [--dry-run]
     cd /opt/igor && venv/bin/python scripts/rehearse_posts.py series <id> [YYYY-MM-DD] [--dry-run]
+    cd /opt/igor && venv/bin/python scripts/rehearse_posts.py pitch [facts file] [count] [--dry-run]
 A series run is dated its next due day unless a date is given, which picks the subject an IGOR series
-rotates to. --dry-run shows what the run would be given and stops before any model call.
+rotates to. A pitch run drafts for up to count (default 6) live hiring posts that pass the gig watch's
+checks in code, seen or not, with the approved lines or the given facts file: about 3000 of 120b each.
+--dry-run shows what the run would be given and stops before any model call.
 """
 import asyncio
 import json
@@ -84,6 +87,60 @@ def _series(entry_id: str, day: str, dry: bool) -> None:
     print(f"\nwritten, {len(text.split())} words:\n\n{text}")
 
 
+def _live_gigs(count: int) -> list[dict]:
+    """Live hiring posts that pass every check in code, seen before or not, read-only."""
+    from agents import gigs
+    extra_red, excluded, _ = gigs._criteria()
+    now = datetime.now(timezone.utc)
+    out, opened = [], 0
+    for name, fetch in gigs._live_fetchers():
+        try:
+            posts = fetch()
+        except Exception as e:
+            print(f"({name} unavailable: {type(e).__name__})")
+            continue
+        for gig in posts:
+            if len(out) >= count or not gig.get("title") or not gigs._is_hiring(gig) or not gigs._recent(gig, now):
+                continue
+            if gig.get("body") is None:
+                if opened >= 15:
+                    continue
+                opened += 1
+                try:
+                    gig["author"], gig["body"] = gigs._fetch_n8n_topic(gig["topic_id"])
+                except Exception:
+                    continue
+            text = f"{gig['title']} {gig.get('body') or ''}"
+            if (gigs.red_flag(text, tuple(extra_red)) or any(t in text.lower() for t in excluded)
+                    or not gigs._TOPIC.search(text) or gigs._body_words(gig) < gigs._MIN_BODY_WORDS):
+                continue
+            out.append(gig)
+    return out
+
+
+def _pitch(real: Path, facts_file: str, count: int, dry: bool) -> None:
+    import config
+    from agents import gigs, pitch
+    source = Path(facts_file) if facts_file else real / "private" / "pitch_facts.md"
+    (config.MEMORY_DIR / "private").mkdir(exist_ok=True)
+    try:
+        shutil.copy2(source, config.MEMORY_DIR / "private" / "pitch_facts.md")
+    except OSError:
+        sys.exit(f"no facts file at {source}")
+    lines = pitch.facts()
+    print("approved lines:")
+    for i, line in enumerate(lines, 1):
+        print(f"  {i}. {line}")
+    found = _live_gigs(count)
+    print(f"\n{len(found)} live posts pass the checks in code")
+    for n, gig in enumerate(found, 1):
+        print(f"\n=== {n}. {gig['title']} ({gig.get('source')}, {gigs._body_words(gig)} words)\n{gig.get('url')}")
+        if dry:
+            continue
+        text, why = asyncio.run(pitch.draft(gig, lines))
+        print(f"\n{text}" if text else f"\nnot drafted: {why}")
+
+
 def main(argv: list[str]) -> None:
     sys.path.insert(0, str(SOURCE))
     sys.path.insert(0, str(SOURCE / "scripts"))
@@ -92,7 +149,7 @@ def main(argv: list[str]) -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
     args = [a for a in argv if not a.startswith("--")]
     dry = "--dry-run" in argv
-    if not args or args[0] not in ("checkin", "series") or (args[0] == "series" and len(args) < 2):
+    if not args or args[0] not in ("checkin", "series", "pitch") or (args[0] == "series" and len(args) < 2):
         sys.exit(__doc__)
     import config
     import context_store
@@ -109,6 +166,11 @@ def main(argv: list[str]) -> None:
         try:
             if args[0] == "checkin":
                 _checkin(dry)
+            elif args[0] == "pitch":
+                rest = args[1:]
+                count = next((int(a) for a in rest if a.isdigit()), 6)
+                facts_file = next((a for a in rest if not a.isdigit()), "")
+                _pitch(real, facts_file, count, dry)
             else:
                 _series(args[1], args[2] if len(args) > 2 else "", dry)
         finally:
