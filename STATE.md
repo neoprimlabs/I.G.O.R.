@@ -291,6 +291,16 @@ similar-product ideas, where the real 11-07 paper said "document pricing".
 the roles. The code is in git at f9b57f7 and fc4e7da if they ask for help later. Rehearsed before removal on 12 live
 posts, 15240 tokens. Kept from it: pay only on results and volunteer roles are gig red flags (1 of 69 live posts).
 No pitch file was ever written on the server.
+**11-08: a "y" to a proposal, and Hermes' tool source.** The user answered the code listing of p12 with "y"; it went
+CHAT to Direct, which said "Approved. The proposal has been accepted." and nothing was (3e502c7: a bare yes or no to a
+listing of one proposal now decides it in code; with several it asks which). p12 was then approved through
+`proposals.decide` on the user's word (backup `user.md.bak-20261108-p12`). Hermes has no release since v0.23; its
+unreleased work is its desktop app, web app and plugin catalog. Compared against its `tools/` source rather than its
+documentation (5eb704f): `clarify` (`clarify.py`, waits 10 minutes, a number picks a choice), tool results over 4000
+kept for the turn as `result:N`, and write_file's stale-overwrite guard. Hermes' argument coercion was not built: Groq
+validates arguments against the schema first, and the journal holds 2 such refusals. Live in the throwaway copy, 10530
+tokens: an ordinary two-step request called no clarify, the first call was 4591 tokens in, and the second step waited
+11s (25-50s before 111cec9). Not yet seen: clarify with a real question, a kept result read on, a refused overwrite.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
