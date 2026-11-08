@@ -73,6 +73,70 @@ def record(model: str, response, label: str = "", now: Optional[datetime] = None
                     f" in {ms} ms" if ms is not None else "")
     except Exception as e:
         logger.warning("Token ledger not updated - %s: %s", type(e).__name__, e)
+        return
+    _count(key, total, now)
+
+
+# The dashboard's agents: calls and tokens per label by the user's day, and each label's newest call.
+_DAYS_SHOWN = 7
+_DAYS_KEPT = 8
+
+
+def _activity_path():
+    return config.MEMORY_DIR / "agent_activity.json"
+
+
+def _activity() -> dict:
+    try:
+        data = json.loads(_activity_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"days": {}, "last": {}}
+    if not isinstance(data, dict):
+        return {"days": {}, "last": {}}
+    days, last = data.get("days"), data.get("last")
+    return {"days": {d: v for d, v in days.items() if isinstance(v, dict)} if isinstance(days, dict) else {},
+            "last": last if isinstance(last, dict) else {}}
+
+
+def _count(label: str, total: int, now: datetime) -> None:
+    try:
+        import clock
+        data = _activity()
+        today = now.astimezone(clock.USER_TZ).date()
+        cutoff = (today - timedelta(days=_DAYS_KEPT - 1)).isoformat()
+        days = {d: v for d, v in data["days"].items() if d >= cutoff}
+        row = days.setdefault(today.isoformat(), {})
+        calls, tokens = (row.get(label) or [0, 0])[:2]
+        row[label] = [int(calls) + 1, int(tokens) + total]
+        data["last"][label] = now.astimezone(timezone.utc).isoformat(timespec="seconds")
+        path = _activity_path()
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps({"days": days, "last": data["last"]}, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception as e:
+        logger.warning("Agent activity not updated - %s: %s", type(e).__name__, e)
+
+
+def week(now: Optional[datetime] = None) -> dict:
+    """The last seven of the user's days, oldest first, and per label its calls and tokens on each and
+    its newest call: {"days": [...], "labels": {label: {"calls": [...], "tokens": [...], "last": iso}}}."""
+    import clock
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone(clock.USER_TZ).date()
+    days = [(today - timedelta(days=back)).isoformat() for back in range(_DAYS_SHOWN - 1, -1, -1)]
+    data = _activity()
+    labels: dict[str, dict] = {}
+    for i, day in enumerate(days):
+        for label, pair in data["days"].get(day, {}).items():
+            if not isinstance(pair, list) or len(pair) < 2:
+                continue
+            entry = labels.setdefault(label, {"calls": [0] * _DAYS_SHOWN, "tokens": [0] * _DAYS_SHOWN, "last": None})
+            entry["calls"][i] += int(pair[0])
+            entry["tokens"][i] += int(pair[1])
+    for label, when in data["last"].items():
+        if isinstance(when, str):
+            labels.setdefault(label, {"calls": [0] * _DAYS_SHOWN, "tokens": [0] * _DAYS_SHOWN, "last": None})["last"] = when
+    return {"days": days, "labels": labels}
 
 
 def last_24h(now: Optional[datetime] = None) -> dict[str, dict[str, int]]:

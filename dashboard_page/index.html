@@ -2,56 +2,110 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>I.G.O.R. Console</title>
 <link rel="icon" href="/dashboard/npl.jpg">
 <link rel="stylesheet" href="/dashboard/app.css">
 </head>
 <body>
 <header class="top">
-  <div class="identity">
-    <div class="portrait" id="portrait"><img src="/dashboard/igor.jpg" alt="I.G.O.R." width="160" height="160"></div>
-    <div class="nameplate">
-      <p class="eyebrow">NeoPrimLabs<span class="sub"> <span>//</span> System console</span></p>
-      <h1>I<span>.</span>G<span>.</span>O<span>.</span>R<span>.</span></h1>
-      <p id="summary" class="status">Establishing link</p>
-    </div>
+  <div class="brand">
+    <span class="brand-mark" id="brand-mark"><img src="/dashboard/igor.jpg" alt="" width="44" height="44"></span>
+    <span class="brand-name"><span>I<b>.</b>G<b>.</b>O<b>.</b>R<b>.</b></span><small>NeoPrimLabs</small></span>
   </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button type="button" role="tab" id="tab-igor" data-view="igor" aria-controls="view-igor">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2"/></svg><span>I.G.O.R.</span></button>
+    <button type="button" role="tab" id="tab-agents" data-view="agents" aria-controls="view-agents">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><path d="M11 7.2 6.2 15.8M13 7.2l4.8 8.6M7.4 18h9.2"/></svg><span>Agents</span></button>
+    <button type="button" role="tab" id="tab-tasks" data-view="tasks" aria-controls="view-tasks">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5l2 2 3.5-4M4 13.5l2 2 3.5-4M12.5 6h7.5M12.5 13h7.5M12.5 19.5h7.5M4.5 19.5h4"/></svg><span>Tasks</span></button>
+    <button type="button" role="tab" id="tab-memory" data-view="memory" aria-controls="view-memory">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></svg><span>Memory</span><i class="badge" id="badge-memory" hidden></i></button>
+    <button type="button" role="tab" id="tab-system" data-view="system" aria-controls="view-system">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12h4l2.5-6 4 12 2.5-6h6"/></svg><span>System</span><i class="badge dot" id="badge-system" hidden></i></button>
+  </nav>
   <div class="clock"><span id="clock">--:--</span><span id="date"></span></div>
 </header>
 
 <div id="banner" class="banner" hidden></div>
 
-<section class="gauges" id="gauges" aria-label="Vital signs"></section>
-
 <main>
-  <section class="panel wide chat">
-    <h2><b>01</b> Talk to I.G.O.R.</h2>
-    <ul id="chatlog" class="chatlog" aria-live="polite"></ul>
-    <div id="working" class="working" hidden><span id="working-text">Working</span><i></i></div>
-    <form id="composer" class="composer">
-      <textarea id="say" rows="2" maxlength="4000" placeholder="Message I.G.O.R." aria-label="Message I.G.O.R."></textarea>
-      <button type="button" id="talk" class="talk" title="Press, speak, press again to send (Ctrl+B)">Talk</button>
-      <button type="submit" id="send">Send</button>
-      <button type="button" id="stop" class="stop" hidden>Stop</button>
-    </form>
-    <p id="chat-error" class="chat-error" hidden></p>
-    <div class="voicebar">
-      <button type="button" id="aloud" class="toggle" aria-pressed="false">Read replies aloud: off</button>
-      <label class="pick">Voice <select id="voice" aria-label="Voice for reading aloud"></select></label>
-      <button type="button" id="voice-test" class="toggle">Test</button>
+  <section class="view" id="view-igor" role="tabpanel" aria-labelledby="tab-igor">
+    <div class="hero">
+      <div class="halo" id="portrait"><img src="/dashboard/igor.jpg" alt="I.G.O.R." width="240" height="240"></div>
+      <p class="hero-state" id="summary">Establishing link</p>
+      <p class="hero-line" id="hero-line"></p>
     </div>
-    <p id="voice-note" class="voice-note" hidden></p>
+    <section class="card chat" aria-label="Chat">
+      <div class="card-head"><h2>Chat</h2><span class="head-note">Discord and here, one conversation</span></div>
+      <ul id="chatlog" class="chatlog" aria-live="polite"></ul>
+      <div id="working" class="working" hidden><span id="working-text">Working</span><i></i></div>
+      <form id="composer" class="composer">
+        <span class="prompt" aria-hidden="true">/</span>
+        <textarea id="say" rows="1" maxlength="4000" placeholder="Message I.G.O.R." aria-label="Message I.G.O.R."></textarea>
+        <button type="button" id="talk" class="talk" aria-label="Talk: press, speak, press again to send (Ctrl+B)" title="Press, speak, press again to send (Ctrl+B)">
+          <svg class="wave" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg><span id="talk-time" class="talk-time"></span></button>
+        <button type="submit" id="send" class="send" aria-label="Send">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg></button>
+        <button type="button" id="stop" class="stop" hidden>Stop</button>
+      </form>
+      <p id="chat-error" class="chat-error" hidden></p>
+      <div class="voicebar">
+        <button type="button" id="aloud" class="toggle" aria-pressed="false">Read aloud: off</button>
+        <label class="pick">Voice <select id="voice" aria-label="Voice for reading aloud"></select></label>
+        <button type="button" id="voice-test" class="toggle">Test</button>
+      </div>
+      <p id="voice-note" class="voice-note" hidden></p>
+    </section>
   </section>
-  <section class="panel"><h2><b>02</b> Vitals</h2><dl id="health"></dl></section>
-  <section class="panel"><h2><b>03</b> Scheduled messages</h2><ul id="scheduled"></ul><h2 class="next"><b>04</b> Task board</h2><ul id="board"></ul></section>
-  <section class="panel wide"><h2><b>05</b> Tokens, last 24 hours</h2><div id="tokens"></div></section>
-  <section class="panel"><h2><b>06</b> Coming up</h2><ul id="jobs"></ul><p id="often" class="also" hidden></p></section>
-  <section class="panel"><h2><b>07</b> Plugins</h2><ul id="plugins"></ul><ul id="background"></ul><h2 class="next"><b>08</b> Last errors</h2><ul id="errors" class="log"></ul></section>
+
+  <section class="view" id="view-agents" role="tabpanel" aria-labelledby="tab-agents" hidden>
+    <div class="view-head">
+      <h2 class="title">The agents<b>.</b></h2>
+      <p>Each part of I.G.O.R. with one job. Activity is calls to a model, counted by I.G.O.R. itself.</p>
+    </div>
+    <div class="stats" id="agent-stats"></div>
+    <div class="agents" id="agents"></div>
+    <section class="card busiest"><div class="card-head"><h2>Busiest this week</h2><span class="head-note">model calls</span></div><ul id="busiest" class="rank"></ul></section>
+  </section>
+
+  <section class="view" id="view-tasks" role="tabpanel" aria-labelledby="tab-tasks" hidden>
+    <div class="view-head"><h2 class="title">Tasks<b>.</b></h2><p>What is set to happen, and what the night produced.</p></div>
+    <div class="grid">
+      <section class="card"><div class="card-head"><h2>Scheduled messages</h2></div><ul id="scheduled"></ul></section>
+      <section class="card"><div class="card-head"><h2>Task board</h2></div><ul id="board"></ul></section>
+      <section class="card wide"><div class="card-head"><h2>Overnight</h2><span class="head-note" id="night-when"></span></div><div id="overnight"></div></section>
+      <section class="card wide"><div class="card-head"><h2>Coming up</h2></div><ul id="jobs" class="cols"></ul><p id="often" class="also" hidden></p></section>
+    </div>
+  </section>
+
+  <section class="view" id="view-memory" role="tabpanel" aria-labelledby="tab-memory" hidden>
+    <div class="view-head"><h2 class="title">Memory<b>.</b></h2><p>What I.G.O.R. keeps, and what waits for your yes.</p></div>
+    <div class="stats" id="memory-stats"></div>
+    <p id="memory-locked" class="locked" hidden></p>
+    <div class="grid">
+      <section class="card wide"><div class="card-head"><h2>Waiting for you</h2></div><ul id="proposals"></ul></section>
+      <section class="card"><div class="card-head"><h2>Newest notes</h2></div><ul id="recent"></ul></section>
+      <section class="card"><div class="card-head"><h2>Note files</h2></div><ul id="files" class="rank"></ul><h2 class="next">Skills learned</h2><ul id="skills"></ul></section>
+    </div>
+  </section>
+
+  <section class="view" id="view-system" role="tabpanel" aria-labelledby="tab-system" hidden>
+    <div class="view-head"><h2 class="title">System<b>.</b></h2><p>The host, the parts and the day's model budget.</p></div>
+    <div class="status-card" id="status-card"><div><span class="label">Status</span><b id="status-word">Checking</b></div><ul id="status-why"></ul></div>
+    <section class="gauges" id="gauges" aria-label="Vital signs"></section>
+    <div class="grid">
+      <section class="card"><div class="card-head"><h2>Parts</h2></div><dl id="health"></dl></section>
+      <section class="card"><div class="card-head"><h2>Last errors</h2></div><ul id="errors" class="log"></ul></section>
+      <section class="card wide"><div class="card-head"><h2>Tokens, last 24 hours</h2></div><div id="tokens"></div></section>
+      <section class="card"><div class="card-head"><h2>Plugins</h2></div><ul id="plugins"></ul><ul id="background"></ul></section>
+    </div>
+  </section>
 </main>
 
 <footer>
-  <img src="/dashboard/npl.jpg" alt="NeoPrimLabs" width="40" height="40">
+  <img src="/dashboard/npl.jpg" alt="NeoPrimLabs" width="32" height="32">
   <span>NeoPrimLabs <b>/</b> I.G.O.R. console</span>
   <span id="footer" class="stamp"></span>
 </footer>

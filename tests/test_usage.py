@@ -115,6 +115,31 @@ def test_ledger_never_breaks_a_reply() -> None:
     _check("no usage, no response, a corrupt file or a missing folder never raises", not raised)
 
 
+def test_a_week_per_agent() -> None:
+    """The dashboard's agent cards: calls and tokens per label on each of the user's last seven days."""
+    import usage
+
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    usage.record(BIG, _response(50), "Chat", now=NOW - timedelta(days=9))
+    usage.record(BIG, _response(900), "Chat", now=NOW - timedelta(days=2))
+    usage.record(BIG, _response(200), "Router", now=NOW - timedelta(minutes=5))
+    usage.record(BIG, _response(300), "Router", now=NOW)
+    usage.record(BIG, _response(0), "Chat", now=NOW)
+    week = usage.week(NOW)
+    _check("seven days, today last", len(week["days"]) == 7 and week["days"][-1] == "2026-10-16", str(week["days"]))
+    router = week["labels"].get("Router", {})
+    _check("two calls today, with their tokens", router.get("calls") == [0] * 6 + [2] and router["tokens"][-1] == 500, str(router))
+    _check("and when the newest was", router.get("last") == NOW.isoformat(timespec="seconds"), str(router.get("last")))
+    chat = week["labels"].get("Chat", {})
+    _check("a call two days back is on its day, and one with no usage is no call",
+           chat.get("calls") == [0, 0, 0, 0, 1, 0, 0] and chat["tokens"][4] == 900, str(chat))
+    stored = (config.MEMORY_DIR / "agent_activity.json").read_text(encoding="utf-8")
+    _check("a day past the eighth is pruned", "2026-10-07" not in stored and "2026-10-14" in stored, stored[:200])
+    (config.MEMORY_DIR / "agent_activity.json").write_text("{not json", encoding="utf-8")
+    usage.record(BIG, _response(10), "Router", now=NOW)
+    _check("a corrupt file starts again rather than failing", usage.week(NOW)["labels"]["Router"]["calls"][-1] == 1)
+
+
 def test_spelled_out_times() -> None:
     import orchestrator
 
@@ -148,6 +173,7 @@ if __name__ == "__main__":
     test_ledger()
     test_the_cap_refills()
     test_ledger_never_breaks_a_reply()
+    test_a_week_per_agent()
     print("\nrun-together times")
     test_spelled_out_times()
     if _failures:

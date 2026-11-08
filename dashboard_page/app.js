@@ -3,7 +3,7 @@
 "use strict";
 
 const REFRESH_MS = 15000;
-const MODEL_COLOURS = ["#6db33f", "#6fb6ff", "#c8c2b6", "#e8b04b"];
+const MODEL_COLOURS = ["#8be04e", "#6fb6ff", "#c8c2b6", "#b58cff"];
 const $ = (id) => document.getElementById(id);
 
 function el(tag, text, cls) {
@@ -26,6 +26,10 @@ function twoLine(main, meta) {
   const item = el("li");
   item.append(el("span", main, "main"), el("span", meta.filter(Boolean).join("  ·  "), "meta"));
   return item;
+}
+
+function number(n) {
+  return Number(n || 0).toLocaleString();
 }
 
 // The usage ledger's labels, where the code's own word means nothing to the user.
@@ -52,24 +56,141 @@ function level(word) {
   return word === "ok" ? "ok" : word === "elevated" ? "warn" : "bad";
 }
 
-function gauge(label, percent, value, sub, state) {
+function stat(label, value, sub, cls) {
+  const tile = el("div", null, "stat");
+  tile.append(el("div", label, "label"), el("div", value, "value" + (cls ? " " + cls : "")));
+  if (sub) tile.append(el("div", sub, "sub"));
+  return tile;
+}
+
+// Sections. The tab is remembered on this browser; a bare #agents, #tasks and so on opens one directly.
+const VIEWS = ["igor", "agents", "tasks", "memory", "system"];
+const TAB_NAME = "igor-tab";
+let view = "igor";
+
+function show(name, focus) {
+  if (!VIEWS.includes(name)) name = "igor";
+  view = name;
+  for (const v of VIEWS) {
+    $("view-" + v).hidden = v !== name;
+    const tab = $("tab-" + v);
+    tab.setAttribute("aria-selected", String(v === name));
+    tab.tabIndex = v === name ? 0 : -1;
+  }
+  try { localStorage.setItem(TAB_NAME, name); } catch (e) { /* this visit only */ }
+  if (focus) $("tab-" + name).focus();
+  if (name === "igor" && chat.stuck) $("chatlog").scrollTop = $("chatlog").scrollHeight;
+  if (name === "tasks" || name === "memory") loadMemory();
+}
+
+for (const v of VIEWS) $("tab-" + v).addEventListener("click", () => show(v));
+document.querySelector(".tabs").addEventListener("keydown", (event) => {
+  const step = {ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1}[event.key];
+  if (!step) return;
+  event.preventDefault();
+  show(VIEWS[(VIEWS.indexOf(view) + step + VIEWS.length) % VIEWS.length], true);
+});
+
+// I.G.O.R.: the portrait, whether it is up, and a line of what matters now.
+const state = {status: null, working: false};
+
+function hero() {
+  const data = state.status;
+  const p = (data && data.process) || {};
+  const up = p.discord === "connected";
+  const summary = $("summary");
+  if (!data) return;
+  summary.classList.toggle("down", !up);
+  $("portrait").classList.toggle("down", !up);
+  $("portrait").classList.toggle("working", up && state.working);
+  $("brand-mark").classList.toggle("down", !up);
+  summary.textContent = !up ? "Not connected" : state.working ? "Working" : "Online";
+  const models = (data.tokens || {}).models || {};
+  const main = Object.values(models).find((m) => m.cap);
+  const parts = [up ? "Up " + minutes(p.up_seconds) : "Discord is not connected"];
+  if (main) parts.push(number(main.headroom) + " tokens free");
+  if (data.proposals) parts.push(data.proposals + (data.proposals === 1 ? " proposal waits" : " proposals wait") + " for you");
+  $("hero-line").textContent = parts.join("  ·  ");
+}
+
+// Agents: one card each, with its calls on each of the last seven days.
+const STATES = {ready: "On call", scheduled: "Scheduled", stopped: "Stopped", off: "Off"};
+
+function initials(name) {
+  const words = name.replace(/[^A-Za-z ]/g, " ").split(/\s+/).filter(Boolean);
+  return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase();
+}
+
+function agentCard(c, days) {
+  const today = c.calls[c.calls.length - 1] || 0;
+  const card = el("article", null, "card agent" + (today ? " lively" : ""));
+  const head = el("div", null, "agent-head");
+  const name = el("div", null, "agent-name");
+  name.append(el("h3", c.name), el("span", c.model, "model"));
+  head.append(el("div", initials(c.name), "mono"), name, el("span", STATES[c.state] || c.state, "state " + c.state));
+  card.append(head, el("p", c.role, "role"));
+  const most = Math.max(1, ...c.calls);
+  const spark = el("div", null, "spark");
+  spark.setAttribute("role", "img");
+  spark.setAttribute("aria-label", c.name + ", calls by day: " + c.calls.map((n, i) => days[i] + " " + n).join(", "));
+  c.calls.forEach((n, i) => {
+    const bar = el("span", null, n ? "" : "none");
+    bar.style.height = (n ? Math.max(6, Math.round((n / most) * 100)) : 4) + "%";
+    bar.title = days[i] + ": " + n + (n === 1 ? " call" : " calls");
+    spark.append(bar);
+  });
+  const labels = el("div", null, "days");
+  days.forEach((d, i) => labels.append(el("span", i === days.length - 1 ? "Today" : d)));
+  const facts = el("div", null, "agent-facts");
+  const calls = el("span");
+  calls.append(el("b", number(c.week_calls)), c.week_calls === 1 ? " call this week" : " calls this week");
+  const tokens = el("span");
+  tokens.append(el("b", number(c.week_tokens)), " tokens");
+  facts.append(calls, tokens);
+  const when = [c.last ? "Last ran " + c.last : "Not run lately"];
+  if (c.state !== "ready") when.push(c.upcoming);
+  card.append(spark, labels, facts, el("p", when.join("  ·  "), "when"));
+  return card;
+}
+
+function agents(data) {
+  const box = $("agents");
+  const a = data.agents;
+  box.replaceChildren();
+  $("agent-stats").replaceChildren();
+  if (!a || !Array.isArray(a.cards)) { box.append(el("p", "The agents could not be read.", "bad")); return; }
+  for (const c of a.cards) box.append(agentCard(c, a.days));
+  const calls = a.cards.reduce((sum, c) => sum + c.week_calls, 0);
+  const tokens = a.cards.reduce((sum, c) => sum + c.week_tokens, 0);
+  const today = a.cards.filter((c) => c.calls[c.calls.length - 1] > 0).length;
+  $("agent-stats").append(stat("Agents", a.cards.length, "parts with one job each"), stat("Calls this week", number(calls), "to a model"),
+                          stat("Tokens this week", number(tokens), "all models"), stat("Active today", today, "of " + a.cards.length));
+  const ranked = a.cards.filter((c) => c.week_calls > 0).sort((x, y) => y.week_calls - x.week_calls);
+  const most = Math.max(1, ...ranked.map((c) => c.week_calls));
+  fill("busiest", ranked, "No calls counted this week.", (c) => rankRow(c.name, c.week_calls, most, number(c.week_tokens) + " tokens"));
+}
+
+function rankRow(name, n, most, small) {
+  const item = el("li");
+  const who = el("span", name, "who");
+  if (small) who.append(el("small", small));
+  const bar = el("span", null, "bar");
+  const fillBar = el("i");
+  fillBar.style.width = Math.max(1, Math.round((n / most) * 100)) + "%";
+  bar.append(fillBar);
+  item.title = name + ": " + number(n);
+  item.append(who, bar, el("span", number(n), "n"));
+  return item;
+}
+
+// System: one word for the whole, then the parts.
+function gauge(label, percent, value, sub, cls) {
   const tile = el("div", null, "gauge");
-  const ring = el("div", null, "ring" + (state && state !== "ok" ? " " + state : ""));
+  const ring = el("div", null, "ring" + (cls && cls !== "ok" ? " " + cls : ""));
   ring.style.setProperty("--p", Math.max(0, Math.min(100, Math.round(percent))));
   ring.append(el("b", Math.round(percent) + "%"));
   const words = el("div");
   words.append(el("div", label, "label"), el("div", value, "value"), el("div", sub, "sub"));
-  tile.append(ring, words);
-  return tile;
-}
-
-function counter(label, value, sub, state) {
-  const tile = el("div", null, "gauge");
-  const ring = el("div", null, "ring" + (state ? " " + state : ""));
-  ring.style.setProperty("--p", 100);
-  ring.append(el("b", value));
-  const words = el("div");
-  words.append(el("div", label, "label"), el("div", sub, "sub"));
   tile.append(ring, words);
   return tile;
 }
@@ -81,44 +202,60 @@ function gauges(data) {
   if (r.memory_total_mb) {
     const swap = r.swap_used_mb ? ", " + r.swap_used_mb + " MB in swap" : "";
     box.append(gauge("Memory free", 100 * r.memory_available_mb / r.memory_total_mb, r.memory_available_mb + " MB",
-                     "of " + r.memory_total_mb + " MB" + swap, r.memory === "ok" ? "ok" : r.memory === "elevated" ? "warn" : "bad"));
+                     "of " + r.memory_total_mb + " MB" + swap, level(r.memory)));
   }
   if (r.disk_total_mb) {
     box.append(gauge("Disk free", 100 * r.disk_free_mb / r.disk_total_mb, (r.disk_free_mb / 1024).toFixed(1) + " GB",
-                     "of " + (r.disk_total_mb / 1024).toFixed(0) + " GB", r.disk === "ok" ? "ok" : r.disk === "elevated" ? "warn" : "bad"));
+                     "of " + (r.disk_total_mb / 1024).toFixed(0) + " GB", level(r.disk)));
   }
-  const main = Object.entries(models).find(([, m]) => m.cap);
+  const main = Object.values(models).find((m) => m.cap);
   if (main) {
-    const [, m] = main;
-    const share = 100 * m.headroom / m.cap;
-    box.append(gauge("Model budget", share, m.headroom.toLocaleString(), "tokens free now", share < 20 ? "bad" : share < 40 ? "warn" : "ok"));
+    const share = 100 * main.headroom / main.cap;
+    box.append(gauge("Model budget", share, number(main.headroom), "tokens free now", share < 20 ? "bad" : share < 40 ? "warn" : "ok"));
   }
-  if (typeof data.proposals === "number") {
-    box.append(counter("Proposals", data.proposals, data.proposals ? "waiting for you" : "none waiting", data.proposals ? "warn" : ""));
+}
+
+const PART_NAMES = {commit: "the last update", process: "the process", resources: "memory and disk", tokens: "tokens",
+                    scheduled: "scheduled messages", jobs: "the scheduler", board: "the board", plugins: "plugins",
+                    background: "background commands", proposals: "proposals", engines: "the engines", errors: "the log", agents: "the agents"};
+
+function systemStatus(data) {
+  const p = data.process || {}, r = data.resources || {}, e = data.engines || {};
+  const why = [];
+  if (p.discord !== "connected") why.push(["bad", "Discord is not connected."]);
+  if (r.memory && r.memory !== "ok") why.push([level(r.memory), r.memory === "critical" ? "Almost out of memory: it may restart." : "Memory is low."]);
+  if (r.disk && r.disk !== "ok") why.push([level(r.disk), r.disk === "critical" ? "The disk is almost full." : "Disk space is low."]);
+  if (Array.isArray(data.jobs) && !data.jobs.length) why.push(["bad", "The scheduler is not running."]);
+  if (e.sandbox === false) why.push(["bad", "The code sandbox is missing."]);
+  const main = Object.values((data.tokens || {}).models || {}).find((m) => m.cap);
+  if (main && main.headroom < main.cap * 0.2) why.push(["warn", "Under a fifth of the day's model budget is free."]);
+  for (const [part, value] of Object.entries(data)) {
+    if (value && value.unreadable) why.push(["warn", "Could not read " + (PART_NAMES[part] || part) + "."]);
   }
+  $("status-card").classList.toggle("attention", why.length > 0);
+  $("status-word").textContent = why.length ? "Attention" : "Optimal";
+  const rows = why.length ? why : [["ok", "Every part is running."]];
+  fill("status-why", rows.concat([["muted", "Running for " + minutes(p.up_seconds) + "."]]), "", ([cls, text]) => el("li", text, cls));
+  $("badge-system").hidden = !why.length;
+  const banner = $("banner");
+  const worst = why.find(([cls, text]) => cls === "bad" && /memory|disk/i.test(text));
+  banner.hidden = !worst;
+  banner.textContent = worst ? worst[1] : "";
 }
 
 function health(data) {
   const dl = $("health");
   dl.replaceChildren();
   const add = (name, value, cls) => { dl.append(el("dt", name)); dl.append(el("dd", value, cls)); };
-  const p = data.process || {}, r = data.resources || {}, c = data.commit || {}, e = data.engines || {};
-  const up = p.discord === "connected";
-  add("Discord", p.discord || "unknown", up ? "ok" : "bad");
+  const p = data.process || {}, c = data.commit || {}, e = data.engines || {};
+  add("Discord", p.discord || "unknown", p.discord === "connected" ? "ok" : "bad");
+  const running = Array.isArray(data.jobs) && data.jobs.length > 0;
+  add("Scheduler", running ? "running, " + data.jobs.length + " jobs" : "not running", running ? "ok" : "bad");
   add("Running for", minutes(p.up_seconds));
   add("Last update", c.subject ? c.subject + (c.when_text ? ", " + c.when_text : "") : "unknown");
   add("Code sandbox", e.sandbox ? "ready" : "missing", e.sandbox ? "ok" : "bad");
   add("Video", e.ffmpeg ? "ready" : "waiting for ffmpeg", e.ffmpeg ? "ok" : "muted");
   add("Web browser", e.lightpanda ? e.browser || "ready" : "waiting for Lightpanda", e.lightpanda ? "ok" : "muted");
-  $("portrait").classList.toggle("down", !up);
-  const summary = $("summary");
-  summary.classList.toggle("down", !up);
-  summary.textContent = (up ? "Online" : "Not connected to Discord") + "  ·  up " + minutes(p.up_seconds);
-  const banner = $("banner");
-  const worst = [r.disk === "critical" && "The disk is almost full.", r.memory === "critical" && "IGOR is almost out of memory and may restart.",
-                 r.disk === "elevated" && "Disk space is low.", r.memory === "elevated" && "Memory is low."].find(Boolean);
-  banner.hidden = !worst;
-  banner.textContent = worst || "";
 }
 
 function tokens(data) {
@@ -127,9 +264,11 @@ function tokens(data) {
   const t = data.tokens || {};
   const models = Object.entries(t.models || {}).sort((a, b) => b[1].total - a[1].total);
   if (!models.length) { box.append(el("p", "Nothing spent in the last 24 hours.", "muted")); return; }
-  models.forEach(([name, m], index) => {
+  // Colour follows the model, by name, so a quiet hour never repaints the others.
+  const order = Object.keys(t.models || {}).sort();
+  models.forEach(([name, m]) => {
     const card = el("div", null, "model");
-    card.style.setProperty("--m", MODEL_COLOURS[index % MODEL_COLOURS.length]);
+    card.style.setProperty("--m", MODEL_COLOURS[order.indexOf(name) % MODEL_COLOURS.length]);
     const head = el("div", null, "model-head");
     const title = el("h3");
     title.append(el("i", name.includes("/") ? name.split("/")[1] : name));
@@ -137,10 +276,10 @@ function tokens(data) {
     card.append(head);
     // The daily cap is a bucket that refills by the second, so spent and free do not add up to the cap.
     const use = el("p", null, "use");
-    use.append(el("b", m.total.toLocaleString()), " used in 24 hours. ");
+    use.append(el("b", number(m.total)), " used in 24 hours. ");
     if (m.cap) {
-      use.append(el("b", m.headroom.toLocaleString(), m.headroom < m.cap * 0.2 ? "warn" : ""),
-                 " of " + m.cap.toLocaleString() + " free now, refilling about " + (Math.round(m.cap / 24 / 100) * 100).toLocaleString() + " an hour.");
+      use.append(el("b", number(m.headroom), m.headroom < m.cap * 0.2 ? "warn" : ""),
+                 " of " + number(m.cap) + " free now, refilling about " + number(Math.round(m.cap / 24 / 100) * 100) + " an hour.");
     } else {
       use.append("Its daily limit is not measured.");
     }
@@ -150,7 +289,7 @@ function tokens(data) {
     m.hourly.forEach((n, i) => {
       const bar = el("span");
       bar.style.height = Math.max(2, Math.round((n / most) * 100)) + "%";
-      bar.title = (t.hours[i] || "") + ", " + n.toLocaleString() + " tokens";
+      bar.title = (t.hours[i] || "") + ", " + number(n) + " tokens";
       bars.append(bar);
     });
     card.append(bars);
@@ -160,7 +299,7 @@ function tokens(data) {
     const chips = el("div", null, "chips");
     for (const [label, spent] of Object.entries(m.by_label).slice(0, 6)) {
       const chip = el("span", (LABELS[label] || label) + " ", "chip");
-      chip.append(el("b", spent.toLocaleString()));
+      chip.append(el("b", number(spent)));
       chips.append(chip);
     }
     card.append(chips);
@@ -169,6 +308,10 @@ function tokens(data) {
 }
 
 function render(data) {
+  state.status = data;
+  hero();
+  agents(data);
+  systemStatus(data);
   gauges(data);
   health(data);
   tokens(data);
@@ -183,7 +326,106 @@ function render(data) {
   fill("background", data.background, "");
   const place = (where) => PLACES[where] || (where ? where[0].toUpperCase() + where.slice(1) : "");
   fill("errors", data.errors, "No errors logged.", (e) => twoLine(e.what, [e.when, place(e.where), e.count > 1 ? e.count + " times" : ""]));
+  const waiting = typeof data.proposals === "number" ? data.proposals : 0;
+  $("badge-memory").hidden = !waiting;
+  $("badge-memory").textContent = waiting;
   $("footer").textContent = "Synced " + new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+}
+
+// Memory and the night's work: words from memory, so they need the chat's key.
+const KINDS = {research: "Research", self_improve: "Self-improvement"};
+const PROOF_ORDER = ["independent", "mixed", "similar product", "self-reported", "no income shown", "against", "unchecked"];
+let memoryBusy = false;
+
+function memoryLocked(text) {
+  for (const id of ["memory-locked"]) { $(id).hidden = !text; $(id).textContent = text || ""; }
+}
+
+async function loadMemory() {
+  if (!chat.key) {
+    memoryLocked("Memory opens from the IGOR Dashboard shortcut on your PC.");
+    $("overnight").replaceChildren(el("p", "The night's work opens from the IGOR Dashboard shortcut on your PC.", "muted"));
+    return;
+  }
+  if (memoryBusy) return;
+  memoryBusy = true;
+  try {
+    const response = await fetch("/dashboard/memory.json", {cache: "no-store", headers: {"X-IGOR-Key": chat.key}});
+    if (response.status === 401) { lockChat("The chat key has changed. Open the dashboard from the IGOR Dashboard shortcut again."); return; }
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    memoryLocked("");
+    memory(data);
+    overnight(data.overnight);
+  } catch (e) {
+    memoryLocked("Memory could not be read (" + e.message + "). Is the tunnel open?");
+  } finally {
+    memoryBusy = false;
+  }
+}
+
+function memory(data) {
+  const notes = data.notes || {}, skills = data.skills, proposals = data.proposals;
+  const waiting = Array.isArray(proposals) ? proposals.length : 0;
+  $("memory-stats").replaceChildren(
+    stat("Notes kept", notes.unreadable ? "?" : number(notes.total), "entries across the note files"),
+    stat("Note files", Array.isArray(notes.files) ? notes.files.length : "?", "user.md, tasks.md and the rest"),
+    stat("Skills learned", Array.isArray(skills) ? skills.length : "?", "procedures you approved"),
+    stat("Waiting for you", waiting, waiting ? "proposals to decide" : "nothing to decide", waiting ? "warn" : ""));
+  fill("proposals", proposals, "Nothing is waiting for you.", (p) => {
+    const item = el("li");
+    const main = el("span", null, "main");
+    main.append(el("span", p.id + "  " + p.kind, "tag"), p.problem);
+    item.append(main, el("span", ["Change: " + p.change, p.date].filter(Boolean).join("  ·  "), "meta"));
+    return item;
+  });
+  if (waiting) $("proposals").append(el("li", "Say approve " + proposals[0].id + " or reject " + proposals[0].id + " in Chat.", "muted"));
+  fill("recent", notes.recent, "No dated notes yet.", (n) => twoLine(n.text, [n.date, n.file]));
+  const files = Array.isArray(notes.files) ? notes.files : null;
+  const most = files ? Math.max(1, ...files.map((f) => f.entries)) : 1;
+  fill("files", files, "No note files.", (f) => rankRow(f.name, f.entries, most, "changed " + f.updated));
+  fill("skills", skills, "None learned yet.");
+}
+
+function overnight(o) {
+  const box = $("overnight");
+  box.replaceChildren();
+  $("night-when").textContent = o && o.night ? "Night of " + o.night : "";
+  if (!o || o.unreadable) { box.append(el("p", "The night's work could not be read.", "bad")); return; }
+  if (!o.steps.length) { box.append(el("p", "No overnight work recorded yet.", "muted")); return; }
+  const sum = el("div", null, "night-sum");
+  sum.append(stat("Steps", o.steps.length, "that night"));
+  if (o.budget) {
+    const meter = el("div", null, "meter");
+    const track = el("div", null, "track");
+    const used = el("i");
+    used.style.width = Math.min(100, Math.round((100 * o.tokens) / o.budget)) + "%";
+    track.append(used);
+    track.setAttribute("role", "img");
+    track.setAttribute("aria-label", number(o.tokens) + " of " + number(o.budget) + " tokens");
+    meter.append(track, el("p", number(o.tokens) + " of the night's " + number(o.budget) + " tokens"));
+    sum.append(meter);
+  }
+  box.append(sum);
+  const steps = el("ul");
+  for (const s of o.steps) {
+    const item = el("li");
+    const main = el("span", null, "main");
+    main.append(el("span", KINDS[s.kind] || s.kind.replace(/_/g, " "), "tag"), s.summary);
+    item.append(main, el("span", [s.at, s.title || s.goal, number(s.tokens) + " tokens"].filter(Boolean).join("  ·  "), "meta"));
+    steps.append(item);
+  }
+  box.append(steps);
+  for (const ledger of o.ledgers || []) {
+    const part = el("div", null, "ledger");
+    part.append(el("h3", ledger.ideas + " ideas checked for income" + (ledger.title ? ": " + ledger.title : "")));
+    const list = el("ul", null, "rank");
+    const counts = Object.entries(ledger.labels).sort((a, b) => PROOF_ORDER.indexOf(a[0]) - PROOF_ORDER.indexOf(b[0]));
+    const most = Math.max(1, ...counts.map(([, n]) => n));
+    for (const [name, n] of counts) list.append(rankRow(name[0].toUpperCase() + name.slice(1), n, most));
+    part.append(list);
+    box.append(part);
+  }
 }
 
 function tick() {
@@ -200,15 +442,18 @@ async function refresh() {
   } catch (e) {
     const summary = $("summary");
     summary.classList.add("down");
-    summary.textContent = "Link lost (" + e.message + "). Is the tunnel open?";
+    summary.textContent = "Link lost";
+    $("hero-line").textContent = "(" + e.message + ") Is the tunnel open?";
     $("portrait").classList.add("down");
+    $("brand-mark").classList.add("down");
   }
+  if (view === "tasks" || view === "memory") loadMemory();
 }
 
 // Chat: the conversation as the store holds it, Discord's turns included, plus notes for replies it does
 // not keep. The key arrives from the launcher after the #, which the browser never sends to a server.
 const KEY_NAME = "igor-chat-key";
-const chat = {key: "", after: -1, notes: 0, boot: "", pending: new Map(), timer: 0, since: 0, clock: 0};
+const chat = {key: "", after: -1, notes: 0, boot: "", pending: new Map(), timer: 0, since: 0, clock: 0, stuck: true};
 
 try { chat.key = localStorage.getItem(KEY_NAME) || ""; } catch (e) { /* storage refused: the # still works */ }
 const handed = /^#key=([A-Za-z0-9_-]{32,})$/.exec(location.hash);
@@ -249,9 +494,14 @@ function message(role, text, at, extra) {
   return item;
 }
 
+// Whether the newest message is in view. While the chat's section is hidden, it keeps what it was.
+function atEnd(log) {
+  return log.offsetParent === null ? chat.stuck : log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+}
+
 function append(node, force) {
   const log = $("chatlog");
-  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  const atBottom = atEnd(log);
   log.querySelector(".empty")?.remove();
   log.append(node);
   if (atBottom || force) log.scrollTop = log.scrollHeight;
@@ -288,6 +538,7 @@ function setWorking(on) {
   }
   if (!on) clearInterval(chat.clock);
   box.hidden = !on;
+  if (state.working !== on) { state.working = on; hero(); }
 }
 
 async function chatPoll() {
@@ -539,13 +790,18 @@ function sayInBrowser(line, run) {
   });
 }
 
-function talkLabel() {
+const TALK = "Talk: press, speak, press again to send (Ctrl+B)";
+
+function talkLabel(note) {
   const button = $("talk");
   if (voice.rec) {
     const s = Math.floor((Date.now() - voice.started) / 1000);
-    button.textContent = "Send voice " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    const time = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    $("talk-time").textContent = time;
+    button.setAttribute("aria-label", "Recording " + time + ". Press to send");
   } else {
-    button.textContent = "Talk";
+    $("talk-time").textContent = note || "";
+    button.setAttribute("aria-label", note || TALK);
   }
   button.classList.toggle("recording", Boolean(voice.rec));
 }
@@ -595,7 +851,7 @@ async function sendRecording(rec) {
   if (length < MIN_RECORD_MS || !blob.size) { chatError("That was too short. Press Talk, speak, then press it again."); return; }
   const button = $("talk");
   button.disabled = true;
-  button.textContent = "Hearing";
+  talkLabel("Hearing");
   try {
     const response = await fetch("/dashboard/voice", {method: "POST", cache: "no-store", body: blob,
                                                       headers: {"Content-Type": blob.type || "audio/webm", "X-IGOR-Key": chat.key}});
@@ -644,7 +900,7 @@ $("composer").addEventListener("submit", async (event) => {
   const text = box.value.trim();
   if (!text || !chat.key) return;
   $("send").disabled = true;
-  if (await say(text)) box.value = "";
+  if (await say(text)) { box.value = ""; grow(); }
   $("send").disabled = !chat.key;
   box.focus();
 });
@@ -655,6 +911,20 @@ $("say").addEventListener("keydown", (event) => {
   }
 });
 $("stop").addEventListener("click", () => say("stop"));
+// The box grows with what is typed, to two fifths of the window.
+function grow() {
+  const box = $("say");
+  box.style.height = "auto";
+  box.style.height = Math.min(box.scrollHeight + 2, Math.round(window.innerHeight * 0.4)) + "px";
+}
+$("say").addEventListener("input", grow);
+$("chatlog").addEventListener("scroll", () => { chat.stuck = atEnd($("chatlog")); });
+
+let opening = "igor";
+try { opening = localStorage.getItem(TAB_NAME) || "igor"; } catch (e) { /* the first section */ }
+const asked = /^#([a-z]+)$/.exec(location.hash);
+if (asked && VIEWS.includes(asked[1])) opening = asked[1];
+show(opening);
 
 tick();
 setInterval(tick, 1000);

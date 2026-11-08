@@ -380,11 +380,11 @@ in prerun's sandbox on `startup`, `pre_tool_call` (exit 2 or JSON blocks; anythi
 `orchestrator.process`. Each route in `memory/private/webhooks.json`, signed, rate-limited and deduplicated,
 sends its rendered prompt plainly or through a read-only run, 24 a day.
 
-**Dashboard** (`dashboard.py`, Hermes' web dashboard): status with no login on loopback, other Host names refused;
-chat through `orchestrator.process`, needing the key in `memory/private/dashboard.key`, which no tool or sandbox
-reads. The PC launcher fetches it over SSH. Voice (`voice.py`): Talk records in the browser, Whisper hears it and
-it goes in labelled `(voice note)`; replies are read in Orpheus in 200-character parts, or the browser's voice
-while Orpheus is refused (its terms, a 429). No addresses, code or markdown are read.
+**Dashboard** (`dashboard.py`, Hermes' web dashboard): tabs for chat, Agents (13 cards, a week of calls per
+ledger label in `memory/agent_activity.json`), Tasks, Memory and System. Status needs no login on loopback, other
+Hosts refused; chat, notes, proposals and the night's work need the key in `memory/private/dashboard.key`, which
+no tool or sandbox reads; the PC launcher fetches it over SSH. Voice (`voice.py`): Whisper hears Talk, labelled
+`(voice note)`; replies are read in Orpheus, or the browser's voice while Orpheus is refused.
 
 ### Plugins, the board and the browser
 

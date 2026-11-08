@@ -11,6 +11,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -349,6 +350,126 @@ def test_the_chat():
             http_server.set_targets(None, None)
 
     asyncio.run(go())
+
+
+def _calls(total):
+    return SimpleNamespace(usage=SimpleNamespace(total_tokens=total, prompt_tokens=0, completion_tokens=0))
+
+
+def test_the_agents():
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from agents import monitor
+    now = datetime.now(timezone.utc)
+    usage.record("qwen/qwen3.8-27b", _calls(30), "Router", now=now)
+    usage.record("openai/gpt-oss-20b", _calls(700), "Job ranking", now=now - timedelta(days=1))
+    usage.record("openai/gpt-oss-120b", _calls(9000), "Isolated run", now=now)
+    data = dashboard._agents()
+    cards = {c["key"]: c for c in data["cards"]}
+    _check("seven days, by name", len(data["days"]) == 7 and all(len(c["calls"]) == 7 for c in cards.values()), str(data["days"]))
+    _check("the router's call today", cards["router"]["calls"][-1] == 1 and cards["router"]["week_tokens"] == 30
+           and cards["router"]["last"].startswith("today"), str(cards["router"]))
+    _check("the job watch's yesterday", cards["jobs"]["calls"][-2] == 1 and cards["jobs"]["week_calls"] == 1, str(cards["jobs"]))
+    _check("a live test is no agent's", sum(c["week_tokens"] for c in cards.values()) == 730)
+    _check("an agent with no schedule is on call", cards["router"]["state"] == "ready" and cards["direct"]["state"] == "ready")
+    _check("check-ins are off until switched on", cards["presence"]["state"] == "off", str(cards["presence"]))
+    _check("with the scheduler stopped, a watch says so", cards["jobs"]["state"] == "stopped", str(cards["jobs"]))
+    _check("models by their short names", cards["router"]["model"] == "qwen3.8-27b" and cards["overnight"]["model"] == "gpt-oss-20b + gpt-oss-120b",
+           str((cards["router"]["model"], cards["overnight"]["model"])))
+
+    scheduler = BackgroundScheduler(timezone="UTC")
+    scheduler.add_job(lambda: None, "cron", hour=11, minute=30, id="job_watch")
+    held = monitor._scheduler
+    scheduler.start(paused=True)
+    monitor._scheduler = scheduler
+    try:
+        cards = {c["key"]: c for c in dashboard._agents()["cards"]}
+    finally:
+        monitor._scheduler = held
+        scheduler.shutdown(wait=False)
+    _check("a scheduled watch says when it runs next", cards["jobs"]["state"] == "scheduled" and cards["jobs"]["upcoming"].startswith("Next ")
+           and cards["jobs"]["upcoming"].endswith(":30 AM"), str(cards["jobs"]))
+    _check("one whose job is missing is not scheduled", cards["gigs"]["state"] == "stopped", str(cards["gigs"]))
+    _check("the status carries them", "cards" in dashboard.snapshot()["agents"])
+
+
+def test_every_label_the_code_records_has_an_agent():
+    """A call site with a new label would spend tokens no agent's card shows."""
+    import re
+    root = Path(dashboard.__file__).parent
+    found = {}
+    for path in [*root.glob("*.py"), *(root / "agents").glob("*.py"), *(root / "interfaces").glob("*.py")]:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        # A keyword argument or a parameter's default; a local variable called label is something else.
+        for m in re.finditer(r'\blabel(?:=|: str = )"([^"]+)"', text):
+            found.setdefault(m.group(1), path.name)
+        for m in re.finditer(r"usage\.record\(", text):
+            named = re.search(r'"([A-Z][A-Za-z ]+)"', text[m.end():m.end() + 300])
+            if named:
+                found.setdefault(named.group(1), path.name)
+    mapped = {label for agent in dashboard._AGENTS for label in agent["labels"]}
+    _check("the call sites were found", {"Router", "Chat", "React", "Voice", "Overnight", "Evaluator"} <= set(found), str(sorted(found)))
+    missing = {label: name for label, name in found.items() if label not in mapped}
+    _check("every label is on an agent's card", not missing, str(missing))
+    _check("each label on one card only", len(mapped) == sum(len(a["labels"]) for a in dashboard._AGENTS))
+
+
+def test_the_memory_tab():
+    import goals
+    import proposals
+    import work
+    held = config.MEMORY_DIR
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    try:
+        (config.MEMORY_DIR / "user.md").write_text("# User\n\n- Prefers tea to coffee (2026-11-01)\n- Owns a blue kettle (2026-11-05)\n"
+                                                   "- A line saved before dates\n", encoding="utf-8")
+        (config.MEMORY_DIR / "tasks.md").write_text("- Descale the kettle (2026-11-03)\n", encoding="utf-8")
+        pid = proposals.add("preference", "Replies about kettles run long", "Three replies over 300 words",
+                            "Keep kettle replies under 150 words", "The next kettle reply is short")
+        goals.add("Find a kettle supplier", "research")
+        gid = goals.load()[0]["id"]
+        work.log_session(gid, "research", "4 new findings, draft kept", 5000, 2, [], [])
+        folder = work.folder(gid)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "proof.json").write_text(json.dumps({"Kettle subscriptions": {"evidence": [], "read": True},
+                                                      "Kettle repair": {"evidence": []}}), encoding="utf-8")
+        view = dashboard._memory_view()
+        notes = view["notes"]
+        _check("entries counted per file", {f["name"]: f["entries"] for f in notes["files"]} == {"user.md": 3, "tasks.md": 1} and notes["total"] == 4,
+               str(notes["files"]))
+        _check("the newest dated notes first, without the bullet or the date",
+               [n["text"] for n in notes["recent"]] == ["Owns a blue kettle", "Descale the kettle", "Prefers tea to coffee"]
+               and notes["recent"][0]["date"] == "Nov 5" and notes["recent"][0]["file"] == "user.md", str(notes["recent"]))
+        _check("the proposal waiting", [p["id"] for p in view["proposals"]] == [pid] and view["proposals"][0]["problem"] == "Replies about kettles run long",
+               str(view["proposals"]))
+        night = view["overnight"]
+        _check("the night's step under its goal's words", len(night["steps"]) == 1 and night["steps"][0]["summary"] == "4 new findings, draft kept"
+               and night["steps"][0]["title"] == "Find a kettle supplier" and night["tokens"] == 5000 and night["budget"] == config.OVERNIGHT_TOKENS,
+               str(night))
+        _check("ideas checked, by label", night["ledgers"] and night["ledgers"][0]["ideas"] == 2
+               and night["ledgers"][0]["labels"] == {"no income shown": 1, "unchecked": 1}, str(night["ledgers"]))
+        _check("no skills yet is an empty list", view["skills"] == [], str(view["skills"]))
+
+        async def go():
+            from aiohttp import web, ClientSession
+            runner = web.AppRunner(http_server.app())
+            await runner.setup()
+            site = web.TCPSite(runner, "127.0.0.1", 0)
+            await site.start()
+            base = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+            try:
+                async with ClientSession() as s:
+                    async with s.get(f"{base}/dashboard/memory.json") as r:
+                        _check("no key, no memory", r.status == 401)
+                    async with s.get(f"{base}/dashboard/memory.json", headers={"X-IGOR-Key": dashboard.chat_key()}) as r:
+                        _check("the key opens it", r.status == 200 and "blue kettle" in await r.text())
+                    async with s.get(f"{base}/dashboard/status.json") as r:
+                        _check("and the status, which has no login, holds none of it", "kettle" not in (await r.text()).lower())
+            finally:
+                await runner.cleanup()
+
+        asyncio.run(go())
+    finally:
+        config.MEMORY_DIR = held
 
 
 def test_the_page_never_writes_html_from_data():

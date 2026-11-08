@@ -8,8 +8,9 @@ It changes nothing but the conversation. Hermes' pages also edit config, keys an
 in files no tool can reach, and a page that wrote them would be a new way in. What it shows is what
 `status` shows and more: the commit, Discord's heartbeat, memory and disk with Hermes' pressure levels,
 tokens by the hour with the headroom left, scheduled messages and jobs, the board, plugins, background
-commands, proposals waiting, the engines installed and the newest errors. No file contents and no keys:
-errors are redacted.
+commands, proposals waiting, the engines installed and the newest errors, and a card for each agent with its
+calls on each of the last seven days. No file contents and no keys: errors are redacted. Words from memory
+(notes, proposals, the night's work) are on the Memory and Tasks tabs, behind the chat's key.
 
 A process with the network on this host could read that, as with Hermes': here that is a plugin or a script
 the user placed. Lightpanda's private-network block keeps a web page in IGOR's browser out, and fetch_url
@@ -34,6 +35,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlsplit
 
 import config
@@ -189,13 +191,14 @@ def _every(interval: timedelta) -> str:
     return "every hour" if hours == 1 else f"every {hours} hours"
 
 
-def _jobs():
+def _next_runs() -> Optional[dict]:
+    """{job id: (next run, how often, whether more than hourly)}, or None while the scheduler is stopped."""
     import clock
     from agents import monitor
     scheduler = monitor._scheduler
     if scheduler is None or not scheduler.running:
-        return []
-    rows = []
+        return None
+    runs = {}
     for job in scheduler.get_jobs():
         if job.id.endswith("_startup") or job.next_run_time is None:
             continue
@@ -209,10 +212,92 @@ def _jobs():
             local = upcoming.astimezone(clock.USER_TZ)
             upcoming = (local + timedelta(days=1)).replace(hour=0) if local.hour >= _NIGHT_ENDS else local
             every = "nightly, midnight to 7 AM"
-        rows.append({"name": _JOB_NAMES.get(job.id, job.id.replace("_", " ").capitalize()), "when": _when(upcoming),
-                     "every": every, "frequent": interval is not None and interval < timedelta(hours=1),
-                     "at": upcoming.timestamp()})
+        runs[job.id] = (upcoming, every, interval is not None and interval < timedelta(hours=1))
+    return runs
+
+
+def _jobs():
+    runs = _next_runs()
+    if runs is None:
+        return []
+    rows = [{"name": _JOB_NAMES.get(job_id, job_id.replace("_", " ").capitalize()), "when": _when(upcoming),
+             "every": every, "frequent": frequent, "at": upcoming.timestamp()}
+            for job_id, (upcoming, every, frequent) in runs.items()]
     return sorted(rows, key=lambda r: r["at"])
+
+
+# IGOR's agents as the page shows them: the ledger labels each records its model calls under, the model it
+# runs on (a role in config.MODELS, or a model) and the scheduler jobs that wake it. A test checks that every
+# label the code records is here, so a new call site cannot go uncounted.
+_AGENTS = (
+    {"key": "router", "name": "Router", "model": "router", "labels": ("Router",),
+     "role": "Reads each message and hands it to the agent that should answer."},
+    {"key": "direct", "name": "Direct", "model": "chat", "labels": ("Chat", "SelfDescribe"),
+     "role": "Talks with you in one call, with no tools, and answers questions about I.G.O.R. itself."},
+    {"key": "react", "name": "React", "model": "react", "labels": ("React", "Worker", "FollowThrough", "Second opinion", "Board"),
+     "jobs": ("board",), "role": "Works tasks through with its tools: search, files, code and memory. Runs the task board."},
+    {"key": "jobs", "name": "Job watch", "model": "summary", "labels": ("Job ranking",), "jobs": ("job_watch",),
+     "role": "Searches for roles that fit your profile each morning and sends only new ones."},
+    {"key": "gigs", "name": "Gig watch", "model": "screening", "labels": ("Gig screening",), "jobs": ("gig_watch",),
+     "role": "Reads freelance posts each morning, screens out the poor ones and sends what fits."},
+    {"key": "overnight", "name": "Overnight", "model": (config.OVERNIGHT_MODEL, config.OVERNIGHT_WRITE_MODEL), "labels": ("Overnight", "Evaluator"),
+     "jobs": ("overnight",), "role": "Works your standing goals into sourced papers and proposals while you sleep."},
+    {"key": "monitor", "name": "Monitor", "model": "summary", "labels": ("AI news", "Unreal news", "Advocacy draft"),
+     "jobs": ("morning_digest", "advocacy_draft", "model_update_check"),
+     "role": "Writes the morning digest and its news, and the weekly advocacy draft."},
+    {"key": "presence", "name": "Check-ins", "model": "presence", "labels": ("Presence",), "jobs": ("presence",),
+     "role": "Decides once a day whether a check-in is worth sending, behind rules in code."},
+    {"key": "scheduled", "name": "Scheduled", "model": "react", "labels": ("Compose", "Scheduled"),
+     "jobs": ("scheduled_messages",), "role": "Writes and sends the messages you asked for at a time, once or repeating."},
+    {"key": "watchers", "name": "Watchers", "model": "summary", "labels": ("Price judge", "Heartbeat"),
+     "jobs": ("price_watch", "stock_watch", "page_heartbeat"),
+     "role": "Watches prices, restocks and pages, and speaks only when something changed."},
+    {"key": "inbound", "name": "Inbound", "model": ("vision", "summary"), "labels": ("Vision", "Document", "Voice"),
+     "role": "Reads what you send: voice notes, images, documents and videos. Speaks replies on the dashboard."},
+    {"key": "memory", "name": "Memory upkeep", "model": "summary", "labels": ("Compression", "Skills"), "jobs": ("memory",),
+     "role": "Folds older messages into a running summary, saves what is worth remembering and drafts skills."},
+    {"key": "research", "name": "Deep research", "model": "research", "labels": ("Research",),
+     "role": "Runs a fixed search and summary pipeline when a message starts with deep research."},
+)
+
+
+def _short_model(names) -> str:
+    names = (names,) if isinstance(names, str) else names
+    return " + ".join(config.MODELS.get(name, name).split("/", 1)[-1] for name in names)
+
+
+def _agents():
+    """One card per agent: what it does, its model, its calls on each of the last seven days and when it
+    last ran or runs next. Counts only, no words from memory: this page has no login."""
+    import usage
+    from agents import presence
+    week = usage.week()
+    runs = _next_runs()
+    cards = []
+    for agent in _AGENTS:
+        calls, tokens, last = [0] * len(week["days"]), 0, None
+        for label in agent["labels"]:
+            entry = week["labels"].get(label)
+            if entry is None:
+                continue
+            calls = [a + b for a, b in zip(calls, entry["calls"])]
+            tokens += sum(entry["tokens"])
+            if entry["last"] and (last is None or entry["last"] > last):
+                last = entry["last"]
+        jobs = agent.get("jobs", ())
+        if agent["key"] == "presence" and not presence.is_on():
+            state, upcoming = "off", "Off until presence_config.md says state: on"
+        elif jobs and runs is None:
+            state, upcoming = "stopped", "The scheduler is not running"
+        elif jobs:
+            times = [runs[j][0] for j in jobs if j in runs]
+            state, upcoming = ("scheduled", "Next " + _when(min(times))) if times else ("stopped", "Not scheduled")
+        else:
+            state, upcoming = "ready", "On call"
+        cards.append({"key": agent["key"], "name": agent["name"], "role": agent["role"],
+                      "model": _short_model(agent["model"]), "calls": calls, "week_calls": sum(calls), "week_tokens": tokens,
+                      "last": _when(datetime.fromisoformat(last)) if last else "", "state": state, "upcoming": upcoming})
+    return {"days": [datetime.fromisoformat(day).strftime("%a") for day in week["days"]], "cards": cards}
 
 
 def _lines(text: str) -> list[str]:
@@ -245,6 +330,89 @@ def _engines():
     import browser
     return {"sandbox": bool(shutil.which("bwrap")), "ffmpeg": bool(shutil.which("ffmpeg")),
             "lightpanda": bool(shutil.which("lightpanda")), "browser": browser.status().removeprefix("Browser: ").rstrip(".")}
+
+
+# The Memory tab, which needs the chat's key: unlike the status, it shows words from memory.
+_NOTE_FILES = ("user.md", "preferences.md", "tasks.md", "projects.md", "job_search.md", "gig_search.md",
+               "agents.md", "digest_config.md", "research.md")
+_RECENT_NOTES = 6
+_NOTE_CHARS = 160
+_DATED = re.compile(r"\((\d{4}-\d{2}-\d{2})\)\s*$")
+_BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+
+def _short_date(day: str) -> str:
+    moment = datetime.fromisoformat(day)
+    return f"{moment:%b} {moment.day}"
+
+
+def _notes_kept():
+    """Each note file with its entry count, and the newest entries saved with a date."""
+    import memory_entries
+    files, dated = [], []
+    for name in _NOTE_FILES:
+        path = config.MEMORY_DIR / name
+        try:
+            text = path.read_text(encoding="utf-8")
+            changed = path.stat().st_mtime
+        except OSError:
+            continue
+        spans = memory_entries.entries(text)
+        files.append({"name": name, "entries": len(spans), "updated": _when(datetime.fromtimestamp(changed, timezone.utc))})
+        for order, (start, end) in enumerate(spans):
+            entry = text[start:end].strip()
+            found = _DATED.search(entry)
+            if found:
+                dated.append((found.group(1), order, name, " ".join(_BULLET.sub("", entry[:found.start()]).split())))
+    dated.sort(reverse=True)
+    return {"files": files, "total": sum(f["entries"] for f in files),
+            "recent": [{"date": _short_date(day), "file": name, "text": sanitize.clean(words)[:_NOTE_CHARS]}
+                       for day, _, name, words in dated[:_RECENT_NOTES]]}
+
+
+def _skills():
+    import skills
+    return sorted(path.stem.replace("-", " ") for path in skills._folder().glob("*.md"))
+
+
+def _proposal_rows():
+    import proposals
+    return [{"id": p["id"], "kind": p["kind"], "date": _short_date(p["date"][:10]),
+             "problem": sanitize.clean(p["problem"])[:200], "change": sanitize.clean(p["change"])[:200]}
+            for p in proposals.pending()]
+
+
+def _overnight():
+    """The newest night's work, step by step, and each goal's proof ledger by label."""
+    import goals
+    import proof
+    import work
+    entries = work._load()
+    night = max((e.get("night") or "" for e in entries), default="")
+    names = {g["id"]: g["statement"] for g in goals.load()}
+    steps = []
+    for e in entries:
+        if night and e.get("night") == night:
+            goal = e.get("goal") or ""
+            steps.append({"goal": goal, "title": sanitize.clean(names.get(goal, ""))[:90], "kind": e.get("kind") or "",
+                          "summary": sanitize.clean(str(e.get("summary") or ""))[:200], "tokens": int(e.get("tokens") or 0),
+                          "at": _when(datetime.fromisoformat(e["at"])) if e.get("at") else ""})
+    ledgers = []
+    for path in sorted((config.MEMORY_DIR / "work").glob("*/proof.json")):
+        counts: dict[str, int] = {}
+        for entry in proof.load(path.parent).values():
+            if isinstance(entry, dict):
+                counts[proof.label(entry)] = counts.get(proof.label(entry), 0) + 1
+        if counts:
+            ledgers.append({"goal": path.parent.name, "title": sanitize.clean(names.get(path.parent.name, ""))[:90],
+                            "ideas": sum(counts.values()), "labels": counts})
+    return {"night": _short_date(night) if night else "", "steps": steps, "tokens": sum(s["tokens"] for s in steps),
+            "budget": config.OVERNIGHT_TOKENS, "ledgers": ledgers}
+
+
+def _memory_view() -> dict:
+    return {"notes": _safe(_notes_kept), "skills": _safe(_skills), "proposals": _safe(_proposal_rows),
+            "overnight": _safe(_overnight)}
 
 
 _LOG_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[,.]\d+ (\w+) ([\w.]+): (.*)$")
@@ -286,7 +454,7 @@ def snapshot() -> dict:
             "process": _safe(_process), "resources": _safe(_resources), "tokens": _safe(_tokens),
             "scheduled": _safe(_scheduled), "jobs": _safe(_jobs), "board": _safe(_board), "plugins": _safe(_plugins),
             "background": _safe(_background), "proposals": _safe(_proposals), "engines": _safe(_engines),
-            "errors": _safe(_errors)}
+            "errors": _safe(_errors), "agents": _safe(_agents)}
 
 
 _LOCKED = "Chat opens from the IGOR Dashboard shortcut on the PC."
@@ -527,6 +695,13 @@ async def _speech_audio(request):
     return web.Response(body=audio, content_type="audio/wav")
 
 
+async def _memory_get(request):
+    from aiohttp import web
+    if not _key_ok(request):
+        return web.json_response({"error": _LOCKED}, status=401)
+    return web.json_response(await asyncio.get_running_loop().run_in_executor(None, _memory_view))
+
+
 async def _chat_get(request):
     """New messages since the page last asked. Waiting turns are read before the store, so a turn that
     ends in between still has its rows in this answer."""
@@ -594,6 +769,7 @@ def add_routes(application) -> None:
     application.router.add_get("/dashboard", _guarded(_page))
     application.router.add_get("/dashboard/status.json", _guarded(_status))
     application.router.add_get("/dashboard/chat.json", _guarded(_chat_get))
+    application.router.add_get("/dashboard/memory.json", _guarded(_memory_get))
     application.router.add_post("/dashboard/chat", _guarded(_chat_post))
     application.router.add_post("/dashboard/voice", _guarded(_voice_post))
     application.router.add_post("/dashboard/speech", _guarded(_speech_post))
