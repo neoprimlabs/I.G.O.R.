@@ -377,7 +377,9 @@ def test_it_works_down_the_list_then_widens() -> None:
            "found no one earning from these" in sent and "Kettle price alerts" in unearned
            and "Birdhouse" not in unearned, sent[-400:])
     text = (folder / "paper.md").read_text(encoding="utf-8")
-    _check("the section survives the revision", "## Proof checked" in text and "Birdhouse plan e-books" in text, text)
+    listed = text.split("## Proof checked", 1)[-1].split("\n## ", 1)[0]
+    _check("the section survives the revision, with the ideas the paper still has",
+           "## Proof checked" in text and "**Kettle price alerts**" in listed and "Birdhouse" not in listed, text)
     _check("a renamed idea keeps what was found", "Kettle alerts** - priced (evidence: no income shown)" in text, text)
     _check("a new idea is unchecked", "Rain gauges** - new (evidence: unchecked)" in text, text)
 
@@ -603,6 +605,13 @@ def test_section_text() -> None:
     _check("adding it twice leaves one", proof.with_section(proof.with_section(PAPER, ledger), ledger).count("## Proof checked") == 1)
     _check("taking it out restores the paper", proof.without_section(proof.with_section(PAPER, ledger)) == PAPER)
     _check("a paper with no sections still works", "## Proof checked" in proof.with_section("# P", ledger))
+
+    # 2026-11-08: a paper of five ideas listed all seventeen ever checked, one of them since renamed.
+    names = ["Kettle price alerts", "Lamp repair kits"]
+    only = proof.with_section(PAPER, ledger, names)
+    _check("given the paper's ideas, only those are listed", "**Kettle" in only and "Birdhouses" not in only, only)
+    _check("an idea on the list never checked is not listed either", "Lamp repair" not in only.split("## Kettle alerts")[0])
+    _check("given none, all are", "Birdhouses" in proof.with_section(PAPER, ledger, []))
 
 
 if __name__ == "__main__":

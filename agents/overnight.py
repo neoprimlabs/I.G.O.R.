@@ -463,6 +463,98 @@ def drop_unearned_claims(paper: str, labels: dict) -> tuple[str, list[str]]:
     return head + "".join(parts), named
 
 
+# The paper's own words held to its sources, in code. Live 2026-11-08 a revision called two idea-listing
+# sites and a video "two independent sources", a word the proof legend keeps for someone with nothing to
+# sell, and gave newsletter sponsors "often $100-$500 per issue", a figure in no findings file.
+_INDEPENDENT_RE = re.compile(
+    r"\b[Ii]ndependent(?:ly)?\s+((?:[a-z-]+\s+){0,2}(?:sources?|videos?|reports?|accounts?|reviews?|articles?"
+    r"|outlets?|sites?|websites?|posts?|studies|examples?|cases?|confirm\w*|verif\w*|corroborat\w*)\b)")
+_FIGURE_RE = re.compile(r"[$£€]\s?(\d[\d,]*(?:\.\d+)?)(?:\s?(k|m|bn|thousand|million|billion)\b)?", re.IGNORECASE)
+# A source's "$200-500" gives two figures. Replayed over 19 revisions, this was the one false alarm.
+_RANGE_END_RE = re.compile(r"[$£€]\s?\d[\d,]*(?:\.\d+)?\s?(?:k|m|bn|thousand|million|billion)?\s?(?:-|\u2013|\u2014|to)\s?"
+                           r"(\d[\d,]*(?:\.\d+)?)(?:\s?(k|m|bn|thousand|million|billion)\b)?", re.IGNORECASE)
+_SCALE = {"k": 1e3, "thousand": 1e3, "m": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9}
+# "$3k-$4k" restates "$3,200-$4,200"; "$100" is not "$500K".
+_FIGURE_SLACK = 0.15
+_PAREN_RE = re.compile(r"\s?\(([^()\n]*)\)")
+UNSOURCED = " (not in the sources)"
+
+
+# "$3-$4k" is three thousand: the first of a range takes the second's scale. Replayed, a shortlist's
+# "$3-$4k/month" read as three dollars.
+_SHARED_SCALE_RE = re.compile(r"\s?(?:-|–|—|to)\s?[$£€]?\s?\d[\d,]*(?:\.\d+)?\s?"
+                              r"(k|m|bn|thousand|million|billion)\b", re.IGNORECASE)
+
+
+def _amount(match) -> Optional[float]:
+    scale = match.group(2)
+    if not scale:
+        shared = _SHARED_SCALE_RE.match(match.string, match.end())
+        scale = shared.group(1) if shared else ""
+    try:
+        return float(match.group(1).replace(",", "")) * _SCALE.get(scale.lower(), 1)
+    except ValueError:
+        return None
+
+
+def _night_order(path) -> tuple:
+    found = re.search(r"(\d{4}-\d\d-\d\d)(?:-(\d+))?$", path.stem)
+    return (found.group(1), int(found.group(2) or 1)) if found else ("", 0)
+
+
+def figure_sources(folder, ledger: dict, findings: Optional[str] = None,
+                   revised: Optional[str] = None) -> Optional[str]:
+    """What the writer of a revision saw: its findings and the paper it revised, with the proof quotes.
+    Every findings file together held a figure near almost any number, and passed all 19 revisions on
+    file. Given neither, the newest of each on file, which a kept revision moves there together; None
+    when either is missing."""
+    if findings is None:
+        kept = sorted(folder.glob("findings-*.md"), key=_night_order)
+        old = sorted((folder / "versions").glob("paper-*.md"), key=_night_order)
+        if not kept or not old:
+            return None
+        findings = kept[-1].read_text(encoding="utf-8", errors="replace")
+        revised = proof.without_section(old[-1].read_text(encoding="utf-8", errors="replace"))
+    quotes = [r.get("quote", "") for e in ledger.values() if isinstance(e, dict) for r in e.get("evidence") or []]
+    return "\n".join([findings, revised or ""] + quotes)
+
+
+def hold_to_sources(paper: str, sources: Optional[str]) -> tuple[str, list[str]]:
+    """The paper with "independent" taken off what it says of sources, any bracket stating a money
+    figure no source has removed, and such a figure elsewhere marked; and what was changed. Run on
+    the paper without its proof section, whose quotes are code's and copied from their pages."""
+    changed: list[str] = []
+
+    def unhyped(m) -> str:
+        changed.append(m.group(0).strip())
+        rest = m.group(1)
+        return rest[0].upper() + rest[1:] if m.group(0)[0].isupper() else rest
+
+    paper = _INDEPENDENT_RE.sub(unhyped, paper)
+    figures = [*_FIGURE_RE.finditer(sources or ""), *_RANGE_END_RE.finditer(sources or "")]
+    known = [a for a in (_amount(m) for m in figures) if a is not None]
+    if not known:
+        return paper, changed
+
+    def sourced(m) -> bool:
+        value = _amount(m)
+        return value is None or any(abs(value - k) <= _FIGURE_SLACK * max(value, k) for k in known)
+
+    def bracket(m) -> str:
+        inner = m.group(1)
+        if _LINK_RE.search(inner) or all(sourced(f) for f in _FIGURE_RE.finditer(inner)):
+            return m.group(0)
+        changed.append(f"({inner.strip()})")
+        return ""
+
+    def mark(m) -> str:
+        if sourced(m) or m.string.startswith(UNSOURCED, m.end()):
+            return m.group(0)
+        changed.append(m.group(0))
+        return m.group(0) + UNSOURCED
+
+    paper = _PAREN_RE.sub(bracket, paper)
+    return _FIGURE_RE.sub(mark, paper), changed
 
 
 def _unique(folder, stem: str, night: str):
@@ -499,8 +591,12 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
         if stopped:
             break
     # Anything else says unchecked: "no income shown" on an idea nobody had searched for read as a result.
+    paper, held = hold_to_sources(paper, figure_sources(folder, ledger))
+    if held:
+        logger.info("Overnight: paper held to its sources: %s", "; ".join(held))
     labels = proof.labels_for(_shortlist_names(paper), ledger)
-    paper_path.write_text(_for_file(proof.with_section(normalize_shortlist(paper, labels), ledger)) + "\n",
+    paper = normalize_shortlist(paper, labels)
+    paper_path.write_text(_for_file(proof.with_section(paper, ledger, _shortlist_names(paper))) + "\n",
                           encoding="utf-8")
     rel = str(paper_path.relative_to(config.MEMORY_DIR))
     state["files"].append(rel)
@@ -663,6 +759,9 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                     if claims:
                         logger.info("Overnight: summary claims of income dropped for %s", "; ".join(claims))
                 paper = normalize_shortlist(paper, labels)
+                paper, held = hold_to_sources(paper, figure_sources(folder, ledger, text, current))
+                if held:
+                    logger.info("Overnight: paper held to its sources: %s", "; ".join(held))
                 task = (f"Write a research paper for this goal: {goal['statement']}. Cite sources "
                         f"inline and end with a section headed 'What I am unsure about'.")
                 passed, feedback = await evaluator.evaluate(task, paper, label="Overnight",
@@ -680,7 +779,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
                     note = f"paper revised: {_heading_change(current, paper)}"
                 if cut:
                     note += f" (cut to fit: {', '.join(cut)})"
-                paper_path.write_text(_for_file(proof.with_section(paper, ledger)) + "\n", encoding="utf-8")
+                paper_path.write_text(_for_file(proof.with_section(paper, ledger, _shortlist_names(paper))) + "\n",
+                                      encoding="utf-8")
                 moved = _unique(folder, "findings", night)
                 findings_path.replace(moved)
                 rel = str(paper_path.relative_to(config.MEMORY_DIR))

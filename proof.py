@@ -459,9 +459,14 @@ def _shown(entry: dict) -> list:
     return top
 
 
-def section(ledger: dict) -> str:
-    """Written by code, so a revision cannot cut it and a model cannot soften it."""
+def section(ledger: dict, names: Optional[list] = None) -> str:
+    """Written by code, so a revision cannot cut it and a model cannot soften it. Given the paper's idea
+    names, only those ideas: 2026-11-08 a paper of five ideas listed all seventeen ever checked, among
+    them an idea since renamed, still showing the quotes found under its old name."""
     entries = [e for e in ledger.values() if e.get("searches")]
+    if names:
+        current = [_find(ledger, name) for name in names]
+        entries = [e for e in entries if any(e is found for found in current)]
     if not entries:
         return ""
     lines = [f"## {HEADING}\n\n{_LEGEND}\n"]
@@ -478,10 +483,10 @@ def without_section(paper: str) -> str:
     return head + "".join(p for p in parts if p.split("\n", 1)[0][3:].strip() != HEADING)
 
 
-def with_section(paper: str, ledger: dict) -> str:
+def with_section(paper: str, ledger: dict, names: Optional[list] = None) -> str:
     """The section after the summary, so it is what gets read first."""
     paper = without_section(paper)
-    text = section(ledger)
+    text = section(ledger, names)
     if not text:
         return paper
     head, *parts = re.split(r"(?m)^(?=## )", paper)

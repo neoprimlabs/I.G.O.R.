@@ -117,6 +117,72 @@ def _run(coro):
     return asyncio.run(coro)
 
 
+def test_the_paper_is_held_to_its_sources() -> None:
+    """Live 2026-11-08 a revision called two idea sites and a video "two independent sources" and gave
+    sponsors "often $100-$500 per issue", in no findings. Replayed over all 19 revisions on file, the same
+    check found five more invented prices and, before two fixes here, two false alarms."""
+    from agents import overnight
+    sources = ("- Sponsors paid $2,000 last month (https://e.example/1)\n- Plans cost $3,200 to $4,200 a month\n"
+               "- Bundles sell for $200-500 each\n- One raised $3 million\n")
+    paper = ("# Paper\n\n## Newsletter\nTwo independent sources describe it. Independent reports agree. "
+             "It made $2,000 in a month.\n- **Revenue flow**: Sponsors pay per placement (often $100-$750 per issue); "
+             "payments arrive monthly.\n- Plans run $3k-$4k a month, bundles $200-$500, or $3-$4k/month in all.\n"
+             "- A raise of $3 M ([src](https://e.example/1)).\n- Owner sets pricing (e.g., $0.10 per query).\n"
+             "- Agents earn $9,999 a week.\n\n## Ranked shortlist\n1. **Newsletter** - $2k in a month (evidence: independent)\n")
+    held, changed = overnight.hold_to_sources(paper, sources)
+    _check("'independent' comes off what the paper says of its sources",
+           "Two sources describe it. Reports agree." in held and "independent sources" not in held, held)
+    _check("but the shortlist's label stays", "(evidence: independent)" in held, held)
+    _check("a bracket with a figure no source has goes", "(often $100-$750 per issue)" not in held
+           and "Sponsors pay per placement; payments arrive monthly." in held, held)
+    _check("so does an invented example price", "(e.g., $0.10 per query)" not in held, held)
+    _check("a figure elsewhere is marked, not cut", "$9,999 (not in the sources) a week" in held, held)
+    _check("restated figures stand: rounded, a range's shared scale, a range end without its $",
+           "$3k-$4k a month, bundles $200-$500, or $3-$4k/month in all" in held and "$2k in a month" in held, held)
+    _check("and a figure in a bracket with its link", "A raise of $3 M ([src](https://e.example/1))" in held, held)
+    _check("what changed is reported", len(changed) == 5 and "(often $100-$750 per issue)" in changed, str(changed))
+    again, twice = overnight.hold_to_sources(held, sources)
+    _check("holding it again changes nothing", again == held and twice == [], str(twice))
+    alone, said = overnight.hold_to_sources("Agents earn $9,999 (src).", None)
+    _check("with nothing to hold figures to, only the word is checked", alone == "Agents earn $9,999 (src)." and said == [])
+
+
+def test_a_revision_is_held_to_what_its_writer_saw() -> None:
+    overnight, goals, work, tmp, _ = _fresh()
+    goals.add("Study autonomous systems", "research")
+    folder = work.folder(_first_id(goals))
+    folder.mkdir(parents=True, exist_ok=True)
+    _check("nothing on file, nothing to hold to", overnight.figure_sources(folder, {}) is None)
+    (folder / "versions").mkdir()
+    for night, text in (("2026-11-06", "old $111"), ("2026-11-08", "newest $222"), ("2026-11-08-2", "newest $333")):
+        (folder / f"findings-{night}.md").write_text(text, encoding="utf-8")
+        (folder / "versions" / f"paper-{night}.md").write_text(f"# P\n\n## A\npaper {text}\n", encoding="utf-8")
+    sources = overnight.figure_sources(folder, {"a": {"evidence": [{"quote": "revenue of $444"}]}})
+    _check("the newest findings and version, the night's second after its first",
+           "newest $333" in sources and "$222" not in sources and "$111" not in sources and "$444" in sources, sources)
+    given = overnight.figure_sources(folder, {}, "the findings $5", "the paper $6")
+    _check("or what the revision was given", "$5" in given and "$6" in given and "$333" not in given, given)
+
+    s = _Stubs(findings_per_step=5)
+    real = s.complete
+
+    async def priced(system, user, max_tokens, cap=None):
+        if system.startswith("You turn raw search results"):
+            return "".join(f"- Sponsors paid $2,000 last month (https://e.example/1/{i})\n" for i in range(5)) + "Next: more"
+        if system.startswith("You plan one step"):
+            return await real(system, user, max_tokens, cap)
+        return ("# Paper\n\n## Newsletter\nTwo independent sources say it made $2,000 ([src](https://e.example/1/0)) "
+                "([src](https://e.example/1/1)) ([src](https://e.example/1/2)). Sponsors pay (often $100-$500 per issue).\n"
+                "\n## What I am unsure about\nMuch.\n")
+
+    later = datetime(2026, 10, 17, 3, 0, tzinfo=clock.USER_TZ)
+    _run(overnight.tick(later, search=s.search, complete=priced))
+    text = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("the paper on file says what its sources say",
+           "Two sources say it made $2,000" in text and "$100-$500" not in text and "Sponsors pay." in text, text)
+    tmp.cleanup()
+
+
 def test_plan_sees_earlier_papers() -> None:
     """Live 2026-10-17: the night's second paper repeated 4 of the first's 6 topics,
     because the planner starts from an emptied findings.md after each paper."""

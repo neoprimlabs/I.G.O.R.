@@ -215,7 +215,7 @@ and promising a future action. Facts it may lack (a product, company or event to
 System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`, `clarify` and
-`shell` attach, with `load_tools` for the other nineteen (it returns their rules too; a direct
+`shell` attach, with `load_tools` for the other twenty (it returns their rules too; a direct
 call loads the tool and retries; a request for a file, a reminder or a save opens it at once). Workers and scheduled runs name their own list through `allowed_tools`.
 `clarify` (`clarify.py`) asks the user and waits 10 minutes. `write_file` replaces
 only a file this turn read whole, unchanged since. A result over 4000 characters is kept for the turn
@@ -235,7 +235,6 @@ Hermes' middle tier (`approvals.py`): recursive
 deletes, `kill`, permission or key-file changes, table drops, `sh -c`/`python -c`
 git resets and invisible characters wait for the user's yes in Discord; "no, do X" hands X
 to the turn; 5 minutes of silence is a no.
-`scheduled_message` and `goal` close after a web read too.
 
 **Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. Blocked
 fetches fall back to the `r.jina.ai` relay (public URLs only).
@@ -407,8 +406,6 @@ connection a call, results treated as web text. None is configured yet.
 
 ### Overnight loop
 
-Standing goals worked while the user is away.
-
 **Goals** (`goals.py`, `memory/goals.md`): blocks `## g<n> <statement>` with `kind`
 (`research` or `self_improve`), `status` (active or paused), `created`,
 `last_reviewed`, `next_action`. Retired goals move to `goals_archive.md`. React's `goal` tool
@@ -428,7 +425,8 @@ sessions the goal's one living `paper.md` is written, then revised (under 7500 c
 code cuts the weakest-proven, then least-sourced sections, never the shortlist or unsure).
 Code checks a "What I am unsure about" heading, 3 distinct links from the
 findings or paper and a revision keeping a third of its links, one retry told why,
-then the Evaluator (FAIL keeps a draft). 20b, not the writer, labels each shortlist
+then the Evaluator (FAIL keeps a draft). Code drops "independent" said of sources and
+brackets with money figures the findings and revised paper lack, marking others. 20b, not the writer, labels each shortlist
 item it can (unchecked if that fails; on an income goal, only the proof check); code sorts strongest first.
 A pass moves the old paper to `versions/`; the change note comes from headings, which
 PLAN also sees.
@@ -437,7 +435,7 @@ PLAN also sees.
 research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
 intact, money one earner received, $1000 to $20M, or a failure on this idea, and sets the source for personal
 posts, claims, cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
-`## Proof checked` and the labels (independent, mixed, similar product, self-reported,
+`## Proof checked` for the paper's own ideas and the labels (independent, mixed, similar product, self-reported,
 no income shown, unchecked, against). Code drops a summary sentence crediting income to one without.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
@@ -458,7 +456,7 @@ drop, waits for one "approve".
 Claude Code session. `proposal list` is an untrusted read: the quarantine then closes `proposal` for the
 turn, so approval needs a fresh message.
 `goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`
-count the same (Hermes: everything read is untrusted); `search_files` and
+count the same; `search_files` and
 `search_memory` skip those files.
 
 **Skills** (`skills.py`, Hermes' skills and curator with write approval on):
@@ -472,7 +470,7 @@ calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is del
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
 `Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night; a daily-cap 429 logs
-`daily cap 20b: <limit>`. 20b's daily cap is unmeasured.
+`daily cap 20b: <limit>`.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
 `digest_config.md` adds finished papers (sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
@@ -494,7 +492,7 @@ Four controls, none costing a model call:
 2. **Quarantine.** The moment a web tool runs in a turn, or if the message carries a
    document or image, every state-changing tool
    (`_QUARANTINED_AFTER_WEB`: `shell`, `python_run`, the file writers, `restart_self`,
-   `memory_write`, `scheduled_message`, `delegate_task`, `task_update`, `goal`,
+   `memory_write`, `scheduled_message`, `routine_schedule`, `delegate_task`, `task_update`, `goal`,
    `proposal`) is withdrawn from the schema **and** refused at execution for the rest of that
    turn; a batch holding both is judged whole.
 3. **Secrets.** No tool reads or changes `.env`, key files, `.git/` or `*.local.*`
