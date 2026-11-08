@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-06**
+Last updated: **2026-11-08**
 
 ---
 
@@ -301,6 +301,14 @@ kept for the turn as `result:N`, and write_file's stale-overwrite guard. Hermes'
 validates arguments against the schema first, and the journal holds 2 such refusals. Live in the throwaway copy, 10530
 tokens: an ordinary two-step request called no clarify, the first call was 4591 tokens in, and the second step waited
 11s (25-50s before 111cec9). Not yet seen: clarify with a real question, a kept result read on, a refused overwrite.
+**Dashboard redesigned 11-08 (783cacd), from the user's Protocol Droid concepts and Hermes' Orchestrator.** Five
+tabs, a dock on a phone: I.G.O.R. (portrait, status line, the chat in an 800px column with a waveform and send
+arrow), Agents (13 cards, the user's word: "IGOR and its agents", not other droids), Tasks, Memory (keyed) and
+System (Optimal or Attention, with why). The week per agent comes from `memory/agent_activity.json`, which
+`usage.record` keeps from 783cacd on; the 8 days before it were rebuilt once from the journal (241 calls, 11 labels).
+Checked live on the server: the cards, 401 for memory.json without the key, and 456 notes, last night's 4 steps
+and the 15-idea proof ledger with it. Seen headless at desk width and at 390px with no sideways scroll. The user
+has not opened it yet.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
