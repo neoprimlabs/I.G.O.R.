@@ -40,7 +40,7 @@ When queried directly, report:
 - Any system health issues you're aware of
 
 IMPORTANT CONSTRAINTS:
-- You cannot reschedule jobs at runtime. Schedules are read from schedule_config.md at startup. To change a schedule, tell the user to update schedule_config.md via ProdMem, then restart I.G.O.R.
+- You cannot change when anything runs. The user can ask I.G.O.R. to change the morning digest's time, the job and gig watches' times, or how often the price and stock watches run; the change takes effect at once. Other jobs are fixed.
 - Do not invent action formats. You have no write capabilities.
 
 Be direct and specific. If there's nothing to flag, say so.
@@ -59,50 +59,6 @@ def _get_system_prompt() -> str:
         if content:
             return content
     return _DEFAULT_SYSTEM_PROMPT
-
-
-def _parse_digest_schedule(content: str) -> Optional[tuple[int, int]]:
-    """Extract (hour, minute) from schedule_config.md content, or None.
-
-    Split out from _get_digest_schedule so ConfigEdit can check a proposed file
-    against the real parser before writing it. Validating against a second copy of
-    these rules would just create two things that can drift apart.
-    """
-    current_section = None
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            current_section = stripped[3:].strip()
-        elif current_section == "morning_digest" and stripped.lower().startswith("time:"):
-            tokens = stripped[5:].strip().split()
-            if not tokens:
-                continue
-            parts = tokens[0].split(":")
-            if len(parts) != 2:
-                continue
-            try:
-                hour, minute = int(parts[0]), int(parts[1])
-            except ValueError:
-                continue
-            if 0 <= hour <= 23 and 0 <= minute <= 59:
-                return hour, minute
-    return None
-
-
-def _digest_zone(content: str):
-    """UTC only if the file says so, otherwise the user's clock."""
-    utc = any(line.strip().lower().startswith("time:") and "utc" in line.lower() for line in content.splitlines())
-    return timezone.utc if utc else clock.USER_TZ
-
-
-def _get_digest_schedule() -> tuple:
-    """Read morning_digest time from schedule_config.md. Returns (hour, minute, timezone)."""
-    path = config.MEMORY_DIR / "schedule_config.md"
-    if not path.exists():
-        return 10, 0, clock.USER_TZ
-    content = path.read_text(encoding="utf-8")
-    parsed = _parse_digest_schedule(content)
-    return (*parsed, _digest_zone(content)) if parsed else (10, 0, clock.USER_TZ)
 
 
 def setup(send_fn: Callable[[str], Awaitable[None]],
@@ -129,10 +85,11 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
 
     # What the user reads goes by their clock. Fixed in UTC, on a host set to UTC, the digest, job and
     # gig lists and the Monday draft all came an hour early when the clocks went back on 2026-11-01.
-    digest_hour, digest_minute, digest_zone = _get_digest_schedule()
-    _scheduler.add_job(_morning_digest, "cron", hour=digest_hour, minute=digest_minute, timezone=digest_zone,
-                       id="morning_digest")
-    logger.info("Morning digest scheduled at %02d:%02d %s", digest_hour, digest_minute, digest_zone)
+    # The digest and the four watches below run when schedule_config.md says, which the user changes
+    # by asking (routines.py); the defaults are routines.ROUTINES.
+    import routines
+    _scheduler.add_job(_morning_digest, routines.trigger("morning_digest"), id="morning_digest")
+    logger.info("Morning digest scheduled %s", routines.describe("morning_digest"))
 
     # Daily, not weekly, and once on every start. Groq removed the whole Llama
     # family on 2026-08-17 and the weekly check meant four configured roles were
@@ -150,20 +107,20 @@ def setup(send_fn: Callable[[str], Awaitable[None]],
 
     # After the digest has landed. Fetching costs no tokens - it is HTTP against
     # public feeds - so this is close to free.
-    _scheduler.add_job(_job_watch, "cron", hour=11, minute=30, timezone=clock.USER_TZ, id="job_watch")
+    _scheduler.add_job(_job_watch, routines.trigger("job_watch"), id="job_watch")
 
     # Fifteen minutes after the job watch, so the two never land together. One
     # screening call a day on 20b, the summary bucket, idle at this hour.
-    _scheduler.add_job(_gig_watch, "cron", hour=11, minute=45, timezone=clock.USER_TZ, id="gig_watch")
+    _scheduler.add_job(_gig_watch, routines.trigger("gig_watch"), id="gig_watch")
 
-    # Deals vanish within hours, so this runs often. One HTTP call per watched item
-    # and no model call at all, which is why every two hours is affordable.
-    _scheduler.add_job(_price_watch, "interval", hours=2, id="price_watch")
+    # Deals vanish within hours, so by default this runs every two hours. One HTTP call per
+    # watched item, and a model only when something is already under its target price.
+    _scheduler.add_job(_price_watch, routines.trigger("price_watch"), id="price_watch")
 
-    # Hourly, not two-hourly: a restock on a part that sells out is time-sensitive in
-    # a way a posted discount is not. Costs no tokens - the vendor's product JSON is
-    # structured, so nothing here calls a model.
-    _scheduler.add_job(_stock_watch, "interval", hours=1, id="stock_watch")
+    # Hourly by default: a restock on a part that sells out is time-sensitive in a way a
+    # posted discount is not. Costs no tokens - the vendor's product JSON is structured,
+    # so nothing here calls a model.
+    _scheduler.add_job(_stock_watch, routines.trigger("stock_watch"), id="stock_watch")
     _scheduler.add_job(
         _stock_watch,
         "date",

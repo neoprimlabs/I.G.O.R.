@@ -22,32 +22,32 @@ systemd. Groq free tier via the `openai` SDK, Exa for search, markdown and SQLit
 - **No `scheduler.yaml`, `run_agent()` or `igor` module.** Spoken replies only
   on the dashboard; voice notes, images and videos are read.
 
-**React's 26 tools:** `search` (web, jobs), `clarify`, `memory_read`, `search_memory`,
+**React's 27 tools:** `search` (web, jobs), `clarify`, `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
-`send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Nineteen load on
-request through `load_tools`. `send_file` sends real Word, PDF, Excel or CSV.
+`send_message`, `send_file`, `memory_write`, `scheduled_message`, `routine_schedule`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Twenty load on
+request through `load_tools`. `send_file` sends Word, PDF, Excel or CSV.
 
-**Fallback.** When `gpt-oss-120b` is rate-limited, Direct and React use `gpt-oss-20b`
-until Groq's stated reset.
+**Fallback.** On a 120b rate limit, Direct and React use `gpt-oss-20b` until
+Groq's reset.
 
 **Commands** in code: `stop`, `retry`, `undo`, `usage`, `status`, `help`, `skills`, `steer`, `btw`, `board`, `plugins`.
 
-**Routing.** Thirteen fast paths in code, then one router call
+**Routing.** Fourteen fast paths in code, then one router call
 (`qwen/qwen3.8-27b`) returning one word. Any router failure goes to React.
 
 | Destination | Handles | Model | Tools |
 |---|---|---|---|
 | Direct | `CHAT` | 120b | none; lookups go to React |
-| React | `TASK`, router failure | 120b | all 25 |
+| React | `TASK`, router failure | 120b | all 27 |
 | Monitor | `MONITOR`, digest | 120b, news 20b | none; status block only, else to Direct |
-| ConfigEdit | `CONFIG` | 120b | none; writes 2 files, only when named |
+| ConfigEdit | `CONFIG` | 120b | none; digest sections, when named |
 | ResearchLoop | `deep research` prefix | 20b | none, fixed pipeline |
 | SelfDescribe | `SELF` - about IGOR itself | 120b | none; this file, Hermes ledger if named |
 
 **Scheduled jobs** in `monitor.setup()`: morning digest (10:00
 local), job watch (11:30), gig watch (11:45), price watch (2-hourly), stock watch
-(hourly), a Groq model check, an advocacy draft (Mondays), presence (10 min), due
+(hourly), these five retimed live on request; a Groq model check, an advocacy draft (Mondays), presence (10 min), due
 scheduled messages and the page heartbeat (60s each) and the overnight tick (hourly).
 
 **Watchers** (prices, restocks, jobs, gigs) stay silent unless something changed.
@@ -72,11 +72,11 @@ first (`checkpoints.py`); the user's `rollback` restores them.
 
 **Follow-through** (`followthrough.py`, Hermes' /goal, but IGOR decides): a React
 reply that ran out of steps or offers to go on is judged by 20b. On `continue`, up to
-3 more rounds of 4 steps, each sent as it lands; stops at 45000 tokens or under
+3 more rounds of 4 steps; stops at 45000 tokens or under
 60000 left today. A round keeps the turn's web and private lockouts; any user message stops it.
 
-**Cost**: Groq caps tokens per model per day; 120b's 200000 budget is shared by Direct
-and React. `usage.py` counts spend.
+**Cost**: Groq caps tokens per model per day; Direct and React share 120b's
+200000 budget. `usage.py` counts spend.
 
 **Deployment**: a root-owned script outside `/opt/igor` tests, restarts, waits for
 Discord and rolls back on failure.
@@ -176,9 +176,9 @@ A Discord DM travels this path every time:
 |---|---|---|---|
 | Orchestrator | every message | `router` | none |
 | **Direct** (`agents/direct.py`) | `CHAT` | `chat` | **none, by design** |
-| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 25 |
+| **React** (`agents/react.py`) | `TASK`, `file:`, router failure | `react` | all 27 |
 | **Monitor** (`agents/monitor.py`) | `MONITOR`, digest commands, APScheduler | `summary` | none |
-| **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 2 files |
+| **ConfigEdit** (`agents/prod_memory.py`) | `CONFIG` | `chat` | none, writes 1 file |
 | **ResearchLoop** (`agents/research_loop.py`) | `deep research` prefix | `research` | none, fixed pipeline |
 | Evaluator (`agents/evaluator.py`) | file mode only | `evaluator` | none |
 
@@ -347,8 +347,8 @@ drops; a failed screen holds the gigs; picks go out in the post's own words. The
 
 ### ConfigEdit
 
-Edits only `digest_config.md` and `schedule_config.md`, checks digest section names against
-the ones the digest reads, keeps one rolling `.bak` per file, and says whether a restart is needed.
+Edits only `digest_config.md`, checks section names against the ones the digest reads, keeps a
+rolling `.bak`. Times are `routine_schedule`'s: `routines.py` writes `schedule_config.md` and retimes the live job.
 
 React's `memory_write` uses `memory_entries.py` (duplicates, injection patterns and
 whole-file overwrite refused), against `prod_memory._ALLOWED_FILES`.
@@ -554,7 +554,7 @@ kept) and an hourly push of the `*.md` notes, minus `private/` and `resume.md`, 
 the private repo `WoahBanz/igor-memory` by root's `memory-push.sh`, which alerts on
 a failed push.
 
-**Read at startup, restart required:** `schedule_config.md`
+**Read at startup, retimed live by `routines.py`:** `schedule_config.md`
 
 **Read per call, immediate effect:** `digest_config.md`, `prompt_*.md`. No watchlist
 file: Monitor reports what runs.

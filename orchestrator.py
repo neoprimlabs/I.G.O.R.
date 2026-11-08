@@ -294,6 +294,21 @@ _SCHEDULING = re.compile(
     r"|^(pause|resume|cancel) (that|it)( one)?\b")
 _NOT_SCHEDULING = re.compile(r"\b(digest|watchlist|watch list|schedule_config|price watch|stock watch|job watch)\b")
 
+# When IGOR's own routines run goes to React with routine_schedule required. 2026-11-08 the user wanted the
+# price and stock watches run less often: routed CONFIG, ConfigEdit could have written a line nothing read
+# and answered "Updated". A routine's name and a word about timing; "add weather to the digest" has none
+# and stays with the router, and anything about what a watch found goes to its own route below.
+_ROUTINE = re.compile(r"\b(morning digest|digest|briefing|(price|stock|job|gig) watch(es)?)\b", re.IGNORECASE)
+_TIMING = re.compile(
+    r"\b(every (\d+|few|other|couple|hour|day|morning|evening|night|week|two|three|four|five|six|eight|twelve)"
+    r"|often|frequently|frequency|hourly|daily|twice|once an? (hour|day)"
+    r"|times an? (hour|day)|schedul\w*|earlier|later|when (does|do|will|is|are)|at \d|to \d{1,2}\b"
+    r"|\d{1,2}\s*(am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d{2}|noon|midnight|o'?clock)", re.IGNORECASE)
+# Asking for a new watch is not retiming one: "add a price watch for the kettle every day". Nor is asking
+# what one found: "what did the job watch find at 11:30?"
+_NOT_RETIMING = re.compile(r"\b(add|create|new|another|set up|start watching|watch for|find|finds|found|sent|seen"
+                           r"|miss(ed|ing)?|results?)\b", re.IGNORECASE)
+
 # Saving gets the scheduling route's treatment. "Remember that I want to record a demo
 # video for IGOR this week" went to tool-less Direct on 2026-10-22, which said "Got it"
 # and saved nothing; on 10-23 it reached React, which answered from the day before's
@@ -751,6 +766,8 @@ class Orchestrator:
         import heartbeats
         if heartbeats.parse(content):
             return "Heartbeat"
+        if _ROUTINE.search(content) and _TIMING.search(content) and not _NOT_RETIMING.search(content):
+            return "Routine"
         if _SCHEDULING.search(lower) and not _NOT_SCHEDULING.search(lower):
             return "Schedule"
         if _REMEMBERING.search(content) and not lower.endswith("?"):
@@ -935,6 +952,11 @@ class Orchestrator:
             react.set_notify(self._notify)
             return await react.handle(content, self._window(), max_tokens=2048,
                                       force_tool="scheduled_message")
+
+        if destination == "Routine":
+            react.set_notify(self._notify)
+            return await react.handle(content, self._window(), max_tokens=2048,
+                                      force_tool="routine_schedule")
 
         if destination == "Watches":
             # 2026-11-03, on React with the tool free, the dock question read only the price

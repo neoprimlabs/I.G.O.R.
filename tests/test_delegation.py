@@ -150,7 +150,7 @@ def test_forbidden_tools_are_stripped() -> None:
            react._WORKER_FORBIDDEN == frozenset({
                "delegate_task", "goal", "proposal", "send_message", "scheduled_message",
                "restart_self", "memory_write", "task_update", "execute_code", "send_file", "process", "board",
-               "clarify"}),
+               "clarify", "routine_schedule"}),
            str(sorted(react._WORKER_FORBIDDEN)))
 
 

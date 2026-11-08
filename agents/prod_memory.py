@@ -10,9 +10,10 @@ logger = logging.getLogger(__name__)
 # content stays with React's memory_write, and prompt_*.md files stay editable
 # only through Claude Code - a prompt rewritten from Discord is how you lose an
 # agent's personality with no undo.
+# schedule_config.md left 2026-11-08: when the digest and the watches run is changed live by React's
+# routine_schedule (routines.py), and two writers to one file is how a setting goes missing.
 _CONFIG_EDITABLE = {
     "digest_config.md": False,
-    "schedule_config.md": True,  # read at startup, so a change needs a restart
 }
 
 # Monitor gates sections with an exact string match, so an invented name is
@@ -23,19 +24,17 @@ _VALID_DIGEST_SECTIONS = frozenset({
 
 _CONFIG_SYSTEM_PROMPT = """You edit configuration files for I.G.O.R., a personal assistant. The user describes a change in plain language and you produce the complete new file.
 
-You may edit exactly these two files:
+You may edit exactly one file:
 
-1. digest_config.md - which sections appear in the morning digest.
-   Sections must come from this list, spelled exactly: tasks, projects, daily_forecast, ai_news, unreal_news, overnight.
-   Any other name is silently ignored by the digest, so never invent one.
-
-2. schedule_config.md - when scheduled jobs run. Times are on the user's own clock, in the format "time: HH:MM local".
+digest_config.md - which sections appear in the morning digest.
+Sections must come from this list, spelled exactly: tasks, projects, daily_forecast, ai_news, unreal_news, overnight.
+Any other name is silently ignored by the digest, so never invent one.
 
 Rules:
 - Change only what the user asked for. Preserve every other line exactly as it is, including headers, comments and unrelated sections.
-- Pick the single file the request is about. If it genuinely spans two files, pick the one the user emphasised and say so in your reasoning line.
-- There is no watchlist file. Adding news to watch means a digest section (ai_news, unreal_news). Watching anything else - a price, a page, a channel - is not a change to these files.
-- If the request is unclear, or is not a change to one of these two files, do not invent an edit. Reply with a single line explaining the problem and nothing else.
+- When something runs - the digest's time, how often a watch runs - is not set here. For that, do not edit anything: reply with a single line saying so.
+- There is no watchlist file. Adding news to watch means a digest section (ai_news, unreal_news). Watching anything else - a price, a page, a channel - is not a change to this file.
+- If the request is unclear, or is not a change to this file, do not invent an edit. Reply with a single line explaining the problem and nothing else.
 
 Output format, exactly:
 Line 1: the filename and nothing else.
@@ -54,7 +53,7 @@ Style:
 _ALLOWED_FILES = frozenset({
     "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
-    "digest_config.md", "schedule_config.md",
+    "digest_config.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
     "research.md", "job_search.md",
 })
@@ -62,7 +61,7 @@ _ALLOWED_FILES = frozenset({
 _OVERWRITABLE_FILES = frozenset({
     "presence_config.md",
     "tasks.md", "projects.md", "user.md", "agents.md",
-    "digest_config.md", "schedule_config.md",
+    "digest_config.md",
     "prompt_prodmem.md", "prompt_monitor.md", "prompt_react.md", "prompt_evaluator.md",
     "research.md",
 })
@@ -175,7 +174,6 @@ def _invalid_digest_sections(content: str) -> list[str]:
 # A false negative is cheap: the message goes to React instead, which is what should
 # have happened on 2026-09-14. A false positive rewrote a schedule for six days.
 _SUBJECT_WORDS = {
-    "schedule_config.md": ("schedule", "digest", "morning", "briefing"),
     "digest_config.md": ("digest", "section", "weather", "forecast", "news", "task",
                          "brief", "headline", "watchlist"),
 }
@@ -234,22 +232,6 @@ async def handle(message: str, call_claude: Callable[..., Awaitable[str]]) -> Op
         logger.info("ConfigEdit declining %s: the message names no setting (%r)",
                     filename, message[:60])
         return None
-
-    if filename == "schedule_config.md":
-        # Round-trip through the parser that will actually read this at startup.
-        # Without it, "change the digest to 8am" could write `time: 8am`, report
-        # success, and leave the digest firing at its old time forever with nothing
-        # to say otherwise - a silent failure of exactly the kind the debugging
-        # playbook warns about.
-        from agents import monitor
-        if monitor._parse_digest_schedule(new_content) is None:
-            logger.warning("ConfigEdit rejected an unparseable schedule")
-            return (
-                "I did not apply that. schedule_config.md needs a line like "
-                "`time: 08:00 local` under `## morning_digest`, in 24-hour HH:MM. "
-                "What that would have written does not parse, so the digest would "
-                "have kept running at its old time without telling you."
-            )
 
     if filename == "digest_config.md":
         bad = _invalid_digest_sections(new_content)

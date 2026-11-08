@@ -89,21 +89,25 @@ def test_reading_the_file() -> None:
     _check("a file that says UTC is taken at its word", _next(utc, AFTER_FALL).astimezone(timezone.utc).hour == 13)
     _check("no file means 10 on the user's clock", _on_clock(_jobs()["morning_digest"], AFTER_FALL) == (10, 0))
     _check("a file that does not parse does too", _on_clock(_jobs("## morning_digest\ntime: 8am\n")["morning_digest"], AFTER_FALL) == (10, 0))
-    _check("the check ConfigEdit uses reads the new form",
-           monitor._parse_digest_schedule("## morning_digest\ntime: 09:00 local\n") == (9, 0))
-    _check("and still refuses nonsense", monitor._parse_digest_schedule("## morning_digest\ntime: 8am\n") is None)
+    import routines
+    _check("the one parser reads the new form",
+           routines.setting("morning_digest", "## morning_digest\ntime: 09:00 local\n")["at"][:2] == (9, 0))
+    _check("and writes it", "time: 09:00 local" in routines._with_line("", "morning_digest", "time: 09:00 local"))
 
 
-def test_config_edit_is_told_the_new_form() -> None:
+def test_config_edit_leaves_times_alone() -> None:
+    """2026-11-08: the digest's time and the watches' are changed live by routine_schedule, so ConfigEdit,
+    which could only change them for the next restart, no longer writes them."""
     from agents import prod_memory
     source = Path(prod_memory.__file__).read_text(encoding="utf-8")
-    _check("it is not asked to convert to UTC", 'Times are UTC' not in source and '"time: HH:MM local"' in source)
-    _check("the refusal shows the new form", "`time: 08:00 local`" in source)
+    _check("it is not asked to convert to UTC", 'Times are UTC' not in source)
+    _check("and is told times are not set there", "When something runs" in prod_memory._CONFIG_SYSTEM_PROMPT
+           and "schedule_config.md" not in prod_memory._CONFIG_EDITABLE)
 
 
 if __name__ == "__main__":
     test_every_list_keeps_its_time()
     test_reading_the_file()
-    test_config_edit_is_told_the_new_form()
+    test_config_edit_leaves_times_alone()
     print(f"\n{len(_failures)} failures" if _failures else "\nAll pass")
     sys.exit(1 if _failures else 0)

@@ -24,7 +24,7 @@ Update this file when a row changes. ARCHITECTURE.md describes how each thing wo
 | `redact_secrets` | `sanitize.redact` | |
 | Protected paths | `_is_secret_file` | |
 | Cron `[SILENT]` | `scheduled_message` | |
-| Cron | `scheduled_message`, `compose.write` | Read-only tools. Any interval, but 3 hours at the shortest without a script and 5 minutes with one: a run without one spends tokens. `times` as Hermes' `repeat`. |
+| Cron | `scheduled_message`, `compose.write`, `routine_schedule` | Read-only tools. Any interval: 3 hours at least without a script, 5 minutes with one. `times` as Hermes' `repeat`. The built-in digest and watches are retimed live. |
 | `/loop` stop conditions | `[DONE]`, `times` | Hermes' `LOOP_COMPLETE` and `--times`. No `--until` judge: the brief says when to stop, and the run judges it. |
 | Cron `script`, `no_agent`, wake gate | `prerun.py` | Only the user or Claude Code can add a script: the folder is sealed from every tool. In the sandbox with the network, no keys and no private files. 60 seconds, not an hour. A failure alerts once a streak, not every run. |
 | Cron `context_from`, `deliver: local` | `context_from`, `keep_only` | The latest output, dated, up to 3 sources. An entry that reads others goes last in a tick, where Hermes does not wait. |

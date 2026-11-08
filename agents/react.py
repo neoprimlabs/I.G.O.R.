@@ -56,6 +56,7 @@ _WEB_TOOLS = frozenset({"search", "fetch_url", "browser"})
 _QUARANTINED_AFTER_WEB = frozenset({
     "shell", "python_run", "write_file", "patch_file", "restart_self", "memory_write",
     "scheduled_message", "delegate_task", "task_update", "goal", "proposal", "process", "board",
+    "routine_schedule",
 })
 
 _QUARANTINE_REFUSAL = (
@@ -405,6 +406,20 @@ _TOOLS = [
         },
     },
     {
+        "name": "routine_schedule",
+        "description": "When IGOR's own routines run: the morning digest, the job and gig watches (daily times) and the price and stock watches (every so many hours). list: each one's timing and next run. change: set one, live from now on. Not for messages to the user: that is scheduled_message.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "change"]},
+                "routine": {"type": "string", "enum": ["morning_digest", "job_watch", "gig_watch", "price_watch", "stock_watch"]},
+                "every_hours": {"type": ["integer", "null"], "description": "change, price_watch and stock_watch: hours between runs, 1 to 168 (24 is daily)"},
+                "at": {"type": ["string", "null"], "description": "change, the digest and job and gig watches: the daily local time, HH:MM in 24 hours"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "goal",
         "description": "Standing goals IGOR works on at night. add: record a new goal. list: show them with ids. pause / resume: stop and restart one. retire: finish one for good (it is archived).",
         "input_schema": {
@@ -516,6 +531,9 @@ _DEFERRED_TOOLS = {
                           "changes what they want about a message already scheduled, use update on its id - "
                           "never add a second one. list shows the ids. For \"every day\", \"every weekday\" "
                           "or \"every Monday\", set repeat on the first occurrence."),
+    "routine_schedule": ("when the morning digest and the job, gig, price and stock watches run: list, change",
+                         "Change one only when the user asks for that routine's timing, then say its new timing "
+                         "and next run as the tool gave them."),
     "memory_write": ("save, change or remove an entry in the user's notes and settings files",
                      "Say in your reply exactly what you saved and to which file. When the user corrects "
                      "something just saved, patch that entry, copying its text from your last reply - "
@@ -528,6 +546,9 @@ _OPENS = {
     "scheduled_message": re.compile(
         r"\b(remind\w*|schedul\w*|check-?ins?|tomorrow|tonight|later|every|daily|weekly|weekdays?"
         r"|\d+\s*(am|pm)|at \d|in \d+\s*(m|mins?|minutes?|h|hrs?|hours?))\b", re.IGNORECASE),
+    "routine_schedule": re.compile(
+        r"\b(digest|briefing|price watch|stock watch|job watch|gig watch|watch(es|ers)|routines?|how often)\b",
+        re.IGNORECASE),
     "memory_write": re.compile(
         r"\b(remember|save|saved|notes?|store|record|forget|remove|delete|add|update|patch|exclude"
         r"|from now on|going forward|prefer\w*|user\.md|tasks?\.md|job_search)\b", re.IGNORECASE),
@@ -1326,6 +1347,7 @@ _WORKER_MAX_TOKENS = 1024
 _WORKER_FORBIDDEN = frozenset({
     "delegate_task", "goal", "proposal", "send_message", "scheduled_message", "restart_self",
     "memory_write", "task_update", "execute_code", "send_file", "process", "board", "clarify",
+    "routine_schedule",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
 # It writes tasks.md, which the morning digest and presence both read, so a worker
@@ -2140,6 +2162,14 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
     if name == "scheduled_message":
         from agents import scheduled
         return scheduled.run_tool(inputs)
+
+    if name == "routine_schedule":
+        import routines
+        try:
+            return routines.run_tool(inputs)
+        except Exception as e:
+            logger.error("routine_schedule failed - %s: %s", type(e).__name__, e)
+            return f"[routine_schedule failed: {type(e).__name__}. Nothing was changed that the tool did not report]"
 
     if name == "goal":
         import goals

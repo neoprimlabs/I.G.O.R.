@@ -17,6 +17,9 @@ prompt rule would be re-derived wrong at the next call site:
 
 1. The message must name the subject of the file being written.
 2. The reply shows the lines that changed, so a wrong write is obvious on arrival.
+
+Since 2026-11-08 ConfigEdit writes no schedule at all: times are changed live by React's
+routine_schedule (routines.py), and a schedule request that reaches ConfigEdit is handed on.
 """
 
 import asyncio
@@ -61,8 +64,6 @@ def test_subject_gate() -> None:
     from agents import prod_memory
 
     named = [
-        ("change the digest time to 14:00", "schedule_config.md"),
-        ("move the morning digest to 8am", "schedule_config.md"),
         ("drop weather from the digest", "digest_config.md"),
         ("add unreal engine to the watchlist", "digest_config.md"),
     ]
@@ -71,10 +72,8 @@ def test_subject_gate() -> None:
                prod_memory._mentions_subject(message, filename), filename)
 
     unnamed = [
-        ("Do it later.. around 11:40", "schedule_config.md"),
-        ("make it 2pm instead", "schedule_config.md"),
-        ("actually, a bit later", "schedule_config.md"),
         ("can you do 9 instead", "digest_config.md"),
+        ("actually, a bit later", "digest_config.md"),
     ]
     for message, filename in unnamed:
         _check(f"names nothing: {message[:38]}",
@@ -99,12 +98,17 @@ async def test_a_real_change_still_works_and_shows_itself() -> None:
     path = _fresh()
     out = await prod_memory.handle("change the digest time to 11:40",
                                    _replies("schedule_config.md", SCHEDULE_1140))
+    _check("a schedule change, even one that names the digest, is handed on", out is None, repr(out))
+    _check("and not written", (path / "schedule_config.md").read_text(encoding="utf-8") == SCHEDULE_NOW)
+
+    path = _fresh()
+    with_news = "# Digest Config\n\n## Sections\n- tasks\n- ai_news\n- daily_forecast\n- unreal_news\n"
+    out = await prod_memory.handle("add unreal_news to the digest", _replies("digest_config.md", with_news))
     _check("a request that names the setting is applied",
-           (path / "schedule_config.md").read_text(encoding="utf-8").strip() == SCHEDULE_1140.strip(),
-           (path / "schedule_config.md").read_text(encoding="utf-8"))
-    _check("the reply shows what it replaced", "13:00" in (out or ""), repr(out))
-    _check("and what it wrote", "11:40" in (out or ""), repr(out))
-    _check("and still says a restart is needed", "restart" in (out or "").lower(), repr(out))
+           (path / "digest_config.md").read_text(encoding="utf-8").strip() == with_news.strip(),
+           (path / "digest_config.md").read_text(encoding="utf-8"))
+    _check("the reply shows what it wrote", "+- unreal_news" in (out or ""), repr(out))
+    _check("and that it takes effect at once", "immediately" in (out or ""), repr(out))
 
     path = _fresh()
     out = await prod_memory.handle("drop daily_forecast from the digest",
@@ -116,8 +120,8 @@ async def test_unchanged_is_still_treated_as_a_question() -> None:
     from agents import prod_memory
 
     _fresh()
-    out = await prod_memory.handle("what time is the digest set for",
-                                   _replies("schedule_config.md", SCHEDULE_NOW))
+    out = await prod_memory.handle("which sections are in the digest",
+                                   _replies("digest_config.md", DIGEST_NOW))
     _check("an identical rewrite is still reported, not written",
            out is not None and "already reads" in out, repr(out))
 

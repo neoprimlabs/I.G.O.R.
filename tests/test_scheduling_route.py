@@ -43,8 +43,7 @@ TO_REACT = [
 LEFT_TO_THE_ROUTER = [
     "what messages are scheduled?",            # a current value: Monitor
     "tell me about your shell tool",           # about IGOR: SelfDescribe
-    "change the digest time to 14:00",         # a saved setting: ConfigEdit
-    "drop weather from the digest",
+    "drop weather from the digest",            # a digest section: ConfigEdit
     "add a price watch for the AG01 every day",
     "make it shorter",                         # an edit, not a time
     "tell me a story in five sentences",       # chat

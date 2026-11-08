@@ -14,7 +14,7 @@ _MEMORY_TEMPLATES: dict[str, str] = {
     "tasks.md": "# Tasks\n",
     "agents.md": "# Agents\n",
     "digest_config.md": "# Digest Config\n\n## Sections\n- tasks\n- daily_forecast\n- ai_news\n",
-    "schedule_config.md": "# Schedule Config\n\n## morning_digest\ntime: 13:00 UTC\n",
+    "schedule_config.md": "# Schedule Config\n\n## morning_digest\ntime: 10:00 local\n",
     "research.md": "# Research\n",
 }
 
@@ -104,7 +104,7 @@ def _smoke_test() -> None:
                    "agents.research", "agents.research_loop",
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
-                   "agents.inbound", "approvals", "clarify", "clock", "sandbox", "checkpoints",
+                   "agents.inbound", "approvals", "clarify", "routines", "clock", "sandbox", "checkpoints",
                    "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "mcp_client", "prerun", "proof", "memory_review", "skills", "deliver", "moa", "background", "hooks", "http_server", "plugins", "board", "browser", "dashboard"):
         try:
             __import__(module)

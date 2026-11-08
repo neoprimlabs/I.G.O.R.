@@ -341,6 +341,10 @@ def restore(n: int, only: Optional[str] = None, overwrite: bool = False) -> str:
     else:
         if any(p.endswith(".py") for p in restored + removed):
             lines.append("Code files change on disk now; the running IGOR uses them after its next restart.")
+        if any(p.endswith("schedule_config.md") for p in restored + removed):
+            import routines
+            if routines.apply_all():
+                lines.append("The digest and the watches run at the restored times from now on.")
         lines.append("Say 'rollback 1' to undo this rollback.")
     return "\n".join(lines)
 
