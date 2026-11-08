@@ -287,6 +287,14 @@ rows to today's rules; replayed on the real ledger, only those two changed, to s
 `rehearse_paper.py` on the new code, 7274 tokens: labels right, TrustMRR names clean. Left: the shortlist line still
 called a vendor's own payout "Proven $3.2 M", and the rerun's summary said "document actual earnings" for three
 similar-product ideas, where the real 11-07 paper said "document pricing".
+**Gig pitches built 11-07 (f9b57f7, fc4e7da), off until the user approves the lines about them.** `pitch N` / `sent N`
+(`agents/pitch.py`, ARCHITECTURE). Rehearsed with `rehearse_posts.py pitch` on 8 live posts, then 4 after fixes, 15240
+tokens of 120b (about 1000-1800 a draft): every draft used an approved line word for word and only the post's own
+figures. Found and fixed: "specialist" from the post counted as a claim (refused twice), and a "volunteer ..., paid on
+results" post passed the code checks (now a red flag; 1 of 69 live posts flagged). Seen, left to the user's read:
+steps restate what the post asks rather than add insight, and they commit the user to the work named. The proposed
+lines are in the PC scratchpad only, never the repo; once approved they go to `memory/private/pitch_facts.md` as
+igor. `gigs_pitchable.json` is first written by the next gig message that sends a pick.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
