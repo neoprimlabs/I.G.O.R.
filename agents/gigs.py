@@ -5,9 +5,9 @@ filter in code, one model call to screen and rank, a morning list. Chosen 2026-1
 with the user after research: n8n is the most-named automation platform in Upwork job
 titles, and building AI automations for clients is the route they picked.
 
-IGOR does not pitch, reply or contact anyone. Pitch drafting is deliberately not built
-yet - the user is learning n8n first - and when it is, a human sends every pitch:
-fully automated bidding is what gets freelancer accounts suspended.
+IGOR does not pitch, reply or contact anyone. The user writes their own pitches: drafting
+was built and removed on 2026-11-07 at their word (f9b57f7 has it, if they ask later).
+Fully automated bidding is what gets freelancer accounts suspended.
 
 Red flags are dropped, never shown, and the account that posted one is blocked, so
 nothing it posts later gets through either. The user, 2026-10-18: "I don't want
@@ -98,8 +98,7 @@ _RED_FLAGS = (
     ("a marketplace recruiting sellers, not a paid job",
      r"\bearnings depend on\b|\bcannot guarantee (customers|income|sales|earnings)\b|\bvendor (opportunity|cohort)\b"),
     ("equity or commission only", r"\b(equity|commission|revenue[- ]share)[- ]only\b|\bonly (equity|commission)\b"),
-    # 2026-11-07, rehearsing pitches: "Volunteer AI ambassadors and advisers wanted ..., paid on results"
-    # passed every check in code.
+    # 2026-11-07: "Volunteer AI ambassadors and advisers wanted ..., paid on results" passed every check in code.
     ("pay only on results, or volunteer work",
      r"\bpaid (only )?(on|by|per) (results?|referrals?|conversions?)\b|\bresults?[- ]based (pay|payment|compensation)\b"
      r"|\bvolunteer (role|position|basis|ambassadors?|advis[eo]rs?)\b|\bvolunteers? wanted\b"),
@@ -695,8 +694,6 @@ async def run(send, now: Optional[datetime] = None, fetchers=None, topic_fetch=N
         # Remember only once the picks reached the user, or a failed send loses them.
         watchers.remember(_SEEN, [g["url"] for g, _ in picks + skips], now=now, days=_SEEN_DAYS)
         record_found(picks, skips, status, now)
-        from agents import pitch
-        pitch.remember([g for g, _ in picks[:_MAX_REPORTED]], now)
         import history
         history.record("gigs", [(g.get("title", ""), "posted", g.get("source", ""), g.get("url", ""))
                                 for g, _ in picks], now)

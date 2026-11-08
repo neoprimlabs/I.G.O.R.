@@ -127,8 +127,7 @@ ssh -i <key from CLAUDE.local.md> -o BatchMode=yes <host from CLAUDE.local.md> "
    rehearsal on 2026-11-06 found three in an hour. The same goes for the other posts IGOR
    sends unprompted: `scripts/rehearse_posts.py checkin` or `series <id>` writes today's
    check-in or a scheduled series' next run the same way, and reading the posts already
-   sent (`[sent proactively]` rows in `context.db`) costs nothing and comes first. A change
-   to gig pitches (`agents/pitch.py`) is rehearsed with `rehearse_posts.py pitch` on live posts.
+   sent (`[sent proactively]` rows in `context.db`) costs nothing and comes first.
 7. The script is root-owned at `/usr/local/lib/igor-deploy/`, deliberately outside
    `/opt/igor` so `write_file` cannot reach it. Beside it, `prestart.sh` runs before
    every start of the service and restores the tree the last deploy approved, so a

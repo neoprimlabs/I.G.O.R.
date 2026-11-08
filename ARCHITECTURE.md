@@ -137,7 +137,6 @@ A Discord DM travels this path every time:
    regex       "send that as a PDF"     -> FileExport (code, no model)
    regex       "second opinion on ..."  -> SecondOpinion (see Second opinion)
    regex       proposal decision / list -> ProposalDecision / ProposalList (code)
-   regex       pitch N / sent N         -> Pitch (code, one 120b call)
    regex       "save that as a skill"   -> SkillSave (code, one 20b call)
    parse       checkpoints / heartbeats -> Rollback / Heartbeat (code, no model)
    regex       _SCHEDULING              -> Schedule (React, tool required)
@@ -342,9 +341,7 @@ live, pay only as each posting states it; a user's job request forces that searc
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
 posts; red flags drop in code or a 120b screen, blocking the poster; a post under 25 words
-drops; a failed screen holds the gigs; picks go out in the post's own words. `pitch N` (`agents/pitch.py`):
-120b fills need, steps, a question and an approved line's number (`private/pitch_facts.md`); code builds and
-checks it, refusing claims, figures and links the post lacks; the user sends it.
+drops; a failed screen holds the gigs; picks go out in the post's own words. The user writes any pitch.
 
 ### ConfigEdit
 
