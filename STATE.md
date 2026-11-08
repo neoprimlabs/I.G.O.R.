@@ -309,6 +309,14 @@ System (Optimal or Attention, with why). The week per agent comes from `memory/a
 Checked live on the server: the cards, 401 for memory.json without the key, and 456 notes, last night's 4 steps
 and the 15-idea proof ledger with it. Seen headless at desk width and at 390px with no sideways scroll. The user
 has not opened it yet.
+**IGOR retimes its own routines when asked, 11-08 (e70ce9a).** The user wanted the price and stock watches run less
+often, by asking IGOR, toward IGOR running without Claude Code. Before this both were fixed in code, and the request
+would have routed CONFIG, where ConfigEdit could write a line nothing read and say "Updated". Now `routine_schedule`
+(Hermes' cronjob update) changes the digest, job and gig watch times or the price and stock watch intervals (1-168
+hours), live and saved in `schedule_config.md`; a code route sends a routine's name plus a timing word to React with
+the tool required; ConfigEdit no longer writes schedules. Live in the throwaway copy, 17290 tokens: "Run the price
+watch every 6 hours and the stock watch every 4 hours" skipped the router, made both changes and said so. The real
+timings are unchanged (price 2 hours, stock 1) until the user asks IGOR.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
