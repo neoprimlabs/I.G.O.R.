@@ -502,6 +502,15 @@ class Orchestrator:
             import skills
             return skills.act(*skill_action), False
 
+        # The answer to a question a turn is waiting on (clarify.py) belongs to that turn. Text from
+        # a document or an image is not the user's own words, so it never answers one.
+        from agents.react import _UNTRUSTED_OPEN as _OUTSIDE
+        if _OUTSIDE not in content:
+            import clarify
+            settled = clarify.answer(content)
+            if settled:
+                return settled, False
+
         # Text from a document or an image is not the user's own words, so neither of these may
         # carry it past the rules a turn applies to such text. It waits its turn like anything else.
         from agents.react import _UNTRUSTED_OPEN
@@ -573,7 +582,9 @@ class Orchestrator:
                     "Files and notes it changed stay as they are; rollback puts those back.")
         # stop
         from agents import research_loop
-        stopped = False
+        import clarify
+        stopped = clarify.waiting() is not None
+        clarify.cancel()
         for event in (self._stop_turn, self._stop_follow):
             if event is not None and not event.is_set():
                 event.set()

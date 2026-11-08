@@ -29,7 +29,7 @@ def _check(name: str, condition: bool, detail: str = "") -> None:
         _failures.append(name)
 
 
-CORE = {"search", "fetch_url", "read_file", "memory_read", "search_memory", "shell"}
+CORE = {"search", "fetch_url", "read_file", "memory_read", "search_memory", "shell", "clarify"}
 
 
 def _names(call) -> set:

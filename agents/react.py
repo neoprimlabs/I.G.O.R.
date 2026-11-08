@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+import hashlib
 import logging
 import re
 import shlex
@@ -368,6 +369,19 @@ _TOOLS = [
         },
     },
     {
+        "name": "clarify",
+        "description": "Ask the user one question and wait for their answer, which comes back as this tool's result. Only when the task cannot go on well without it: a choice only they can make. Never for what a tool can find out or what they already said.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "One short question"},
+                "choices": {"type": ["array", "null"], "items": {"type": "string"},
+                            "description": "Up to 4 short options, best first. They can still answer in their own words"},
+            },
+            "required": ["question"],
+        },
+    },
+    {
         "name": "scheduled_message",
         "description": "Send the user a Discord message at a later time, once or repeating. add: schedule one. update: change the time, brief or repeat of a pending one by id. pause / resume: stop and restart one without losing it. list: show pending, and scripts. cancel: remove one by id.",
         "input_schema": {
@@ -486,7 +500,8 @@ _DEFERRED_TOOLS = {
     "python_run": ("run Python in the sandbox", ""),
     "write_file": ("write a file on the server",
                    "Only for modifying IGOR's own code, or when the user explicitly asks for a file "
-                   "saved on the server. Documents, papers and summaries go in your reply: never "
+                   "saved on the server. It replaces a whole file, so an existing one must be read in "
+                   "full first; for a small change use patch_file. Documents, papers and summaries go in your reply: never "
                    "write them to disk, and never tell the user to restart for content files. "
                    + _SELF_MODIFY),
     "patch_file": ("edit a file on the server by exact replacement", _SELF_MODIFY),
@@ -574,6 +589,7 @@ When to use tools:
 - search_history (load it first): anything said in an earlier conversation. Your context holds only the last few turns, so search before saying you do not know
 - memory_write (load it first): when the user asks you to remember, add, store, or update something
 - scheduled_message (load it first): when the user wants a message, reminder or check-in later
+- clarify: only when a choice is theirs alone and the task cannot go on well without it; it waits for their answer
 - shell: system commands, service logs, git operations, file inspection, anything clumsy to do in Python
 
 How to reason:
@@ -1023,6 +1039,87 @@ def _safe_path(relative: str):
         return None
 
 
+# Hermes keeps a tool result too long for the context whole and hands back its start with where the
+# rest is (tool_result_storage). Here it is kept in memory for the turn and read on with read_file
+# "result:N": on disk, web text would outlive the turn that read it, in reach of a later turn's
+# read_file or a sandboxed shell, past the quarantine. {id: (text, untrusted)}; None outside a turn.
+_SPILLED: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("react_spilled", default=None)
+_SPILL_NOTE_ROOM = 400
+
+
+def _spill(name: str, result: str, can_read: bool) -> str:
+    spilled = _SPILLED.get()
+    if spilled is None or not can_read:
+        return result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
+    untrusted = _UNTRUSTED_OPEN in result
+    body = result.replace(_UNTRUSTED_OPEN, "").replace(_UNTRUSTED_CLOSE, "").strip() if untrusted else result
+    key = f"result:{len(spilled) + 1}"
+    spilled[key] = (body, untrusted)
+    keep = body[:_TOOL_RESULT_CAP - _SPILL_NOTE_ROOM]
+    shown = f"{_UNTRUSTED_OPEN}\n{keep}\n{_UNTRUSTED_CLOSE}" if untrusted else keep
+    return (f"{shown}\n[{name}'s result is {len(body)} characters and this is the first {len(keep)}. The rest is "
+            f"kept for this turn: read_file with path \"{key}\" and offset={len(keep)} reads on, only if you need it.]")
+
+
+def _read_spilled(path: str, offset: int) -> str:
+    spilled = _SPILLED.get() or {}
+    if path not in spilled:
+        return f"[not found: {path}. A kept result lasts only for the turn that made it]"
+    body, untrusted = spilled[path]
+    start = max(0, offset)
+    if start >= len(body):
+        return f"[offset {start} is past the end of {path}, which is {len(body)} characters]"
+    window = body[start:start + _READ_WINDOW]
+    end = start + len(window)
+    if untrusted:
+        window = f"{_UNTRUSTED_OPEN}\n{window}\n{_UNTRUSTED_CLOSE}"
+    if end < len(body):
+        window += f"\n\n[{path} is {len(body)} characters; this is {start} to {end}. Call read_file with offset={end} for the next section.]"
+    return window
+
+
+# Hermes' stale-overwrite guard: a whole-file write_file replaces only what this turn has read in full
+# and is unchanged since, so it cannot clobber what it never saw. {resolved path: [characters read
+# from the start without a gap, length, hash]}; None outside a turn, where nothing is guarded.
+_READS: "contextvars.ContextVar[Optional[dict]]" = contextvars.ContextVar("react_reads", default=None)
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _note_read(resolved, content: str, start: int, end: int) -> None:
+    reads = _READS.get()
+    if reads is None:
+        return
+    seen = reads.get(str(resolved))
+    if seen and seen[2] != _digest(content):
+        seen = None
+    reached = seen[0] if seen else 0
+    if start <= reached:
+        reached = max(reached, end)
+    reads[str(resolved)] = [reached, len(content), _digest(content)]
+
+
+def _note_written(resolved, content: str) -> None:
+    reads = _READS.get()
+    if reads is not None:
+        reads[str(resolved)] = [len(content), len(content), _digest(content)]
+
+
+def _overwrite_problem(resolved, path: str) -> Optional[str]:
+    reads = _READS.get()
+    if reads is None or not resolved.exists():
+        return None
+    seen = reads.get(str(resolved))
+    if seen is None or seen[0] < seen[1]:
+        return (f"[refused: {path} already exists and this turn has not read all of it. Read every section "
+                "with read_file first, or change part of it with patch_file]")
+    if seen[2] != _digest(resolved.read_text(encoding="utf-8", errors="replace")):
+        return f"[refused: {path} changed since you read it. Read it again before replacing it]"
+    return None
+
+
 async def _read_server_file(path: str, offset: int = 0, allow_private: bool = False) -> str:
     """Read a window of a file, and say honestly how to get the rest.
 
@@ -1034,6 +1131,8 @@ async def _read_server_file(path: str, offset: int = 0, allow_private: bool = Fa
     in, ran out of iterations, and described a system that does not exist, including
     a content filter IGOR has never had.
     """
+    if str(path).startswith("result:"):
+        return _read_spilled(str(path).strip(), offset)
     problem = _path_problem(path, allow_private)
     if problem:
         return problem
@@ -1052,6 +1151,7 @@ async def _read_server_file(path: str, offset: int = 0, allow_private: bool = Fa
 
     window = content[start:start + _READ_WINDOW]
     end = start + len(window)
+    _note_read(resolved, content, start, end)
     if end < total:
         window += (
             f"\n\n[{path} is {total} characters; this is {start} to {end}. "
@@ -1225,7 +1325,7 @@ _WORKER_MAX_TOKENS = 1024
 # memory, or delegate again. It exists to find something out and report back.
 _WORKER_FORBIDDEN = frozenset({
     "delegate_task", "goal", "proposal", "send_message", "scheduled_message", "restart_self",
-    "memory_write", "task_update", "execute_code", "send_file", "process", "board",
+    "memory_write", "task_update", "execute_code", "send_file", "process", "board", "clarify",
 })
 # task_update was missed when it was added, and a live end-to-end check found it.
 # It writes tasks.md, which the morning digest and presence both read, so a worker
@@ -1492,6 +1592,11 @@ async def _patch_server_file(path: str, old_string: str, new_string: str) -> str
         checkpoints.before_write(resolved)
         resolved.write_text(new_content, encoding="utf-8")
         checkpoints.after_write(resolved)
+        # A patch to a file read in full keeps it read in full; one made blind gives nothing to replace from.
+        reads = _READS.get()
+        seen = reads.get(str(resolved)) if reads is not None else None
+        if seen and seen[0] >= seen[1] and seen[2] == _digest(content):
+            _note_written(resolved, new_content)
         logger.info("ReAct patch_file: %s", path)
         return f"Patched: {path}.{_syntax_note(path, content, new_content)} Restart required for changes to take effect."
     except Exception as e:
@@ -1510,6 +1615,9 @@ async def _write_server_file(path: str, content: str) -> str:
         return "[access denied: only .py and .md files allowed]"
     if _unwritable(resolved):
         return "[access denied: the Python environment, .git, caches and skills are not editable]"
+    stale = _overwrite_problem(resolved, path)
+    if stale:
+        return stale
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         import checkpoints
@@ -1517,6 +1625,7 @@ async def _write_server_file(path: str, content: str) -> str:
         before = resolved.read_text(encoding="utf-8", errors="replace") if resolved.exists() else None
         resolved.write_text(content, encoding="utf-8")
         checkpoints.after_write(resolved)
+        _note_written(resolved, content)
         logger.info("ReAct write_file: %s (%d bytes)", path, len(content))
         return f"Written: {path} ({len(content)} bytes).{_syntax_note(path, before, content)} Restart required for changes to take effect."
     except Exception as e:
@@ -2024,6 +2133,10 @@ async def _execute_tool(name: str, inputs: dict, allow_private: bool = False) ->
             return "Message sent."
         return "No notify function available."
 
+    if name == "clarify":
+        import clarify
+        return await clarify.ask(inputs.get("question", ""), inputs.get("choices"))
+
     if name == "scheduled_message":
         from agents import scheduled
         return scheduled.run_tool(inputs)
@@ -2135,6 +2248,8 @@ async def handle(
     token = _RECEIPTS.set([])
     trace_token = _TRACE.set([])
     links_token = _SEEN_LINKS.set(set())
+    reads_token = _READS.set({})
+    spilled_token = _SPILLED.set({})
     try:
         reply = await _handle(message, context, **kwargs)
         import links
@@ -2147,6 +2262,8 @@ async def handle(
         footer = _receipt_footer(_RECEIPTS.get())
         return f"{reply}\n\n{footer}" if footer and reply else (reply or footer)
     finally:
+        _SPILLED.reset(spilled_token)
+        _READS.reset(reads_token)
         _SEEN_LINKS.reset(links_token)
         _TRACE.reset(trace_token)
         _RECEIPTS.reset(token)
@@ -2393,7 +2510,8 @@ async def _handle(
                 result = redact(result)
                 hooks.fire("post_tool_call", tool_name=tc.function.name, tool_input=args, tool_result=result[:2000])
                 if len(result) > _TOOL_RESULT_CAP:
-                    result = result[:_TOOL_RESULT_CAP] + "\n[truncated - Groq free tier is 8000 tokens/min; request smaller pieces]"
+                    result = _spill(tc.function.name, result,
+                                    can_read=any(t["function"]["name"] == "read_file" for t in tools))
                 return result
 
             results = await asyncio.gather(*[_run_tool(tc) for tc in tool_calls])

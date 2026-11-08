@@ -104,7 +104,7 @@ def _smoke_test() -> None:
                    "agents.research", "agents.research_loop",
                    "agents.prod_memory", "agents.evaluator", "context_store",
                    "agents.scheduled", "agents.compose", "agents.presence", "agents.gigs",
-                   "agents.inbound", "approvals", "clock", "sandbox", "checkpoints",
+                   "agents.inbound", "approvals", "clarify", "clock", "sandbox", "checkpoints",
                    "compression", "heartbeats", "url_safety", "memory_entries", "followthrough", "commands", "script_tool", "mcp_client", "prerun", "proof", "memory_review", "skills", "deliver", "moa", "background", "hooks", "http_server", "plugins", "board", "browser", "dashboard"):
         try:
             __import__(module)

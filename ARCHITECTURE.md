@@ -6,8 +6,7 @@ reachable with `offset`. Describe nothing unread.
 ## The whole system, in one page
 
 A Discord bot, DMs only, one authorized user. Python 3.10 on a 956 MB Oracle host,
-systemd. Groq free tier
-via the `openai` SDK, Exa for search, markdown plus SQLite.
+systemd. Groq free tier via the `openai` SDK, Exa for search, markdown and SQLite.
 
 ## What does NOT exist
 
@@ -21,9 +20,9 @@ via the `openai` SDK, Exa for search, markdown plus SQLite.
   `memory/workspace`; refused if it cannot start. The shell also refuses a blocklist and DMs the user for a yes
   before risky ones (approvals).
 - **No `scheduler.yaml`, `run_agent()` or `igor` module.** Spoken replies only
-  on the dashboard; voice notes, images and videos sent are read.
+  on the dashboard; voice notes, images and videos are read.
 
-**React's 25 tools:** `search` (web, jobs), `memory_read`, `search_memory`,
+**React's 26 tools:** `search` (web, jobs), `clarify`, `memory_read`, `search_memory`,
 `search_history`, `watch_history`, `search_files`, `delegate_task`, `task_update`, `python_run`,
 `read_file`, `patch_file`, `write_file`, `restart_self`, `shell`, `process`, `fetch_url`,
 `send_message`, `send_file`, `memory_write`, `scheduled_message`, `goal`, `proposal`, `execute_code`, `board`, `browser`. No others. Nineteen load on
@@ -215,9 +214,12 @@ and promising a future action. Facts it may lack (a product, company or event to
 
 System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
-context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory` and
+context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`, `clarify` and
 `shell` attach, with `load_tools` for the other nineteen (it returns their rules too; a direct
-call loads the tool and retries; a request for a file, a reminder or a save opens it at once). Workers and scheduled runs name their own list through `allowed_tools`. Each reply ends with subtext lines of what its saving tools really did,
+call loads the tool and retries; a request for a file, a reminder or a save opens it at once). Workers and scheduled runs name their own list through `allowed_tools`.
+`clarify` (`clarify.py`) asks the user and waits 10 minutes. `write_file` replaces
+only a file this turn read whole, unchanged since. A result over 4000 characters is kept for the turn
+and read on as `result:N`, never on disk. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier). A link in any
 reply must appear in what was read that turn, the message or the conversation (`links.py`);
 any other is taken out, with a line saying how many.

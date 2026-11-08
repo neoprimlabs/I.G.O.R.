@@ -48,6 +48,8 @@ class IgorBot(discord.Client):
                       connected_fn=lambda: monitor.gateway_connected(self))
         import approvals
         approvals.set_sender(self.send_to_user)
+        import clarify
+        clarify.set_sender(self.send_to_user)
         import deliver
         deliver.set_sender(self.send_bytes_to_user)
         import background
