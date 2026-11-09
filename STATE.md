@@ -372,10 +372,13 @@ acronym is not in the resume, profile, user.md, preferences, the user's words, I
 tool read that turn (IGOR's own replies do not count: they held BLEU from an earlier invented answer), and Direct
 and React are told to claim only what those show. Over every reply on record it counts one as an application,
 that letter, and takes out BLEU, ROUGE and the 12% (c0143c3). Open: claims in plain words ("weekly reports to
-stakeholders", Docker) pass the code check and rest on the prompt line. Open: Direct still promised actions
-("I'll omit", "I'll pull the next batch", "I will keep drafts free of personal details") on 10-27 and 11-01
-despite its rule; the last two preferences were saved on 11-05 through proposals. Watch: "How's it going?"
-answered "operating as expected" on 11-04; the new rule may now send such a greeting to React.
+stakeholders", Docker) pass the code check and rest on the prompt line. Direct also promised actions despite
+its rule ("I'll omit", "I'll pull the next batch", "I will keep drafts free of personal details", "I'll set a
+scheduled message for 1 a.m."): a Direct reply with "I'll" and an action verb, not waiting on the user ("tell me
+which and I'll..."), is now handed on like LOOKUP (1ce38a0). Of 99 Direct replies on record it hands on those 5 and
+no offer. Watch: "How's it going?" answered "operating as expected" on 11-04; the new rule may now send such a
+greeting to React. To check in real use: the 11:30 job watch on 11-09 (the seasonal customer care pick), that
+night's paper, and the next question about the watches, which no live check has yet answered end to end.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
