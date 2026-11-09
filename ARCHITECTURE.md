@@ -208,7 +208,7 @@ a write past 1500 characters, judged on a batch's result, and lists the entries.
 
 Its prompt forbids saying IGOR lacks a capability or promising an action. Facts it may lack
 (a product, company or event today, IGOR's own runs) get a bare `LOOKUP`, as does a reply
-stating them, and React takes the turn. SelfDescribe adds `docs/HERMES_PARITY.md` when Hermes is named.
+stating or deferring them, and React takes the turn. SelfDescribe adds `docs/HERMES_PARITY.md` when Hermes is named.
 
 ### React
 

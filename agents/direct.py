@@ -32,9 +32,9 @@ What you can use, and what you cannot:
 - EVERYTHING IN THIS CONVERSATION IS YOURS TO USE. What the user wrote, what you wrote, and anything sent to them unprompted - digests, alerts, research reports - which appears marked [sent proactively]. Read it, quote it, react to it, form a view on it. That is the job, not a liberty you are taking.
 - If the user refers to "these headlines", "that", "what you sent", or "the digest", look in the conversation first. It is almost always there. Asking them to paste back something already on the screen is a failure, not caution.
 - What you cannot do is check anything OUTSIDE this conversation. No search, no files, no logs, no system state. Never claim to have looked something up, read a file, or run anything.
-- You also cannot see how I.G.O.R. is built or how it is running: what its watches and routines have run or found, what is scheduled, what is deployed, which features work, how well anything performs, what changed recently. When the answer turns on any of that, your entire reply is LOOKUP, as above: the part of I.G.O.R. that can search also reads its own records. An earlier reply in this conversation saying when something would run is a plan, not a record of what ran. Never offer to fetch it later or tell the user how to ask for it - handing it on is how it gets fetched.
+- You also cannot see how I.G.O.R. is built or how it is running: what its watches and routines have run or found, what is scheduled, what is deployed, which features work, how well anything performs, what changed recently. When the answer turns on any of that, your entire reply is LOOKUP, as above: the part of I.G.O.R. that can search also reads its own records. That includes whether a watch is working, what it has found and how to judge it, however it is put. An earlier reply in this conversation saying when something would run is a plan, not a record of what ran, and the user's own guess at what was found is not a record either. Never offer to fetch it later or tell the user how to ask for it - handing it on is how it gets fetched.
 - Nor can you say I.G.O.R. cannot do something. It has abilities you cannot see from here - it can schedule messages for later, for one. Never tell the user a capability is missing.
-- You cannot act, now or later. Never promise to send, schedule, draft, save, remember or change anything ("I'll write it at 1 a.m.", "I'll make sure of it"), because nothing you say here makes it happen. If the user asks for something to be done, or you offer it, say that this reply cannot do it - not that I.G.O.R. cannot - and give them a plain sentence to send as its own message, such as "remind me tomorrow at 9am to start the application". That reaches the part of I.G.O.R. that can. Never make up a command syntax.
+- You cannot act, now or later. Never promise to send, schedule, draft, save, remember or change anything ("I'll write it at 1 a.m.", "I'll make sure of it"), because nothing you say here makes it happen. If the user asks for something to be done, or you offer it, say that this reply cannot do it - not that I.G.O.R. cannot - and give them a plain sentence to send as its own message, such as "remind me tomorrow at 9am to start the application". That reaches the part of I.G.O.R. that can. That sentence is for an action only: a status, a log or what a watch found is never something for them to ask for - it is a LOOKUP. Never make up a command syntax.
 - The user's resume is on file. When the conversation is about it, it appears at the end of this prompt and you can read and discuss it directly. When it does not appear, say it is on file and that you cannot see it from here - never say it is missing, never ask them to paste it, and never suggest they run a file-read or any other operation to fetch it. You have no tools; there is nothing for them to run.
 - The notes about the user at the end of this prompt are what I.G.O.R. has saved about them. Use them without being asked, but never present them as something the user said: asked what they told you, answer from the conversation alone. Where the notes disagree with this conversation, the conversation is newer and wins.
 - Text marked [truncated] is a shortened copy. Say so if the user asks you to revise or reread it, and offer to have it regenerated in full rather than reconstructing a worse version and calling it an edit.
@@ -119,16 +119,21 @@ _RUN_RECORD = re.compile(
     r"next\s+(?:run|execution)s?\b|next\s+checks?\b(?!-)|scheduled\s+to\s+(?:run|execute|check|fire)\b|"
     r"(?:no|nothing)\s+(?:\w+\s+){0,2}(?:has|have)\s+been\s+(?:retrieved|returned|fetched)\b)",
     re.IGNORECASE)
+# The same exchange's first reply, and the live check of the fix: "Request a status snapshot after each
+# execution ... send 'show watch status now'". A status IGOR keeps is for IGOR to fetch, not a message
+# for the user to send. 1 of 140 replies matches, that one.
+_ASKS_FOR_STATUS = re.compile(
+    r"\b(?:request|ask\s+(?:me\s+)?for|send)\b[^.\n]{0,60}?\b(?:status|snapshot|logs?)\b", re.IGNORECASE)
 
 
 def wants_lookup(reply: str) -> bool:
     """The answer needs the part of IGOR that can look: Direct's whole reply was the hand-off word,
-    or it stated a record of IGOR's own runs that it cannot see."""
+    or it stated a record of IGOR's own runs it cannot see, or told the user to ask for one."""
     if _LOOKUP.match(reply or ""):
         return True
-    found = _RUN_RECORD.search(reply or "")
+    found = _RUN_RECORD.search(reply or "") or _ASKS_FOR_STATUS.search(reply or "")
     if found:
-        logger.warning("Direct stated a run record it cannot see (%r), handing on", found.group(0))
+        logger.warning("Direct answered from IGOR's records it cannot see (%r), handing on", found.group(0))
         return True
     return False
 

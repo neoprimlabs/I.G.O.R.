@@ -50,6 +50,7 @@ def test_igor_records_are_handed_on() -> None:
     _check("the prompt hands IGOR's records on", "what its watches and routines have run or found" in prompt
            and "a plan, not a record of what ran" in prompt)
     _check("and no longer offers to have a check run", "offer to have it run" not in prompt)
+    _check("a sentence to send is for an action only", "That sentence is for an action only" in prompt)
     for made_up in (
         "Here is the status. The kettle watch last executed at 08:10 on Monday. No price data has been "
         "retrieved yet, so the result set is empty.",
@@ -58,6 +59,10 @@ def test_igor_records_are_handed_on() -> None:
         "The next run is around noon.",
         "I understand it is hard to judge when no results have been returned yet.",
         "The kettle watch last ran an hour ago.",
+        "Request a status snapshot after each execution; if the result set remains empty, the sources "
+        "have no match. If you need a command, send “show watch status now”.",
+        "The most direct way to gauge it is to request a brief status report.",
+        "You could ask me for the logs from that run.",
     ):
         _check(f"handed on: {made_up[:50]!r}", direct.wants_lookup(made_up))
     for ordinary in (
@@ -66,6 +71,8 @@ def test_igor_records_are_handed_on() -> None:
         "I will raise it at the next check-in if you like.",
         "Nothing in this conversation says when the kettle was bought.",
         "The digest I sent this morning led with the kettle recall.",
+        "This reply cannot set it, so send \"remind me at 9pm to descale the kettle\" as its own message.",
+        "Your status at the kettle club is the thing to protect.",
     ):
         _check(f"kept: {ordinary[:50]!r}", not direct.wants_lookup(ordinary))
 
