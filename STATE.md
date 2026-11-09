@@ -341,7 +341,9 @@ day's 219 postings, "1+ years of customer service" among them, which the user ha
 counts all its years as software. On that day's feeds 11 more postings reached the ranking and it picked one, a
 seasonal customer care role; no software posting got through. Five of seven check-ins since 11-03 asked the user
 to grade IGOR (its watch filter, code changes, the 12-hour interval before it had run); those words now get one
-retry and then silence, which over all 51 check-ins sent stops those four and none of the rest.
+retry and then silence, which over all 51 check-ins sent stops those four and none of the rest. Four of seven
+digest AI items from 11-05 to 11-08 cited a day's briefing page; those now count as listings, and the search asks
+Exa for news articles (657b0f3): on the 11-09 query, 7 articles of 8 against 1 usable of 8 before.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
