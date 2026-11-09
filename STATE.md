@@ -329,7 +329,11 @@ Subscription" for "Automated Contract-Review Micro-SaaS"), so the shortlist call
 next night would have searched it again. Now a revision's name that matches nothing checked, shares a word with one
 checked idea it dropped and cites at least half that idea's pages gets the checked name back, and names match
 across one and many ("Alert", "Alerts"). Replayed over all 19 revisions it changed none; on the rehearsal's paper it
-restored the one rename, unchecked becoming self-reported. The digest's 2 AI news items came from roundup sites;
+restored the one rename, unchecked becoming self-reported. Rehearsed on b5c7c65 (12385 tokens, two writes): the
+writer kept close names this time, so nothing was restored, and all five labels came from the ledger; the evaluator
+failed that draft for giving no hours per idea, where the night's real revision had passed. Open, not built: a
+legal-research data idea now carries the general data idea's "similar product", from TrustMRR figures for unrelated
+niche tools, because the writer reused that name. The digest's 2 AI news items came from roundup sites;
 that is the search, working as built.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
