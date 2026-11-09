@@ -605,6 +605,7 @@ When to use tools:
 - memory_read gigs_found.md: freelance gigs the daily gig watch found, its last check, and which tools hiring posts named. gig_search.md holds its red flags and exclusions
 - memory_read price_watch.md and price_watch_status.md: what the price watch is watching for on Slickdeals, and what it saw on its last check. The stock watch is separate - it reads the seller's own store - and only watch_history (load it first) shows what it saw, so use watch_history too for any question about what a watch has found or missed. The "cheapest keyword match" in the status file is not checked for being the right product and can be an old posting - never quote it as the item's price or as a new find
 - read_file on memory/resume.md: the user's resume is on file and you CAN read it, including to judge which jobs already in jobs_found.md suit them, since that needs no search. Finding new jobs does need search: see Finding jobs above. The moment you do, search and fetch_url close for the rest of the turn - private data and the open web never share a turn - so read it first, or not at all in a turn that needs the web. If you have already searched, say it is on file, that you cannot open it in this turn, and offer to look in a new message. Never say it is missing and never ask them to paste it
+- Drafting an application or cover letter: read the resume first. It claims only what the resume, user.md or the user's own words show - no figure, tool, duty or result beyond them - and says a gap plainly rather than covering it. The user sends it under their own name
 - memory/corrections.md and memory/drafts.md are sealed in every turn: they hold text derived from untrusted input. They exist; say so rather than claiming they are missing
 - read_file on ARCHITECTURE.md: for any question about how IGOR itself works - which agents exist, how routing happens, which models, what tools, the safety stack. That file is verified against the source and updated with every change. Memory files hold preferences and history, never architecture, so do not describe how the system works from them. If you cannot check, say so rather than describing it from memory
 - search_history (load it first): anything said in an earlier conversation. Your context holds only the last few turns, so search before saying you do not know
@@ -2210,6 +2211,8 @@ _RECEIPTS: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("re
 _TRACE: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_trace", default=None)
 # Every link a tool returned this turn, workers' included: what a reply's links are checked against (links.py).
 _SEEN_LINKS: "contextvars.ContextVar[Optional[set]]" = contextvars.ContextVar("react_seen_links", default=None)
+# And their text, for what an application draft may claim (applications.py).
+_SEEN_TEXT: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar("react_seen_text", default=None)
 _MAX_RECEIPT_LINES = 4
 
 
@@ -2278,12 +2281,16 @@ async def handle(
     token = _RECEIPTS.set([])
     trace_token = _TRACE.set([])
     links_token = _SEEN_LINKS.set(set())
+    text_token = _SEEN_TEXT.set([])
     reads_token = _READS.set({})
     spilled_token = _SPILLED.set({})
     try:
         reply = await _handle(message, context, **kwargs)
+        import applications
         import links
         reply = links.guard(reply, _SEEN_LINKS.get() | links.found(message) | links.in_conversation(context))
+        reply = applications.guard(reply, message, "\n".join(
+            _SEEN_TEXT.get() + [applications.from_conversation(context)]))
         # Only a turn the user asked for: a forced tool, a job's own prompt or a
         # follow-through round is not a task someone would want to repeat.
         if allowed_tools is None and system_override is None and force_tool is None and not message.startswith("[IGOR is"):
@@ -2295,6 +2302,7 @@ async def handle(
         _SPILLED.reset(spilled_token)
         _READS.reset(reads_token)
         _SEEN_LINKS.reset(links_token)
+        _SEEN_TEXT.reset(text_token)
         _TRACE.reset(trace_token)
         _RECEIPTS.reset(token)
 
@@ -2550,6 +2558,9 @@ async def _handle(
                 import links
                 for r in results:
                     seen_links |= links.found(r)
+            seen_text = _SEEN_TEXT.get()
+            if seen_text is not None:
+                seen_text.extend(r[:20000] for r in results)
             trace = _TRACE.get()
             if trace is not None and _depth == 0:
                 for tc, r in zip(tool_calls, results):

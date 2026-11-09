@@ -215,14 +215,15 @@ stating or deferring them; React takes it, as Watches after a watch message. Sel
 System prompt rebuilt each call: `clock.time_line()` and the next seven dates, then
 `prompt_react.md` if present, else the built-in default; messages are `[system] +
 context + user`. `search`, `fetch_url`, `read_file`, `memory_read`, `search_memory`, `clarify` and
-`shell` attach, with `load_tools` for the other twenty (it returns their rules too; a direct
-call loads the tool and retries; a request for a file, a reminder or a save opens it at once). Workers and scheduled runs name their own list through `allowed_tools`.
+`shell` attach, with `load_tools` for the other twenty (with their rules; a direct call
+loads it and retries; asking for a file, reminder or save opens it). Workers and scheduled runs name their own list through `allowed_tools`.
 `clarify` (`clarify.py`) asks the user and waits 10 minutes. `write_file` replaces
 only a file this turn read whole, unchanged since. A result over 4000 characters is kept for the turn
 and read on as `result:N`, never on disk. Each reply ends with subtext lines of what its saving tools really did,
 and a save that failed is flagged whatever the reply says (Hermes' verifier). A link in any
-reply must appear in what was read that turn, the message or the conversation (`links.py`);
-any other is taken out, with a line saying how many.
+reply must appear in what was read that turn, the message or the conversation, or is taken
+out with a line saying so (`links.py`). An application draft drops a sentence whose figure or
+acronym nothing read or held shows (`applications.py`).
 
 `search_history` finds every word of a query in `context.db` (90 days, at most 10000
 messages, both sides plus proactive sends), else the messages with the most of them:
@@ -442,7 +443,7 @@ A renamed checked idea citing the same pages gets its name back.
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
 `rate-limited` skipped), with 40 recent non-docs commit subjects so it does not
 re-propose fixed mistakes. At most 5 JSON proposals, stored in
-`work/self-improvement/proposals.md` (30 pending, 40 decided kept, unanswered ones expire in 7 days).
+`work/self-improvement/proposals.md` (30 pending, 40 decided kept, unanswered expire in 7 days).
 
 **Memory review** (`memory_review.py`, Hermes' background review): there, and by day after 15 quiet
 minutes, 20b reads the user's new messages for at most 3 items. Code checks each quote is theirs
@@ -451,13 +452,12 @@ named under the next reply. A replacement, or a fact for a full file with the li
 drop, waits for one "approve".
 
 **Proposals** (`proposals.py`, `proposal` tool: list, approve, reject): kinds
-`preference`, `prompt`, `code`, `skill`, `memory`. Approving a `preference` appends one dated line to
-`memory/preferences.md`; `with_preferences` adds them to Direct's, React's and the job ranking's prompts. Approving a `prompt` or `code` proposal only marks it for a
-Claude Code session. `proposal list` is an untrusted read: the quarantine then closes `proposal` for the
+`preference`, `prompt`, `code`, `skill`, `memory`. An approved `preference` is one dated line in
+`memory/preferences.md`, added to Direct's, React's and the job ranking's prompts. A `prompt` or `code`
+approval only marks it for Claude Code. `proposal list` is an untrusted read: the quarantine then closes `proposal` for the
 turn, so approval needs a fresh message.
-`goal list`, `read_file` under `memory/work/`, and reading `research*.md` or `goals.md`
-count the same; `search_files` and
-`search_memory` skip those files.
+`goal list`, `read_file` under `memory/work/`, `research*.md` and `goals.md` count the same;
+`search_files` and `search_memory` skip those files.
 
 **Skills** (`skills.py`, Hermes' skills and curator with write approval on):
 `work/self-improvement/tasks.jsonl` records each turn's tool calls. At night (turns of 5+

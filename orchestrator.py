@@ -423,6 +423,16 @@ def _rate_limit_reply(e: Exception) -> str:
     return "Groq rate limit hit. Wait a minute and try again - shorter requests recover faster."
 
 
+def _guarded_chat(reply: str, content: str, window: list[dict]) -> str:
+    """A Direct reply with only links it could have read, and an application draft with only claims
+    something on file or in the conversation shows (links.py, applications.py)."""
+    import applications
+    import links
+    from agents import direct
+    reply = links.guard(reply, links.found(content + direct.sources(content, window)) | links.in_conversation(window))
+    return applications.guard(reply, content, applications.from_conversation(window))
+
+
 async def call_claude(
     client: openai.AsyncOpenAI,
     notify: Callable[[str], Awaitable[None]],
@@ -891,8 +901,7 @@ class Orchestrator:
             window = self._window(_CONTEXT_BUDGET_DIRECT)
             reply = await direct.handle(content, window, call)
             if not direct.wants_lookup(reply):
-                import links
-                return links.guard(reply, links.found(content + direct.sources(content, window)) | links.in_conversation(window))
+                return _guarded_chat(reply, content, window)
             logger.info("Direct handed the message on for a lookup, forwarding to React")
             self._looked_up = True
 
@@ -997,8 +1006,7 @@ class Orchestrator:
             window = self._window(_CONTEXT_BUDGET_DIRECT)
             reply = await direct.handle(content, window, call)
             if not direct.wants_lookup(reply):
-                import links
-                return links.guard(reply, links.found(content + direct.sources(content, window)) | links.in_conversation(window))
+                return _guarded_chat(reply, content, window)
             # 2026-11-04: asked what people use Hermes for, Direct answered from memory about
             # Nous' Hermes models, not Hermes Agent. A model with no search now hands such a
             # question to the one that has it, as Hermes' own agent would search.
