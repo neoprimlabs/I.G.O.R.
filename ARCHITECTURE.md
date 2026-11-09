@@ -432,18 +432,19 @@ item it can (unchecked if that fails; on an income goal, only the proof check); 
 A pass moves the old paper to `versions/`; the change note comes from headings.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
-research widens: 3 fixed Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if it is on the page, numbers
+research widens: 3 Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if on the page, numbers
 intact, money one earner received, $1000 to $20M, or a failure on this idea, and sets the source for personal
 posts, claims, cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` for the paper's own ideas and the labels (independent, mixed, similar product, self-reported,
 no income shown, unchecked, against). Code drops a summary sentence crediting income to one without.
-A renamed checked idea citing the same pages gets its name back.
+A checked idea renamed on the same pages gets its name back; a bracket or two added words
+make a new one.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
-`rate-limited` skipped), with 40 recent non-docs commit subjects so it does not
-re-propose fixed mistakes. At most 5 JSON proposals, stored in
-`work/self-improvement/proposals.md` (30 pending, 40 decided kept, unanswered expire in 7 days).
+`rate-limited` skipped), with 40 recent non-docs commit subjects against
+re-proposing fixes. At most 5 JSON proposals, stored in
+`work/self-improvement/proposals.md` (30 pending, 40 decided kept, expiry 7 days).
 
 **Memory review** (`memory_review.py`, Hermes' background review): there, and by day after 15 quiet
 minutes, 20b reads the user's new messages for at most 3 items. Code checks each quote is theirs
@@ -607,7 +608,7 @@ entry, so only root-owned scripts restart IGOR. What protects the system:
 ### Health-gated deploy (S.1)
 
 `/usr/local/lib/igor-deploy/deploy.sh`, root-owned, outside `/opt/igor` so `write_file` cannot reach it,
-logs every attempt to `/var/log/igor-deploy.log`, which `igor` cannot write either.
+logs every attempt to `/var/log/igor-deploy.log`, which `igor` cannot write.
 
 Four gates. Syntax (every `.py` outside `memory/`), imports (the NameError class `py_compile` misses) and
 every offline `tests/test_*.py` (as igor, ~5 min) run before any restart and reset to the previous commit, so

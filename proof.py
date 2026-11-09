@@ -196,12 +196,28 @@ def _words(name: str) -> frozenset:
     return (words - _NAME_NOISE) or words
 
 
+def _narrows(name: str, words: frozenset, other: frozenset) -> bool:
+    """name keeps the whole of a checked idea's name and qualifies it: two more words, or one in brackets.
+    The 11-08 rehearsal's "Curated Niche Data Subscriptions (Legal Research)" scored exactly 0.6 against
+    "Curated Niche Data Subscriptions" and showed its proof, payment data for niche tools, as the legal
+    data idea's. Over the 95 names the paper has used, renames added one word ("Fintech Regulatory-Change
+    Alerts"); the only bracket, "(Tax)", had taken revenue from a security-compliance tool."""
+    added = words - other
+    if not added or not other < words:
+        return False
+    bracketed = _words(" ".join(re.findall(r"\(([^)]*)\)", name or "")))
+    return len(added) >= 2 or bool(added & bracketed)
+
+
 def _find(ledger: dict, name: str) -> Optional[dict]:
-    """An idea's entry. The writer renames ideas between revisions, so close counts."""
+    """An idea's entry. The writer renames ideas between revisions, so close counts, but a narrower idea
+    is its own."""
     words = _words(name)
     best, best_score = None, _SAME_NAME
     for entry in ledger.values():
         other = _words(entry.get("name", ""))
+        if _narrows(name, words, other):
+            continue
         score = len(words & other) / len(words | other) if words | other else 0
         if score >= best_score:
             best, best_score = entry, score

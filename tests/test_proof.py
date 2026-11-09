@@ -679,6 +679,23 @@ def test_a_checked_idea_keeps_its_name() -> None:
     tmp.cleanup()
 
 
+def test_a_narrower_idea_is_its_own() -> None:
+    """Rehearsed 2026-11-08: "Curated Niche Data Subscriptions (Legal Research)" matched the checked
+    "Curated Niche Data Subscriptions" at exactly 0.6 and showed its proof as the legal idea's."""
+    ledger = {"a": _full_entry("Kettle Price Alerts", [_ev(source="verified")])}
+    for narrower in ("Kettle Price Alerts (Office Kitchens)", "Kettle Price Alerts for Office Kitchens",
+                     "Kettle Price Alerts (Cafes)"):
+        _check(f"a narrower idea is its own: {narrower}", proof._find(ledger, narrower) is None)
+    for same in ("Smart Kettle Price Alerts", "Kettle Price Alert Service", "Kettle Price Alerts"):
+        _check(f"a rename still matches: {same}", proof._find(ledger, same) is ledger["a"])
+    names = ["Kettle Price Alerts", "Kettle Price Alerts (Office Kitchens)"]
+    _check("so it borrows no label", proof.labels_for(names, ledger) == {1: "similar product"},
+           str(proof.labels_for(names, ledger)))
+    _check("and is the next to be searched", proof.next_idea(names, ledger) == names[1])
+    entry = proof._entry(ledger, names[1])
+    _check("into an entry of its own", entry is not ledger["a"] and len(ledger) == 2 and entry["name"] == names[1])
+
+
 if __name__ == "__main__":
     test_labels()
     test_only_a_real_quote_counts()
@@ -697,5 +714,6 @@ if __name__ == "__main__":
     test_the_digest_says_what_was_found()
     test_section_text()
     test_a_checked_idea_keeps_its_name()
+    test_a_narrower_idea_is_its_own()
     print(f"\n{len(_failures)} failures" if _failures else "\nAll pass")
     sys.exit(1 if _failures else 0)
