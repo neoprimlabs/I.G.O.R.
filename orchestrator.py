@@ -1004,6 +1004,14 @@ class Orchestrator:
             # question to the one that has it, as Hermes' own agent would search.
             logger.info("Direct handed the message on for a lookup, forwarding to React")
             self._looked_up = True
+            # 2026-11-09, "You haven't found anything yet, how could I gauge that?" after a check-in about
+            # the watches: handed on with the tools free, React spent 8 steps and 38555 tokens failing to
+            # open the right files, then repeated a made-up status from the conversation. The message has
+            # no watch word; the reply it answers does. Watches reads watch_history first.
+            if _WATCH_WORD.search(f"{content}\n{self._last_reply()}") and not _JOB_WORD.search(content):
+                logger.info("The hand-off is about the watches, forwarding to Watches")
+                react.set_notify(self._notify)
+                return await react.handle(content, self._window(), max_tokens=2048, force_tool="watch_history")
 
         if destination == "SelfDescribe":
             from agents import self_describe

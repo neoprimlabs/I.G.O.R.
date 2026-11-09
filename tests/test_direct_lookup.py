@@ -93,6 +93,7 @@ def test_handoff() -> None:
 
     async def searching(message, context, max_tokens=1024, carry=None, **kw):
         seen["react_message"] = message
+        seen["force_tool"] = kw.get("force_tool")
         return "People use it for scheduled research and coding help."
 
     async def notify(_):
@@ -115,6 +116,7 @@ def test_handoff() -> None:
                repr(seen.get("react_message")))
         _check("the turn is recorded as React's", o._last_route == "React", o._last_route)
         _check("so follow-through can continue it", o._pending_follow is not None)
+        _check("with its tools free", seen.get("force_tool") is None, repr(seen.get("force_tool")))
 
         seen.clear()
         direct.handle = answering
@@ -132,6 +134,19 @@ def test_handoff() -> None:
         _check("a made-up run record never reaches the user", "08:10" not in reply, reply)
         _check("React answers it instead", seen.get("react_message") == "Why not just give me the status?",
                repr(seen.get("react_message")))
+
+        # 2026-11-09: the user's words named no watch; the check-in they answered did.
+        async def about_the_watch(message, context, call):
+            return "The kettle price watch has been quiet this week."
+
+        direct.handle = about_the_watch
+        asyncio.run(o.process(42, "How is the kettle doing?"))
+        seen.clear()
+        direct.handle = handing_on
+        asyncio.run(o.process(42, "You haven't found anything yet, how could I judge that?"))
+        _check("a hand-off answering a watch message reads the watches first",
+               seen.get("force_tool") == "watch_history", repr(seen.get("force_tool")))
+        _check("and is React's turn", o._last_route == "React", o._last_route)
 
         direct.handle = handing_on
         side = asyncio.run(o._aside("what are people using Hermes for"))
