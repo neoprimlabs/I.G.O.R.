@@ -77,6 +77,25 @@ def test_igor_records_are_handed_on() -> None:
         _check(f"kept: {ordinary[:50]!r}", not direct.wants_lookup(ordinary))
 
 
+def test_a_promise_is_handed_on() -> None:
+    """Direct promised "I'll omit the posting", "I'll pull the next batch" and "I will keep future drafts
+    free of personal details", and nothing did any of it. An offer that waits on the user stays."""
+    from agents import direct
+    for promise in ("Understood—I'll omit the kettle posting.",
+                    "I’ll pull the next batch of matches accordingly.",
+                    "Understood. I will keep future drafts free of personal details.",
+                    "Excellent. I’ll set a scheduled message for 1 a.m. about the kettle.",
+                    "That caused the mismatch. I'll make sure future replies respect it."):
+        _check(f"a promise is handed on: {promise[:40]!r}", direct.wants_lookup(promise))
+    for offer in ("Let me know the kind of role you prefer, and I'll pull together a shortlist.",
+                  "Tell me which one you'd like and I’ll prepare a cover letter.",
+                  "If you want, I'll draft it in the next reply.",
+                  "Just tell me a time (e.g., “remind me at 7 pm”), and I’ll generate the line to send.",
+                  "I'll be honest: the kettle is the better buy.",
+                  "I will say the descaler matters more than the kettle."):
+        _check(f"an offer or a view stays: {offer[:40]!r}", not direct.wants_lookup(offer))
+
+
 def test_handoff() -> None:
     import orchestrator
     from agents import direct, react

@@ -127,14 +127,43 @@ _ASKS_FOR_STATUS = re.compile(
     r"\b(?:request|ask\s+(?:me\s+)?for|send)\b[^.\n]{0,60}?\b(?:status|snapshot|logs?)\b", re.IGNORECASE)
 
 
+# "Understood - I'll omit the Mac posting", "I'll pull the next batch of matches", "I will keep future
+# drafts free of personally identifying details", "I'll set a scheduled message for 1 a.m.": Direct can
+# do none of these, its prompt has said never to promise since 10-16, and nothing happened each time.
+# Of 99 Direct replies on record, 9 say "I'll" with such a verb; the 4 that wait on the user ("tell me
+# which one and I'll prepare a cover letter") are offers, and the 5 that do not are all promises broken.
+_PROMISE = re.compile(
+    r"\bI(?:'ll|’ll| will)\s+(?:also\s+|now\s+|then\s+|just\s+|go\s+ahead\s+and\s+)?"
+    r"(?:omit|skip|exclude|leave\s+out|drop|pull|send|schedule|remind|save|remember|note|keep|update|change|"
+    r"add|remove|draft|prepare|generate|write|track|watch|monitor|notify|alert|check|look|search|find|fetch|"
+    r"run|set|make\s+sure|ensure|follow\s+up|get\s+back|let\s+you\s+know|flag|forward|queue)\b",
+    re.IGNORECASE)
+_WAITS_ON_USER = re.compile(r"\b(?:let me know|tell me|point me|if you|if that|once you|when you|say the word|"
+                            r"just say|should you|whenever you|would you like|do you want)\b", re.IGNORECASE)
+
+
+def _promises(reply: str):
+    for found in _PROMISE.finditer(reply or ""):
+        # A new sentence starts with a capital, so "e.g." inside one does not end it.
+        sentence = re.split(r"(?<=[.!?])\s+(?=[A-Z\"“(*])|\n", reply[:found.start()])[-1]
+        if not _WAITS_ON_USER.search(sentence):
+            return found
+    return None
+
+
 def wants_lookup(reply: str) -> bool:
-    """The answer needs the part of IGOR that can look: Direct's whole reply was the hand-off word,
-    or it stated a record of IGOR's own runs it cannot see, or told the user to ask for one."""
+    """The answer needs the part of IGOR that can look or act: Direct's whole reply was the hand-off
+    word, or it stated a record of IGOR's own runs it cannot see, told the user to ask for one, or
+    promised to do something."""
     if _LOOKUP.match(reply or ""):
         return True
     found = _RUN_RECORD.search(reply or "") or _ASKS_FOR_STATUS.search(reply or "")
     if found:
         logger.warning("Direct answered from IGOR's records it cannot see (%r), handing on", found.group(0))
+        return True
+    found = _promises(reply)
+    if found:
+        logger.warning("Direct promised what it cannot do (%r), handing on", found.group(0))
         return True
     return False
 
