@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-08**
+Last updated: **2026-11-09**
 
 ---
 
@@ -344,6 +344,22 @@ to grade IGOR (its watch filter, code changes, the 12-hour interval before it ha
 retry and then silence, which over all 51 check-ins sent stops those four and none of the rest. Four of seven
 digest AI items from 11-05 to 11-08 cited a day's briefing page; those now count as listings, and the search asks
 Exa for news articles (657b0f3): on the 11-09 query, 7 articles of 8 against 1 usable of 8 before.
+**Direct made up a watch status, 11-09 (40fd534, fc135a8, then the Watches hand-off):** asked after a check-in
+how the watches could be judged, Direct offered a report the user would have to request, then, told to just give
+it, invented one (run at 00:03, no price data, the next runs) from an earlier reply naming the next run. Both
+watches had run at 00:54 UTC and found listings. Direct's prompt now hands IGOR's own runs and records on with
+`LOOKUP` and keeps its sentence-to-send for actions; a Direct reply stating run times or telling the user to ask
+for a status is handed on in code (of 140 past replies, the only Direct ones matching are this exchange). Live on
+throwaway copies: the first check (4622 tokens) still deflected; the second (38555 tokens) handed on, but React
+with its tools free spent 8 steps failing to open the right files and repeated the made-up status from the
+conversation. A hand-off answering a message about the watches now goes to Watches, watch_history first (e36b7e0).
+The third check (21005 tokens) went that way, but React asked watch_history for "price watch" and "stock watch",
+words in no item's name, got nothing, and told the user neither watch had found anything. Now (33627df) a watcher's name
+(price, stock, jobs, gigs) gives its rows, "watch" and filler words are dropped, a miss lists what is on record
+and says it is not "found nothing", and the latest price and stock check is shown, since changes-only rows had
+dated an unchanged dock two days back. Checked on the real history.db with no model; not run live again, the three
+checks having spent 64000 of 120b. The two bad replies are marked corrected in `context.db` (backup
+`context.db.bak-20261109`). `test_history.py` had a fixed date that would have failed from 11-15; now yesterday.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
