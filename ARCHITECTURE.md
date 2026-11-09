@@ -327,7 +327,7 @@ Presence writes on 120b. Gates in code before any model call: silent 03:00-11:00
 between messages, 2 a day, 6 calls a day, never within 20 minutes of a live
 conversation; the daily check-in waits 2h after the user last spoke. It sees
 the user's messages from 3 days, `user.md` and its last 5 check-ins; both triggers get the
-standing preferences and no tasks or drafts. Not sent: one on IGOR's own posts, or a
+standing preferences and no tasks or drafts. Not sent: one on IGOR's own posts or workings, or a
 check-in on a subject of its last 3.
 
 **Heartbeat** (`heartbeats.py`, Hermes' /heartbeat; not `heartbeat.txt`):
@@ -336,8 +336,8 @@ plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring t
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
 The job watch reads RemoteOK, WWR, Greenhouse and Remotive; code filters (and drops one asking more
-years than job_search.md's `## Most years asked`), 20b picks by what each posting asks; picks go out with those asks, no note. On those remote-only boards a location naming
-the US counts as open to the user. React's `search` (`source: jobs`) reads them
+years than job_search.md's `## Most years asked`, overall or by field), 20b picks by what each asks; picks go out with those asks. On those remote-only boards a US location
+counts as open to the user. React's `search` (`source: jobs`) reads them
 live, pay only as each posting states it; a user's job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract

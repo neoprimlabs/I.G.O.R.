@@ -509,6 +509,47 @@ async def test_a_checkin_about_its_own_posts_is_not_sent() -> None:
         _check(f"while this still goes out: {text[:40]}", presence._ABOUT_ITS_OWN_POSTS.search(text) is None)
 
 
+async def test_a_checkin_about_igor_itself_is_not_sent() -> None:
+    """2026-11-03 to 11-08, five of seven check-ins asked the user to grade IGOR: its watch filter, its code
+    changes, its watch interval, sent before that interval had run once. Content below is invented."""
+    from agents import presence
+    now = datetime(2026, 10, 31, 18, 30, tzinfo=timezone.utc)
+    bad = "Has the 6-hour interval for the price watch been meeting your needs?"
+
+    def state():
+        s = _state()
+        s["checkin"] = {"date": "2026-10-31", "at": now.isoformat(), "sent": False}
+        return s
+
+    for replies, expected, name in (
+            ([bad, "How did the kitchen painting go?"], "How did the kitchen painting go?",
+             "a check-in about IGOR's watches is asked again, and the one about the person goes out"),
+            ([bad, "Did the code tweaks help the kettle alert?"], None, "about IGOR twice, it stays silent")):
+        _fresh(state())
+        asked = []
+
+        async def model(bundle):
+            asked.append(bundle)
+            return replies[min(len(asked), len(replies)) - 1]
+
+        out = await presence.consider("checkin", now=now, ask=model)
+        _check(name, out == expected and len(asked) == 2, f"{out!r} {len(asked)}")
+    _check("the retry is told why", "about I.G.O.R. itself" in asked[1], asked[1][-200:])
+    _check("and the prompt says it first", "Never ask about I.G.O.R. itself" in presence._system_for("checkin"))
+    for text in ("Did the recent code adjustments change the kettle drop detection as you hoped?",
+                 "How is the late-night work on I.G.O.R. shaping up?", "Is the stock_watch behaving now?",
+                 "Any progress on the watch filter you were tuning?"):
+        _check(f"caught: {text[:40]}", presence._about_itself(text) is not None)
+    for text in ("How is your eye comfort today?", "Did you get some rest after the shift at the store?",
+                 "How are your energy levels this afternoon?", "Did you watch the game last night?",
+                 "Did the code you were debugging for your app finally run?"):
+        _check(f"while this still goes out: {text[:40]}", presence._about_itself(text) is None)
+    _fresh(_state())
+    lull = await presence.consider("lull", now=AWAKE, ask=_Model("The price watch now runs every 12 hours."),
+                                   last_user_at=AWAKE - timedelta(minutes=40))
+    _check("a lull message about IGOR's settings is not sent either", lull is None, repr(lull))
+
+
 async def test_a_checkin_does_not_repeat_its_subject() -> None:
     """2026-11-03, 11-04 and 11-06 asked after the same price watch in new words each time, and on
     11-06 the retry repeated too and the first answer went out anyway. Content invented."""
@@ -818,6 +859,7 @@ if __name__ == "__main__":
     asyncio.run(test_silence_and_cleanup())
     asyncio.run(test_a_fresh_opening())
     asyncio.run(test_a_checkin_about_its_own_posts_is_not_sent())
+    asyncio.run(test_a_checkin_about_igor_itself_is_not_sent())
     asyncio.run(test_a_checkin_does_not_repeat_its_subject())
     asyncio.run(test_a_lull_about_its_own_bookkeeping_is_not_sent())
     asyncio.run(test_a_checkin_sees_the_last_few_days())

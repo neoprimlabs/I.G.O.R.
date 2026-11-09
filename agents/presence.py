@@ -153,6 +153,7 @@ This is a message to a person, not a status report, in I.G.O.R.'s own voice: for
 - Ground it in something real from the facts: something they told you in the last few days - how they were, what they were dealing with, what was coming up - asked after the way a person would. Only when the facts hold nothing of the kind is a plain greeting right.
 - Start with the substance: the question, or an observation about the day or the hour. Never open with a wish about how their day or evening is going ("I trust your...", "I hope your...").
 - Never name a job posting, a digest, a paper, a proposal, a file, a draft, a task list, a count of days, or anything else you sent them or keep. They did not ask about your filing.
+- Never ask about I.G.O.R. itself: its watches, timings, settings, code, or a change they asked you to make. What they told you to change in you is an instruction, not news about their life.
 - Asking how they are, or how something they mentioned is going, is welcome. Asking for a status report on work is not. Do not list anything, do not offer a menu of things you could do.
 - Let the time of day shape it. Late at night is not the same as mid afternoon.
 - If your last check-ins are listed, do not reuse their opening, their wording or their subject.
@@ -469,6 +470,20 @@ _WHAT_IGOR_SENT = re.compile(r"\b(?:IGOR|I\.G\.O\.R\.)\s+sent\b|^\W*sent\b", re.
 _ABOUT_ITS_OWN_POSTS = re.compile(
     r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper|opportunit(?:y|ies)|"
     r"you (?:received|got from me)|I (?:sent|found|shared|passed along|flagged))\b", re.IGNORECASE)
+# Five of the seven check-ins from 2026-11-03 to 11-08 asked the user to grade IGOR: "Did the recent code
+# adjustments impact the AOOSTAR drop detection", "Has the 12-hour interval for the price and stock watches been
+# meeting your needs?", sent before that interval had run once. What the user tells IGOR to change in itself
+# is an instruction, not news about their life. None of the 46 check-ins before 11-03 says any of this.
+_ABOUT_IGOR = re.compile(
+    r"\b(?:I\.G\.O\.R\b|IGOR\b|(?:price|stock|job|gig|dock|restock|page)[_ ]watch(?:es|ers?)?\b|"
+    r"watch(?:es)? (?:filter|setting|interval|schedule)|the watch(?:es)?\b|intervals?\b|detection\b|"
+    r"code (?:tweak|adjustment|change|fix|update)s?\b|(?:tweak|adjustment|change|fix|update)s? to (?:the|my) code)",
+    re.IGNORECASE)
+
+
+def _about_itself(text: str) -> Optional[str]:
+    hit = _ABOUT_ITS_OWN_POSTS.search(text or "") or _ABOUT_IGOR.search(text or "")
+    return hit.group(0) if hit else None
 
 
 # Words a check-in uses whatever it is about, so sharing one says nothing about its subject.
@@ -493,10 +508,10 @@ def _stale(text: str, openings: list[str], earlier: list[str], checkin: bool = F
     """Why a message reads like the ones before it, or None. Shown its last check-ins
     and told not to reuse their wording, the model replayed 2026-10-29 still opened
     "I hope your evening is proceeding smoothly" twice out of two."""
-    hit = _ABOUT_ITS_OWN_POSTS.search(text) if checkin else None
+    hit = _about_itself(text) if checkin else None
     if hit:
-        return (f"\"{hit.group(0)}\" is about something you sent or keep. Ask after the person: "
-                "something they told you, how they are, or the day itself.")
+        return (f"\"{hit}\" is about something you sent or keep, or about I.G.O.R. itself. Ask after the "
+                "person: something they told you about their own life, how they are, or the day itself.")
     words = _subject_words(text)
     for old in earlier[-_SUBJECT_CHECKINS:]:
         shared = sorted(words & _subject_words(old))
@@ -573,11 +588,11 @@ async def consider(reason: str, now: Optional[datetime] = None,
             logger.warning("Presence (%s) repeated an earlier message twice, staying silent: %s",
                            reason, message[:120])
             message, refused = None, "it repeated an earlier check-in twice"
-    # A message about IGOR's own posts, drafts or proposals is never sent, whichever trigger wrote it:
-    # the lull judgement gets no retry, silence being its usual answer.
-    if message and _ABOUT_ITS_OWN_POSTS.search(message):
-        logger.warning("Presence (%s) was about its own posts, staying silent: %s", reason, message[:120])
-        message, refused = None, "it was about IGOR's own posts"
+    # A message about IGOR's own posts, drafts, proposals or workings is never sent, whichever trigger wrote
+    # it: the lull judgement gets no retry, silence being its usual answer.
+    if message and _about_itself(message):
+        logger.warning("Presence (%s) was about IGOR itself, staying silent: %s", reason, message[:120])
+        message, refused = None, "it was about IGOR itself"
     if message:
         state["openings"] = (recent + [_opening(message)])[-5:]
     if message is None:

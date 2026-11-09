@@ -101,22 +101,37 @@ _YEARS_ASKED = re.compile(
     r"(?:\s+\S+){0,2}?\s+(?:of|experience|in|working|hands-on|professional|building|at)\b", re.IGNORECASE)
 
 
-def _most_years() -> Optional[int]:
-    """The ceiling under "## Most years asked" in job_search.md, or None for none."""
+# 2026-11-09: one ceiling of 0 for everything also dropped "1+ years of experience in a customer service or
+# support role", which the user has, along with 97 of 219 postings on the day's feeds. What they said was no
+# software experience and entry level, so a ceiling can name what it is for: "- 0 in software, devops".
+def _most_years() -> Optional[tuple]:
+    """The ceilings under "## Most years asked" in job_search.md: (one for any ask or None, [(one, the fields
+    it holds)]), or None for none. "- 1" holds every ask to a year; "- 0 in software, devops" holds asks of
+    those to none."""
     try:
         text = (config.MEMORY_DIR / "job_search.md").read_text(encoding="utf-8")
     except OSError:
         return None
-    section = None
+    section, general, fields = None, None, []
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.lower().startswith("## "):
             section = stripped[3:].strip().lower()
         elif section == "most years asked" and stripped.startswith("- "):
-            number = re.match(r"\d+", stripped[2:].strip())
-            if number:
-                return int(number.group(0))
-    return None
+            value = re.sub(r"\s*\(\d{4}-\d{2}-\d{2}\)$", "", stripped[2:].strip().lower())
+            m = re.match(r"(\d+)\s*(?:in\s+(.+))?$", value)
+            if not m:
+                continue
+            words = [w.strip() for w in (m.group(2) or "").split(",") if w.strip()]
+            if words:
+                fields.append((int(m.group(1)), words))
+            elif general is None and not m.group(2):
+                general = int(m.group(1))
+    return (general, fields) if general is not None or fields else None
+
+
+def _names(text: str, word: str) -> bool:
+    return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text.lower()) is not None
 
 
 # Years that are not asked of anyone, from the live feeds on 2026-11-05: "Up to two years of professional
@@ -142,21 +157,40 @@ def _unbreak(text: str) -> str:
     return _BROKEN_CHARACTER.sub(one, text)
 
 
-def _years_asked(description: str) -> Optional[int]:
-    """The most years of experience a posting asks for, counting a range from its low end, or None."""
+def _years_asked(description: str, fields: Optional[list] = None) -> Optional[int]:
+    """The most years of experience a posting asks for, counting a range from its low end, or None.
+    Given fields, only asks whose own sentence names one: "2+ years of backend engineering"."""
     text = _unbreak(re.sub(r"<[^>]+>", " ", html.unescape(description or "")))
+
+    def of_field(m) -> bool:
+        rest = re.split(r"[.;\n•●]", text[m.end():m.end() + 80], maxsplit=1)[0]
+        return any(_names(text[m.start():m.end()] + rest, word) for word in fields)
+
     asked = [int(m.group(1)) if m.group(1).isdigit() else _NUMBER_WORDS[m.group(1).lower()]
              for m in _YEARS_ASKED.finditer(text)
              if not _NOT_ASKED_BEFORE.search(text, max(0, m.start() - 40), m.start())
-             and not _NOT_ASKED_AFTER.match(text, m.end())]
+             and not _NOT_ASKED_AFTER.match(text, m.end())
+             and (not fields or of_field(m))]
     return max(asked) if asked else None
 
 
-def _too_senior(job: dict, most: Optional[int]) -> bool:
-    if most is None:
+def _too_senior(job: dict, most: Optional[tuple]) -> bool:
+    """Over a ceiling. A posting whose title names a held field, "Software Engineer", asks all its years of it."""
+    if not most:
         return False
-    asked = _years_asked(f"{job.get('title', '')}. {job.get('description', '')}")
-    return asked is not None and asked > most
+    general, fields = most
+    text = f"{job.get('title', '')}. {job.get('description', '')}"
+    asked = _years_asked(text)
+    if asked is None:
+        return False
+    if general is not None and asked > general:
+        return True
+    title = job.get("title") or ""
+    for ceiling, words in fields:
+        of_it = asked if any(_names(title, w) for w in words) else _years_asked(text, words)
+        if of_it is not None and of_it > ceiling:
+            return True
+    return False
 
 
 def _repair(text: str) -> str:

@@ -462,7 +462,7 @@ def test_a_ceiling_on_years_asked() -> None:
     _check("no ceiling unless one is set", jobs._most_years() is None)
     path = config.MEMORY_DIR / "job_search.md"
     path.write_text("# Job Search\n\n## Exclude\n- senior\n\n## Most years asked\n- 0\n", encoding="utf-8")
-    _check("the ceiling is read", jobs._most_years() == 0)
+    _check("the ceiling is read", jobs._most_years() == (0, []))
     senior = {"title": "Software Engineer - Claims", "company": "Kettle Co", "location": "",
               "url": "https://remoteok.com/remote-jobs/kettle-1", "source": "remoteok",
               "description": "<p>Typically 1-5 years of professional software engineering experience.</p>"}
@@ -474,6 +474,33 @@ def test_a_ceiling_on_years_asked() -> None:
     text = jobs.search("claims", None, fetchers=[("remoteok:support", lambda: [senior, starter])])
     _check("and so does a search the user asks for", "Claims Representative" in text
            and "Software Engineer" not in text, text)
+
+    # 2026-11-09: a ceiling of 0 on everything also dropped "1+ years of experience in a customer service or
+    # support role", which the user has. What they said was no software experience, and entry level.
+    path.write_text("# Job Search\n\n## Most years asked\n- 1\n- 0 in software, devops (2026-11-09)\n", encoding="utf-8")
+    most = jobs._most_years()
+    _check("a ceiling can name what it holds", most == (1, [(0, ["software", "devops"])]), str(most))
+    _check("years of a field are the asks whose sentence names it",
+           jobs._years_asked("2 years of customer service. Typically 1-5 years of professional software engineering",
+                             ["software"]) == 1
+           and jobs._years_asked("1 year of customer service experience. Familiarity with software tools.", ["software"]) is None)
+
+    def posting(title, description, n):
+        return {"title": title, "company": "Kettle Co", "location": "", "source": "remoteok",
+                "url": f"https://remoteok.com/remote-jobs/kettle-{n}", "description": f"<p>{description}</p>"}
+
+    support = posting("Consumer Support Specialist", "1+ years of experience in a customer service role.", 3)
+    tools = posting("Support Specialist", "1 year of customer service experience. Familiarity with software tools.", 4)
+    two = posting("Customer Care Representative", "2+ years of customer-facing support experience.", 5)
+    devops = posting("Support Specialist", "1 year of customer service. 1 year of experience in DevOps tooling.", 6)
+    feed = [senior, starter, support, tools, two, devops]
+    found = jobs.collect(now=NOW, fetchers=[("remoteok:support", lambda: feed)])
+    titles = [j["url"][-1] for j in found]
+    _check("a year of customer service, which the user has, now reaches the ranking",
+           support in found and tools in found, str(titles))
+    _check("a software title still asks its years of software, a year is too many", senior not in found, str(titles))
+    _check("more than a year of anything is not entry level", two not in found, str(titles))
+    _check("and a year of a held field in the posting's own words is held too", devops not in found, str(titles))
 
 
 def test_search_on_demand() -> None:
