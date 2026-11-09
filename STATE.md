@@ -331,9 +331,12 @@ checked idea it dropped and cites at least half that idea's pages gets the check
 across one and many ("Alert", "Alerts"). Replayed over all 19 revisions it changed none; on the rehearsal's paper it
 restored the one rename, unchecked becoming self-reported. Rehearsed on b5c7c65 (12385 tokens, two writes): the
 writer kept close names this time, so nothing was restored, and all five labels came from the ledger; the evaluator
-failed that draft for giving no hours per idea, where the night's real revision had passed. Open, not built: a
-legal-research data idea now carries the general data idea's "similar product", from TrustMRR figures for unrelated
-niche tools, because the writer reused that name.
+failed that draft for giving no hours per idea, where the night's real revision had passed. That rehearsal also
+named a legal-research idea "Curated Niche Data Subscriptions (Legal Research)", which matched the checked
+"Curated Niche Data Subscriptions" at exactly 0.6 and showed its TrustMRR niche-tool proof. Fixed 11-09
+(61aee4d): a name keeping a checked idea's whole name plus a bracket or two more words is its own idea. Of 98
+names used, 2 change match, that one and "(Tax)"; renames adding one word still match. Rehearsed (10145
+tokens): no fault from it; both writes were rejected for keeping 3 of 21 links, so a night would keep the paper.
 **From five days of sent posts, read 11-09 (c2f067d):** the job watch had sent nothing since 11-06 because the
 ranking picked none of 2-3 new postings a day, and the years ceiling of 0 set on 11-05 had dropped 98 of the
 day's 219 postings, "1+ years of customer service" among them, which the user has. `job_search.md` now holds
