@@ -324,9 +324,13 @@ off talk of sources, a bracket with a money figure the writer's findings and the
 elsewhere is marked "(not in the sources)"), and Proof checked lists the paper's own ideas. Replayed first over all
 19 revisions: the same check found 5 more invented prices; its 2 false alarms (a shared scale, a range end without
 its $) were fixed. Rehearsed, 7832 tokens: the proof list matched the shortlist (6 of 17), nothing true was cut.
-Still open: the writer renames checked ideas despite being told not to ("AI-Agent Automated Contract Review
-Subscription" for "Automated Contract-Review Micro-SaaS"), so the shortlist calls a checked idea unchecked. The
-digest's 2 AI news items came from roundup sites; that is the search, working as built.
+The writer also renamed checked ideas despite being told not to ("AI-Agent Automated Contract Review
+Subscription" for "Automated Contract-Review Micro-SaaS"), so the shortlist called a checked idea unchecked and the
+next night would have searched it again. Now a revision's name that matches nothing checked, shares a word with one
+checked idea it dropped and cites at least half that idea's pages gets the checked name back, and names match
+across one and many ("Alert", "Alerts"). Replayed over all 19 revisions it changed none; on the rehearsal's paper it
+restored the one rename, unchecked becoming self-reported. The digest's 2 AI news items came from roundup sites;
+that is the search, working as built.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past

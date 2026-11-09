@@ -405,6 +405,75 @@ def _shortlist_names(text: str) -> list[str]:
             for block in _shortlist_items(text)]
 
 
+def _idea_sections(text: str) -> dict:
+    out = {}
+    for part in re.split(r"(?m)^(?=## )", text)[1:]:
+        heading = part.splitlines()[0][3:].strip()
+        if heading.lower() not in _BOILERPLATE_SECTIONS and not _is_shortlist(part):
+            out[heading] = part
+    return out
+
+
+def _section_for(name: str, sections: dict) -> Optional[tuple]:
+    words = proof._words(name)
+    best, score = None, 0.5
+    for heading, part in sections.items():
+        share = len(words & proof._words(heading)) / len(words) if words else 0
+        if share > score or (share == score and best is None):
+            best, score = (heading, part), share
+    return best
+
+
+def keep_checked_names(current: str, paper: str, ledger: dict) -> tuple[str, list[str]]:
+    """The revision with each checked idea it renamed under its checked name again, and what changed.
+
+    Told the exact names to keep, the writer still renamed one in a rehearsal on 2026-11-08 ("AI-Agent
+    Automated Contract Review Subscription" for "Automated Contract-Review Micro-SaaS"), so the shortlist
+    called a checked idea unchecked and the next night would have searched it again. A rename is a name
+    that matches nothing checked, sharing a word with one checked idea the revision dropped, whose
+    section cites at least half the same pages. Replayed over the 19 revisions on file it changed none;
+    anything less certain keeps the writer's name, which then says unchecked."""
+    def searched(name):
+        entry = proof._find(ledger, name)
+        return entry if entry and entry.get("searches") else None
+
+    names = _shortlist_names(paper)
+    kept = [searched(n) for n in names]
+    dropped = [n for n in _shortlist_names(current) if searched(n) and not any(searched(n) is k for k in kept)]
+    if not dropped:
+        return paper, []
+    before, after = _idea_sections(current), _idea_sections(paper)
+    found = {}
+    for new in names:
+        section = None if searched(new) else _section_for(new, after)
+        links = _links(section[1]) if section else set()
+        matches = []
+        for old in dropped:
+            was = _section_for(old, before)
+            if not links or not was or not proof._words(new) & proof._words(old):
+                continue
+            earlier = _links(was[1])
+            if earlier and len(links & earlier) >= max(1, min(len(links), len(earlier)) // 2):
+                matches.append((old, was[0], section[0]))
+        if len(matches) == 1:
+            found[new] = matches[0]
+    olds = [match[0] for match in found.values()]
+    renamed = []
+    for new, (old, old_heading, new_heading) in found.items():
+        if olds.count(old) > 1:
+            continue
+        if old_heading not in after:
+            paper = re.sub(rf"(?m)^##[ \t]+{re.escape(new_heading)}[ \t]*$", lambda m: f"## {old_heading}",
+                           paper, count=1)
+        if any(new in other for other in names if other != new):
+            paper = re.sub(rf"(?m)^((?:\d+[.)]|[-*])\s+\**){re.escape(new)}(?![\w-])",
+                           lambda m: m.group(1) + old, paper)
+        else:
+            paper = re.sub(rf"(?<![\w-]){re.escape(new)}(?![\w-])", lambda m: old, paper)
+        renamed.append(f"{new} -> {old}")
+    return paper, renamed
+
+
 _MONEY_RE = re.compile(r"\b(?:earn\w*|revenues?|income|profits?|paid out|made \$)", re.IGNORECASE)
 _HEDGE_RE = re.compile(r"\b(?:no|not|without|lacks?|unclear|unproven|unverified|neither|nor)\b", re.IGNORECASE)
 _STOP_WORDS = frozenset(("for", "and", "the", "of", "to", "in", "on", "with", "a", "an", "via", "from"))
@@ -482,7 +551,7 @@ UNSOURCED = " (not in the sources)"
 
 # "$3-$4k" is three thousand: the first of a range takes the second's scale. Replayed, a shortlist's
 # "$3-$4k/month" read as three dollars.
-_SHARED_SCALE_RE = re.compile(r"\s?(?:-|–|—|to)\s?[$£€]?\s?\d[\d,]*(?:\.\d+)?\s?"
+_SHARED_SCALE_RE = re.compile(r"\s?(?:-|\u2013|\u2014|to)\s?[$£€]?\s?\d[\d,]*(?:\.\d+)?\s?"
                               r"(k|m|bn|thousand|million|billion)\b", re.IGNORECASE)
 
 
@@ -732,6 +801,10 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
             # Cleaned before any check reads it, so every check sees what goes on file. Replayed
             # live 2026-11-06, "Name - description" with an en dash (U+2013) hid each idea's name from its proof record.
             paper = normalize_shortlist(_for_file(candidate))
+            if current:
+                paper, renamed = keep_checked_names(current, paper, ledger)
+                if renamed:
+                    logger.info("Overnight: checked ideas kept their names: %s", "; ".join(renamed))
             # The current paper's links already passed this check, so a revision may keep them.
             ok, why = paper_is_finished(paper, body + "\n" + current)
             if ok and current:

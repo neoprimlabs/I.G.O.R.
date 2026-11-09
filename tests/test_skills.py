@@ -20,7 +20,9 @@ import clock
 import config
 
 _failures: list[str] = []
-NOW = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
+# Today, not a fixed day: listing proposals expires any over a week old by the real clock, so a fixed
+# 2026-11-01 failed this file, and with it the deploy gate, from 2026-11-09 on.
+NOW = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
 NIGHT_TIME = datetime(2026, 10, 17, 2, 0, tzinfo=clock.USER_TZ)
 DRAFT = {"name": "Compare Product Prices", "description": "Compare one product's price across shops.",
          "when": "The user asks where something is cheapest.",

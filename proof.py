@@ -133,9 +133,17 @@ _SOFTWARE_IDEA_RE = re.compile(r"\b(apis?|saas|software|wrappers?|apps?|platform
                                r"|subscriptions?|alerts?|reports?|bots?)\b", re.IGNORECASE)
 _WHO_THIRD = frozenset(("researchers", "government", "news", "marketplace data", "reviewer"))
 _SELF_TITLE_RE = re.compile(r"\bhow i\b|\bi (made|make|earned|built)\b|\bmy\b.*\b(income|revenue)\b", re.IGNORECASE)
-_NAME_NOISE = frozenset(("ai", "automated", "generated", "based", "service", "services", "subscription",
-                         "subscriptions", "platform", "platforms", "for", "the", "a", "an", "and", "of",
-                         "to", "small", "business", "businesses", "smb", "smbs"))
+def _word(word: str) -> str:
+    # One form for one and many: on 2026-10-30 the checked "Regulatory-Change Alert Service" came back
+    # from the writer as "Regulatory-Change Alerts" and matched nothing. Over the 54 names the paper has
+    # used, this changes that match and no other.
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
+_NAME_NOISE = frozenset(_word(w) for w in (
+    "ai", "automated", "generated", "based", "service", "services", "subscription", "subscriptions",
+    "platform", "platforms", "for", "the", "a", "an", "and", "of", "to", "small", "business", "businesses",
+    "smb", "smbs"))
 _SAME_NAME = 0.6
 
 
@@ -184,7 +192,7 @@ def save(folder, ledger: dict) -> None:
 
 
 def _words(name: str) -> frozenset:
-    words = frozenset(re.findall(r"[a-z0-9]+", (name or "").lower()))
+    words = frozenset(_word(w) for w in re.findall(r"[a-z0-9]+", (name or "").lower()))
     return (words - _NAME_NOISE) or words
 
 

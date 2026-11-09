@@ -614,6 +614,71 @@ def test_section_text() -> None:
     _check("given none, all are", "Birdhouses" in proof.with_section(PAPER, ledger, []))
 
 
+def test_a_checked_idea_keeps_its_name() -> None:
+    """Rehearsed 2026-11-08: told the exact names to keep, the writer renamed a checked idea, and the
+    shortlist called it unchecked. On 2026-10-30 a checked "Alert Service" came back as "Alerts"."""
+    from agents import overnight
+    keep = overnight.keep_checked_names
+    ledger = {"a": _full_entry("Kettle Descaling Alerts", [_ev()]), "b": _full_entry("Rain gauge kits")}
+    pages = " <https://shop.example/a> <https://shop.example/b> <https://shop.example/c>"
+    current = ("# Paper\n\n## Kettle Descaling Alerts for Cafes\nThey charge $29" + pages + ".\n\n"
+               "## Rain gauge kits\nSold <https://gauge.example/1>.\n\n## Ranked shortlist\n"
+               "1. **Kettle Descaling Alerts** - priced\n2. **Rain gauge kits** - sold\n\n"
+               "## What I am unsure about\nMuch.\n")
+    revised = ("# Paper\n\nKettle Scale Monitoring Subscription leads.\n\n"
+               "## Kettle Scale Monitoring Subscription (Cafe Tech)\nThey charge $29" + pages + ".\n\n"
+               "## Rain gauge kits\nSold <https://gauge.example/1>.\n\n"
+               "## Kettle cleaning video course\nNew <https://video.example/1>.\n\n## Ranked shortlist\n"
+               "1. **Kettle Scale Monitoring Subscription** - priced\n2. **Rain gauge kits** - sold\n"
+               "3. **Kettle cleaning video course** - new\n\n## What I am unsure about\nMuch.\n")
+    out, renamed = keep(current, revised, ledger)
+    names = overnight._shortlist_names(out)
+    _check("a checked idea renamed by the revision gets its checked name back",
+           names[0] == "Kettle Descaling Alerts" and renamed == ["Kettle Scale Monitoring Subscription -> Kettle Descaling Alerts"],
+           str(renamed))
+    _check("its section heading too, and the summary's mention",
+           "## Kettle Descaling Alerts for Cafes\n" in out and "Kettle Descaling Alerts leads." in out
+           and "Monitoring" not in out, out)
+    _check("so the shortlist says what was found", proof.labels_for(names, ledger) == {1: "independent", 2: "no income shown"},
+           str(proof.labels_for(names, ledger)))
+    _check("a new idea sharing a word but not its pages keeps its name", names[2] == "Kettle cleaning video course", str(names))
+    _check("nothing else moves", out.split("## Rain gauge kits", 1)[1].split("## Ranked")[0]
+           == revised.split("## Rain gauge kits", 1)[1].split("## Ranked")[0])
+    _check("done again, nothing changes", keep(current, out, ledger) == (out, []))
+    _check("a revision that keeps the names is left alone", keep(current, current, ledger) == (current, []))
+    _check("with nothing checked there is nothing to keep", keep(current, revised, {}) == (revised, []))
+    elsewhere = revised.replace(pages, " <https://other.example/a> <https://other.example/b>")
+    _check("the same words on other pages are a new idea", keep(current, elsewhere, ledger)[1] == [])
+    two = {**ledger, "c": _full_entry("Kettle Descaling Kits", [_ev()])}
+    both = current.replace("## Rain gauge kits", "## Kettle Descaling Kits\nSold" + pages + ".\n\n## Rain gauge kits").replace(
+        "2. **Rain gauge kits**", "2. **Kettle Descaling Kits** - sold\n3. **Rain gauge kits**")
+    _check("when two dropped ideas could be the one renamed, the name stands", keep(both, revised, two)[1] == [])
+    _check("one and many are one name", proof._find(ledger, "Kettle Descaling Alert") is ledger["a"]
+           and proof._find(ledger, "Rain gauge kit") is ledger["b"])
+
+    overnight, folder, tmp = _setup()
+    proof.save(folder, {"k": _full_entry(evidence=[_ev()]), "b": _full_entry("Birdhouse plan e-books")})
+    stub = _Stub()
+    real = stub.complete
+
+    async def renames(system, user, max_tokens, cap=None):
+        if system.startswith("You revise"):
+            stub.writes.append(user)
+            return ("# Paper\n\n## Smart Kettle Price Notices\nThey charge $29 <https://kettlealerts.example/pricing> "
+                    "<https://e.example/1/0> <https://e.example/1/1>.\n\n## Ranked shortlist\n"
+                    "1. **Smart Kettle Price Notices** - priced\n2. **Rain gauges** - new\n\n## What I am unsure about\nMuch.\n")
+        return await real(system, user, max_tokens, cap)
+
+    asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=renames))
+    text = (folder / "paper.md").read_text(encoding="utf-8")
+    _check("the night's revision keeps the checked name, with what was found",
+           len(stub.writes) == 1 and "1. **Kettle price alerts** - priced (evidence: independent)" in text
+           and "## Kettle alerts" in text and "Notices" not in text, text)
+    _check("so the next session tests the new idea, not that one again",
+           proof.next_idea(overnight._shortlist_names(text), proof.load(folder)) == "Rain gauges")
+    tmp.cleanup()
+
+
 if __name__ == "__main__":
     test_labels()
     test_only_a_real_quote_counts()
@@ -631,5 +696,6 @@ if __name__ == "__main__":
     test_what_it_leaves_alone()
     test_the_digest_says_what_was_found()
     test_section_text()
+    test_a_checked_idea_keeps_its_name()
     print(f"\n{len(_failures)} failures" if _failures else "\nAll pass")
     sys.exit(1 if _failures else 0)
