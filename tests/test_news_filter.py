@@ -120,11 +120,23 @@ def test_filter() -> None:
         "https://siloadout.com/releases/week-of-2026-10-26/")]
     _check("listing pages and roundups are not stories", monitor._filter_news_results(listings, set(), []) == [],
            str([r["url"] for r in monitor._filter_news_results(listings, set(), [])]))
+    # 2026-11-05 to 11-08, four of seven digest items came from a day's briefing page.
+    daily = [dict(RELEASE, url=u) for u in (
+        "https://briefing.example/en/briefing/2026-11-08", "https://papers.example/en/papers/2026-11-05",
+        "https://kettle.example/news/2026-10-24/", "https://tldr.example/p/2026-11-06-tldr-ai",
+        "https://blog.example/ai-compass/2026/10/20/", "https://recap.example/Blog/ai-news-november-03-2026",
+        "https://week.example/p/top-ai-news-of-the-week-33-october", "https://today.example/en/daily",
+        "https://ticks.example/weekly/2026-W45/")]
+    _check("a day's briefing is not a story either", monitor._filter_news_results(daily, set(), []) == [],
+           str([r["url"] for r in monitor._filter_news_results(daily, set(), [])]))
     stories = [dict(RELEASE, url=u) for u in (
         "https://openai.com/index/introducing-gpt-6-1-terra/", "https://particle.ai/blog/introducing-particle-1",
-        "https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/")]
-    _check("articles under an index or blog path still count",
-           len(monitor._filter_news_results(stories, set(), [])) == 3)
+        "https://deepmind.google/blog/genie-4-a-new-generation-of-world-simulation/",
+        "https://kettle.example/blog/2026-10-23-kettle-k3-flash", "https://news.example/2026/10/19/kettle-launches-k4/",
+        "https://docs.example/changelog/post/2026-10-01-kettle-workers/")]
+    _check("articles under an index or blog path, or with a date before their name, still count",
+           len(monitor._filter_news_results(stories, set(), [])) == 6,
+           str([r["url"] for r in monitor._filter_news_results(stories, set(), [])]))
 
 
 def test_a_story_is_not_told_twice() -> None:
@@ -167,7 +179,10 @@ def test_a_story_is_not_told_twice() -> None:
     results = [dict(RELEASE, url=f"https://site{n}.example/stories/story-{n}") for n in range(3)]
     replies, prompts = [], []
 
+    asked = {}
+
     async def search(query, **kwargs):
+        asked.update(kwargs)
         return results
 
     async def complete(client, model, system, user, **kwargs):
@@ -183,6 +198,7 @@ def test_a_story_is_not_told_twice() -> None:
         _check("the first telling goes out, with its link",
                "Gemini 4 Carbon" in (first or "") and "site0.example" in (first or ""), str(first))
         _check("with nothing told yet, no list is sent", "Already told" not in prompts[-1], prompts[-1][:80])
+        _check("the search asks for articles, not index pages", asked.get("category") == "news", str(asked))
 
         results[:] = [dict(RELEASE, url=f"https://other{n}.example/stories/story-{n}") for n in range(3)]
         replies.append("NONE")

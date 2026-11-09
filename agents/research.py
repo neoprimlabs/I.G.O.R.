@@ -24,6 +24,7 @@ async def _run_search(
     highlights: str | None = None,
     include_domains: list[str] | None = None,
     keyless: bool = True,
+    category: str | None = None,
 ) -> list[dict]:
     """Search Exa and return title, url, published date and body text.
 
@@ -46,6 +47,9 @@ async def _run_search(
 
     keyless=False refuses the DDGS backup, for a caller that must not take its short undated
     snippets, which also ignore include_domains, as a real look.
+
+    category is Exa's: "news" returns articles rather than the index and briefing pages a news
+    query otherwise finds.
     """
     def _sync(focus: str | None = focus) -> list[dict]:
         from exa_py import Exa
@@ -73,6 +77,8 @@ async def _run_search(
             kwargs["exclude_domains"] = exclude_domains
         if include_domains:
             kwargs["include_domains"] = include_domains
+        if category:
+            kwargs["category"] = category
         response = exa.search_and_contents(query, **kwargs)
 
         def _body(r) -> str:

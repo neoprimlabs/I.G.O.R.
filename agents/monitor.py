@@ -604,19 +604,27 @@ _INDEX_SEGMENTS = {"topics", "topic", "category", "categories", "tag", "tags", "
                    "sections", "archive", "archives"}
 _INDEX_LAST = {"news", "models", "blog", "latest", "articles", "posts", "updates", "releases",
                "research", "ai", "ai-news", "ai-models", "home", "index", "new", "whats-new",
-               "changelog", "trending", "today", "projects", "publications"}
+               "changelog", "trending", "today", "projects", "publications", "daily", "briefing",
+               "briefings", "model-updates"}
 # A weekly roundup is mostly what was already in the digest: on 2026-10-30, GPT-6.1 Terra
 # again, two days after OpenAI's own post, by way of ".../ai-dev-weekly-032-...".
 _ROUNDUP_RE = re.compile(
     r"(?:^|-)(?:weekly|roundup|round-up|recap|digest|newsletter)(?:-|$)"
     r"|(?:^|-)(?:week-of|this-week|week-in-review)(?:-|$)"
-    r"|releases?-(?:january|february|march|april|may|june|july|august|september|october"
-    r"|november|december)-\d{4}")
+    r"|(?:releases?|ai-news)-(?:january|february|march|april|may|june|july|august|september|october"
+    r"|november|december)-\d"
+    r"|(?:^|-)(?:of-the-week|tldr)(?:-|$)")
+# A daily briefing is the same: from 2026-11-05 to 11-08 four of seven digest items came from pages like
+# ".../briefing/2026-11-08" and ".../papers/2026-11-05", a day's many stories under one link. A page named
+# only by its date is one of those; a story with a date in front of its slug is not.
+_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$|^\d{4}-w\d{1,2}$")
 
 
 def _is_listing(url: str) -> bool:
     path = [s.lower() for s in url.split("?")[0].split("#")[0].split("/")[3:] if s]
+    dated = len(path) >= 3 and all(re.fullmatch(p, s) for p, s in zip((r"\d{4}", r"\d{1,2}", r"\d{1,2}"), path[-3:]))
     return (not path or bool(_INDEX_SEGMENTS & set(path)) or path[-1] in _INDEX_LAST
+            or bool(_DATE_ONLY.match(path[-1])) or dated
             or any(_ROUNDUP_RE.search(s) for s in path))
 
 
@@ -705,9 +713,11 @@ async def _fetch_and_synthesize_ai_news() -> str | None:
         from agents import research
         cutoff = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
         # Eight, not five: dedup and exclusions need material to work with, and only
-        # the surviving five reach the model, so the token budget is unchanged.
+        # the surviving five reach the model, so the token budget is unchanged. Articles only: on
+        # 2026-11-09 this query found 5 index pages, 2 stories already sent and 1 left; as news, 7
+        # articles of 8, most from the company that made the thing.
         results = await research._run_search(_NEWS_QUERY, max_results=8,
-                                             start_published_date=cutoff, use_summary=True)
+                                             start_published_date=cutoff, use_summary=True, category="news")
         if not results:
             return None
 
