@@ -360,6 +360,19 @@ and says it is not "found nothing", and the latest price and stock check is show
 dated an unchanged dock two days back. Checked on the real history.db with no model; not run live again, the three
 checks having spent 64000 of 120b. The two bad replies are marked corrected in `context.db` (backup
 `context.db.bak-20261109`). `test_history.py` had a fixed date that would have failed from 11-15; now yesterday.
+**Direct's replies 10-26 to 11-09 read for made-up facts, 11-09:** 26 replies. Already fixed: job details and
+"best fit" answered from nothing (job questions route to React since 6c4fbbb), proposals listed as drafts, the
+dock watch guessed off, Hermes comparisons, and tonight's watch status. Fixed now: a cover letter on 11-01 claimed
+a 31/31 router, a 12% gain, BLEU and ROUGE pipelines, Docker and weekly stakeholder reports; the resume holds
+only the count of checks. `applications.py` now drops any sentence of an application draft whose figure or
+acronym is not in the resume, profile, user.md, preferences, the user's words, IGOR's unprompted posts or what a
+tool read that turn (IGOR's own replies do not count: they held BLEU from an earlier invented answer), and Direct
+and React are told to claim only what those show. Over every reply on record it counts one as an application,
+that letter, and takes out BLEU, ROUGE and the 12% (c0143c3). Open: claims in plain words ("weekly reports to
+stakeholders", Docker) pass the code check and rest on the prompt line. Open: Direct still promised actions
+("I'll omit", "I'll pull the next batch", "I will keep drafts free of personal details") on 10-27 and 11-01
+despite its rule; the last two preferences were saved on 11-05 through proposals. Watch: "How's it going?"
+answered "operating as expected" on 11-04; the new rule may now send such a greeting to React.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
