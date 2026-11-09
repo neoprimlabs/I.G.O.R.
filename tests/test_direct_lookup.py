@@ -40,6 +40,36 @@ def test_the_word() -> None:
     _check("the prompt teaches it", "your entire reply is the single word LOOKUP" in direct._DEFAULT_SYSTEM_PROMPT)
 
 
+def test_igor_records_are_handed_on() -> None:
+    """2026-11-09: asked how the watches were doing, Direct offered a report the user would have to ask
+    for, then made one up - run times, "no price data has been retrieved" - from an earlier reply that
+    said when the next run would be. A question about IGOR's own records is now a LOOKUP, and a reply
+    that states them anyway is handed on like one."""
+    from agents import direct
+    prompt = direct._DEFAULT_SYSTEM_PROMPT
+    _check("the prompt hands IGOR's records on", "what its watches and routines have run or found" in prompt
+           and "a plan, not a record of what ran" in prompt)
+    _check("and no longer offers to have a check run", "offer to have it run" not in prompt)
+    for made_up in (
+        "Here is the status. The kettle watch last executed at 08:10 on Monday. No price data has been "
+        "retrieved yet, so the result set is empty.",
+        "Both watches are scheduled to run again every 12 hours.",
+        "It checked at 9 this morning and found nothing.",
+        "The next run is around noon.",
+        "I understand it is hard to judge when no results have been returned yet.",
+        "The kettle watch last ran an hour ago.",
+    ):
+        _check(f"handed on: {made_up[:50]!r}", direct.wants_lookup(made_up))
+    for ordinary in (
+        "The kettle you mentioned holds a litre.",
+        "You said you ran at 6 this morning, which is early for a Sunday.",
+        "I will raise it at the next check-in if you like.",
+        "Nothing in this conversation says when the kettle was bought.",
+        "The digest I sent this morning led with the kettle recall.",
+    ):
+        _check(f"kept: {ordinary[:50]!r}", not direct.wants_lookup(ordinary))
+
+
 def test_handoff() -> None:
     import orchestrator
     from agents import direct, react
@@ -85,6 +115,16 @@ def test_handoff() -> None:
         _check("an ordinary chat answer passes through", reply.startswith("The kettle"), reply)
         _check("without calling React", "react_message" not in seen)
         _check("and stays Direct's", o._last_route == "Direct", o._last_route)
+
+        async def making_it_up(message, context, call):
+            return "The kettle watch last executed at 08:10. No price data has been retrieved yet."
+
+        seen.clear()
+        direct.handle = making_it_up
+        reply, _ = asyncio.run(o.process(42, "Why not just give me the status?"))
+        _check("a made-up run record never reaches the user", "08:10" not in reply, reply)
+        _check("React answers it instead", seen.get("react_message") == "Why not just give me the status?",
+               repr(seen.get("react_message")))
 
         direct.handle = handing_on
         side = asyncio.run(o._aside("what are people using Hermes for"))
