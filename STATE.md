@@ -379,6 +379,15 @@ which and I'll..."), is now handed on like LOOKUP (1ce38a0). Of 99 Direct replie
 no offer. Watch: "How's it going?" answered "operating as expected" on 11-04; the new rule may now send such a
 greeting to React. To check in real use: the 11:30 job watch on 11-09 (the seasonal customer care pick), that
 night's paper, and the next question about the watches, which no live check has yet answered end to end.
+**AI-work boards for the job watch, 11-09 (8bcfdda):** the user wants results this week and, in their words,
+work "in a field where I can utilize AI". Of 284 postings in 30 days about six were entry-level AI work: the
+boards are mostly software. Probed about 40 company slugs on Greenhouse, Lever, Ashby and Workable from the
+server, no tokens: xai's Greenhouse board has remote AI tutor roles ($35-75/hr US, most asking a field), and
+Handshake's Ashby board remote US AI red teamer roles; the general one pays $32-95/hr and asks hands-on use of
+several LLMs and LLM APIs or evaluation tooling, no years. Both are read now; a new Greenhouse posting's own page
+is read before the years ceiling and ranking (the board gives titles only), and "experience using/working
+with" counts as an ask. Rehearsed on a throwaway copy (one 20b ranking, about 2000 tokens): 14 new postings, the
+ranking picked only the general red teamer role. The 11:30 run should send it; ranking varies, so check.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
