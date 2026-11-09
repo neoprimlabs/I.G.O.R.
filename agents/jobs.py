@@ -11,13 +11,14 @@ every application, which settles it on its own.
 Indeed is not a source and cannot be. Its Publisher API was retired in 2023, the
 Job Search API is closed to new developers, and current access is an NDA-gated
 partner programme with six-figure minimums. The remaining route is scraping against
-their terms, through Cloudflare, from a 956 MB box. These four publish openly
+their terms, through Cloudflare, from a 956 MB box. These publish openly
 instead, and each was confirmed reachable from the server on 2026-09-23:
 
   Remotive      JSON, remote-only
   RemoteOK      JSON, remote-only (asks for attribution if republished)
   We Work Remotely  RSS per category, remote-only
   Greenhouse    JSON per company board, the ATS most remote roles post through
+  Ashby         JSON per company board, from 2026-11-09
 
 Fetching costs no tokens. Only drafting an application calls a model.
 """
@@ -53,7 +54,16 @@ _MAX_RANKED = 40
 # openai and surgehq were here until 2026-09-28 and returned 404 on every run - they
 # are not on Greenhouse under those names. A slug that 404s is two wasted calls a day
 # and a warning in the log, so it comes out rather than staying hopefully.
-_GREENHOUSE_BOARDS = ("anthropic", "scaleai", "invisibletech")
+#
+# 2026-11-09: of 284 postings in 30 days about six were entry-level AI work (trainer, reviewer, rater),
+# because the boards above are mostly software. The companies hiring for that post on their own boards.
+# Probed from the server that day across Greenhouse, Lever, Ashby and Workable: xai lists remote AI
+# tutor roles paying $35-75/hr, and Handshake (Ashby) remote US AI red teamer roles at $32-95/hr asking
+# for hands-on LLM and evaluation-tool use, not years. Appen and RWS were language roles, Cohere's
+# annotation roles Canada only, Mercor's board had no remote role, and outlier and dataannotation
+# answered on none of the four under those names.
+_GREENHOUSE_BOARDS = ("anthropic", "scaleai", "invisibletech", "xai")
+_ASHBY_BOARDS = ("handshake",)
 
 # RemoteOK filters server-side by tag, verified 2026-09-30: support 99, testing 100,
 # quality-assurance 100, data-entry 88, ai 85, ml 75, annotation 20 - and qa returns
@@ -289,7 +299,45 @@ def _from_greenhouse(payload: str, company: str) -> list[dict]:
                     "location": (location.get("name") or "").strip() if isinstance(location, dict) else "",
                     "url": (job.get("absolute_url") or "").strip(),
                     "posted": (job.get("updated_at") or "")[:10],
+                    "id": job.get("id"),
                     "source": f"greenhouse:{company}"})
+    return out
+
+
+def _with_content(job: dict) -> dict:
+    """A Greenhouse board lists titles only, so the ceiling on years and the ranking had nothing to read.
+    xAI's AI tutor roles ask a year of professional work in their field, which the title does not say.
+    One call for each new posting that passed the filters; a failed call leaves it as it was."""
+    board = (job.get("source") or "").partition(":")[2]
+    if not board or not job.get("id"):
+        return job
+    try:
+        data = json.loads(_get(f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{job['id']}"))
+    except Exception as e:
+        logger.warning("Job watch: %s posting %s unreadable - %s: %s", board, job["id"], type(e).__name__, e)
+        return job
+    content = html.unescape(data.get("content") or "") if isinstance(data, dict) else ""
+    return dict(job, description=content) if content else job
+
+
+def _from_ashby(payload: str, company: str) -> list[dict]:
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return []
+    out = []
+    for job in data.get("jobs", []) if isinstance(data, dict) else []:
+        if not isinstance(job, dict) or job.get("isListed") is False:
+            continue
+        pay = ((job.get("compensation") or {}).get("compensationTierSummary") or "").strip()
+        out.append({"title": (job.get("title") or "").strip(),
+                    "company": company,
+                    "location": (job.get("location") or "").strip(),
+                    "url": (job.get("jobUrl") or "").strip(),
+                    "pay": pay, "pay_floor": _pay_floor(pay),
+                    "posted": (job.get("publishedAt") or "")[:10],
+                    "description": job.get("descriptionHtml") or job.get("descriptionPlain") or "",
+                    "source": f"ashby:{company}"})
     return out
 
 
@@ -448,6 +496,9 @@ def _live_fetchers():
     for board in _GREENHOUSE_BOARDS:
         sources.append((f"greenhouse:{board}", lambda b=board: _from_greenhouse(
             _get(f"https://boards-api.greenhouse.io/v1/boards/{b}/jobs"), b)))
+    for board in _ASHBY_BOARDS:
+        sources.append((f"ashby:{board}", lambda b=board: _from_ashby(
+            _get(f"https://api.ashbyhq.com/posting-api/job-board/{b}?includeCompensation=true"), b)))
     return sources
 
 
@@ -565,7 +616,11 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
             url = job.get("url", "")
             if not url or url in seen or url in by_url:
                 continue
-            if not _matches(job, wanted, excluded) or _too_senior(job, most):
+            if not _matches(job, wanted, excluded):
+                continue
+            if not job.get("description") and job.get("source", "").startswith("greenhouse:"):
+                job = _with_content(job)
+            if _too_senior(job, most):
                 continue
             by_url.add(url)
             found.append(job)
@@ -618,7 +673,9 @@ def _profile() -> str:
 # Followed by what the years are of: "For over 20 years, Example Co has..." is not an ask.
 _YEARS_RE = re.compile(r"\d\s*\+?\s*(?:years?|yrs?)\b(?:\s+\S+){0,2}?\s+"
                        r"(?:of|experience|in|working|hands-on|professional|building|at)\b", re.IGNORECASE)
-_ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:with|in|building)\b"
+# "using" and "working": 2026-11-09 Handshake's red teamer post asks "hands-on experience using multiple
+# LLMs" and "experience working with LLM APIs", and only its line on harmful content was shown.
+_ASKS_RE = re.compile(_YEARS_RE.pattern + r"|\bmust\b|proficien|experience (?:with|in|building|using|working)\b"
                       r"|\brequired (?:skills|experience|qualifications)\b|\bexperience required\b",
                       re.IGNORECASE)
 _ASKS_HEADING = re.compile(r"(?:required|requirements?)\b.{0,30}$", re.IGNORECASE)

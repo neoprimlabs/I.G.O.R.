@@ -257,6 +257,77 @@ def test_seen_and_collect() -> None:
     _check("an unreadable store reads as empty", jobs._load_seen() == {})
 
 
+def test_ai_work_boards() -> None:
+    """2026-11-09: six of 284 postings in 30 days were entry-level AI work, the boards being mostly
+    software. Ashby boards are read now, and a Greenhouse posting's own page is read before the ceiling
+    on years and the ranking judge it - the board lists titles only. Invented fixtures in each API's shape."""
+    from agents import jobs
+
+    ashby = json.dumps({"jobs": [
+        {"title": "AI Evaluator (Remote)", "location": "Remote (USA)", "isListed": True,
+         "jobUrl": "https://jobs.ashbyhq.com/examplecorp/1", "publishedAt": "2026-11-02T10:00:00Z",
+         "descriptionHtml": "<li>Hands-on use of several LLMs and their APIs.</li>",
+         "compensation": {"compensationTierSummary": "$30 – $90 per hour"}},
+        {"title": "Office Coordinator", "location": "Example City, CA", "isListed": True,
+         "jobUrl": "https://jobs.ashbyhq.com/examplecorp/2"},
+        {"title": "Hidden Role", "location": "Remote (USA)", "isListed": False,
+         "jobUrl": "https://jobs.ashbyhq.com/examplecorp/3"},
+    ]})
+    parsed = jobs._from_ashby(ashby, "examplecorp")
+    _check("an unlisted Ashby posting is left out", [j["title"] for j in parsed] == ["AI Evaluator (Remote)", "Office Coordinator"],
+           str(parsed))
+    first = parsed[0]
+    _check("with its pay as stated, per hour", first["pay_floor"] == 30 and "per hour" in first["pay"], str(first))
+    _check("its description, date and source", "several LLMs" in first["description"] and first["posted"] == "2026-11-02"
+           and first["source"] == "ashby:examplecorp", str(first))
+    _check("malformed Ashby json is no postings", jobs._from_ashby("{not json", "examplecorp") == [])
+
+    path = _fresh()
+    (path / "job_search.md").write_text("# Job Search\n\n## Most years asked\n- 1\n", encoding="utf-8")
+    found = jobs.collect(now=NOW, fetchers=[("ashby:examplecorp", lambda: jobs._from_ashby(ashby, "examplecorp"))])
+    _check("a remote Ashby posting is found and an on-site one is not",
+           [j["title"] for j in found] == ["AI Evaluator (Remote)"], str(found))
+
+    board = json.dumps({"jobs": [
+        {"id": 7, "title": "AI Tutor, Design", "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/7",
+         "location": {"name": "Remote, International"}},
+        {"id": 8, "title": "AI Tutor, Writing", "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/8",
+         "location": {"name": "Remote, International"}},
+        {"id": 9, "title": "Facilities Technician", "absolute_url": "https://job-boards.greenhouse.io/examplecorp/jobs/9",
+         "location": {"name": "Example City, TN"}},
+    ]})
+    pages = {"7": "&lt;li&gt;3+ years of professional design work.&lt;/li&gt;",
+             "8": "&lt;li&gt;1+ years of professional writing, freelance counts.&lt;/li&gt;"}
+    asked = []
+    real_get = jobs._get
+
+    def fake_get(url, accept="application/json"):
+        asked.append(url)
+        return json.dumps({"content": pages[url.rsplit("/", 1)[1]]})
+
+    try:
+        jobs._get = fake_get
+        found = jobs.collect(now=NOW, fetchers=[("greenhouse:examplecorp", lambda: jobs._from_greenhouse(board, "examplecorp"))])
+        _check("a posting's own page is read, so one asking 3 years is held back",
+               [j["title"] for j in found] == ["AI Tutor, Writing"], str([j["title"] for j in found]))
+        _check("and the one kept carries what it asks", "1+ years of professional writing" in jobs._asks(found[0]["description"]),
+               found[0].get("description", ""))
+        _check("only postings that passed the filters are opened",
+               sorted(u.rsplit("/", 1)[1] for u in asked) == ["7", "8"], str(asked))
+
+        def down(url, accept="application/json"):
+            raise TimeoutError("The read operation timed out")
+        jobs._get = down
+        found = jobs.collect(now=NOW, fetchers=[("greenhouse:examplecorp", lambda: jobs._from_greenhouse(board, "examplecorp"))])
+        _check("a page that cannot be read leaves the posting as it was",
+               sorted(j["title"] for j in found) == ["AI Tutor, Design", "AI Tutor, Writing"], str(found))
+    finally:
+        jobs._get = real_get
+
+    names = [name for name, _ in jobs._live_fetchers()]
+    _check("the live sources include the AI-work boards", "greenhouse:xai" in names and "ashby:handshake" in names, str(names))
+
+
 def test_ranking_uses_a_profile_without_contact_details() -> None:
     """The full resume stays on the box. Only a PII-free profile is sent anywhere.
 
@@ -726,6 +797,9 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("a soft hyphen from a feed is removed", "customer facing" in jobs._asks("<li>1+ years of customer \u00adfacing work.</li>").replace("  ", " "))
     _check("a range of years counts", "3\u20136+ years" in jobs._asks("<li>3\u20136+ years of Acme CRM development</li>"))
     _check("a posting that asks nothing gives nothing", jobs._asks("<p>We are a great team.</p>") == "")
+    used = jobs._asks("<li>Strong hands-on experience using several LLMs.</li><li>Experience working with model APIs.</li>")
+    _check("experience using or working with something is an ask",
+           "experience using several LLMs" in used and "Experience working with model APIs" in used, used)
     _check("the right to work is not what the work asks",
            jobs._asks("<p>Must be legally authorized to work in the US without visa sponsorship.</p>") == "")
     kept = jobs._asks("<p>Must be legally authorized to work in the US.</p><p>Must have 2+ years of Python.</p>")
@@ -791,6 +865,8 @@ if __name__ == "__main__":
     test_exclusions_are_whole_words()
     print("\nseen store and collection")
     test_seen_and_collect()
+    print("\nboards of companies hiring for AI work")
+    test_ai_work_boards()
     print("\nwhat a posting asks")
     test_ranking_sees_what_a_posting_asks()
     print("\nranking against a profile")
