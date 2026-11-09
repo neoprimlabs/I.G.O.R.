@@ -239,7 +239,7 @@ to the turn; 5 minutes of silence is a no.
 **Stock watch.** Shopify's `/products/<handle>.js`: keyless, no model call. Blocked
 fetches fall back to the `r.jina.ai` relay (public URLs only).
 
-**Watch history** (`history.py`, `memory/history.db`): React's `watch_history` returns changes only.
+**Watch history** (`history.py`): `watch_history` gives changes, by item or watcher, and the last check.
 
 **Checkpoints** (Hermes' rollback), once per React turn: `rollback` lists, `rollback diff N` previews,
 `rollback N [all|<file>]` restores.

@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 
 _failures: list[str] = []
-NOW = datetime(2026, 10, 16, 15, 0, tzinfo=timezone.utc)
+# Yesterday, not a fixed date: describe() reads the last 30 days of the real clock, so a fixed
+# 2026-10-16 would have failed every run from 11-15 on and blocked the deploy gate.
+NOW = (datetime.now(timezone.utc) - timedelta(days=1)).replace(hour=15, minute=0, second=0, microsecond=0)
 
 WATCHLIST = """# Stock Watch
 
@@ -100,6 +102,42 @@ def test_price_and_jobs_history() -> None:
            "becomes buyable" not in history.describe("engineer"), history.describe("engineer"))
 
 
+def test_watcher_names() -> None:
+    """2026-11-09: asked how the watches were doing, React asked this for "price watch" and "stock
+    watch", which are in no item's name, and told the user neither had found anything."""
+    import history
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    history.record("stock", [("Kettle|Steel / US", "available", 1, "https://k/1")], now=NOW)
+    history.record("price", [("Kettle deal", "cheapest_match", "39.00", "https://k/2")], now=NOW)
+    history.record("jobs", [("Kettle Tester - Acme", "posted", "remoteok", "https://j/1")], now=NOW)
+
+    sources = lambda q: {r[1] for r in history.changes(q, now=NOW + timedelta(hours=1))}
+    _check("a watcher's name finds its rows: stock watch", sources("stock watch") == {"stock"}, str(sources("stock watch")))
+    _check("price watch", sources("price watch") == {"price"}, str(sources("price watch")))
+    _check("job watch", sources("job watch") == {"jobs"}, str(sources("job watch")))
+    _check("the watches, alone, mean price and stock", sources("the watches") == {"stock", "price"}
+           and sources("watches") == {"stock", "price"}, str(sources("the watches")))
+    _check("item words still narrow it", sources("steel") == {"stock"}, str(sources("steel")))
+
+    history.record("stock", [("Kettle|Steel / US", "available", 1, "https://k/1")], now=NOW + timedelta(hours=5))
+    shown = history.describe("stock")
+    import clock
+    later = (NOW + timedelta(hours=5)).astimezone(clock.USER_TZ)
+    _check("an unchanged watch still shows when it last checked",
+           f"Latest check recorded, unchanged since the rows above: stock {later:%a %Y-%m-%d %H:%M}" in shown, shown)
+    _check("but not for jobs, whose rows are new postings, not checks",
+           "Latest check recorded" not in history.describe("job"), history.describe("job"))
+
+    missed = history.describe("zebra")
+    _check("a miss still starts as it did", missed.startswith("No watch history"), missed)
+    _check("but says it is not the same as finding nothing", "not the same as the watches finding nothing" in missed, missed)
+    _check("and names what is on record", "Kettle|Steel / US" in missed and "Kettle deal" in missed
+           and "jobs: 1 posting" in missed, missed)
+    config.MEMORY_DIR = Path(tempfile.mkdtemp())
+    _check("an empty store says nothing was recorded",
+           "recorded nothing in that time" in history.describe("zebra"), history.describe("zebra"))
+
+
 def test_never_raises() -> None:
     import history
     config.MEMORY_DIR = Path(tempfile.mkdtemp()) / "missing"
@@ -117,6 +155,7 @@ def test_never_raises() -> None:
 if __name__ == "__main__":
     test_stock_history()
     test_price_and_jobs_history()
+    test_watcher_names()
     test_never_raises()
     if _failures:
         print(f"\n{len(_failures)} FAILED: {', '.join(_failures)}")

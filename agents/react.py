@@ -200,7 +200,7 @@ _TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "item": {"type": "string", "description": "Words in the watched item's name, e.g. 'AG01' or 'engineer'"},
+                "item": {"type": "string", "description": "Words in the watched item's name, e.g. 'AG01' or 'engineer', or a watcher: price, stock, jobs, gigs"},
                 "days": {"type": "integer", "description": "How far back, default 30"},
             },
             "required": ["item"],
