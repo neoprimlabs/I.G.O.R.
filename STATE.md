@@ -333,8 +333,15 @@ restored the one rename, unchecked becoming self-reported. Rehearsed on b5c7c65 
 writer kept close names this time, so nothing was restored, and all five labels came from the ledger; the evaluator
 failed that draft for giving no hours per idea, where the night's real revision had passed. Open, not built: a
 legal-research data idea now carries the general data idea's "similar product", from TrustMRR figures for unrelated
-niche tools, because the writer reused that name. The digest's 2 AI news items came from roundup sites;
-that is the search, working as built.
+niche tools, because the writer reused that name.
+**From five days of sent posts, read 11-09 (c2f067d):** the job watch had sent nothing since 11-06 because the
+ranking picked none of 2-3 new postings a day, and the years ceiling of 0 set on 11-05 had dropped 98 of the
+day's 219 postings, "1+ years of customer service" among them, which the user has. `job_search.md` now holds
+`- 1` and `- 0 in software, developer, devops, ...` (backup `job_search.md.bak-20261109`); a software title
+counts all its years as software. On that day's feeds 11 more postings reached the ranking and it picked one, a
+seasonal customer care role; no software posting got through. Five of seven check-ins since 11-03 asked the user
+to grade IGOR (its watch filter, code changes, the 12-hour interval before it had run); those words now get one
+retry and then silence, which over all 51 check-ins sent stops those four and none of the rest.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
