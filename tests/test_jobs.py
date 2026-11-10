@@ -844,6 +844,36 @@ def test_ranking_sees_what_a_posting_asks() -> None:
            seen.get("listing", "").endswith("2. AI Trainer - Scale Labs"), seen.get("listing", ""))
     system = jobs._RANK_SYSTEM
     _check("it gives verdicts with a short reason", "APPLY or SKIP" in system and "at most ten words" in system)
+
+    # 2026-11-09: the posting that fit got APPLY in 6 of 7 runs. A skip is final, so either vote counts.
+    two = [{"title": "AI Evaluator", "company": "Kettleworks", "url": "https://x/e"},
+           {"title": "Kettle Support", "company": "Kettleworks", "url": "https://x/f"}]
+    answers = iter(["1 SKIP not entry level\n2 SKIP no kettles", "1 APPLY evaluation fits\n2 SKIP no kettles"])
+    calls = []
+
+    async def _voter(profile, listing):
+        calls.append(listing)
+        return next(answers)
+    notes = asyncio.run(jobs.rank(two, ask=_voter))
+    _check("the ranking votes twice", len(calls) == jobs._RANK_VOTES == 2, str(calls))
+    sent = jobs.format_for_discord(two, notes)
+    _check("and one APPLY is enough", "AI Evaluator" in sent and "Kettle Support" not in sent, sent)
+
+    tries = []
+
+    async def _flaky(profile, listing):
+        tries.append(1)
+        if len(tries) == 1:
+            raise TimeoutError("timed out")
+        return "1 APPLY evaluation fits"
+    notes = asyncio.run(jobs.rank(two, ask=_flaky))
+    _check("a failed vote leaves the other", jobs._pick_numbers(notes) == [1], notes)
+
+    async def _down(profile, listing):
+        raise TimeoutError("timed out")
+    _check("both failing is no verdict, so the plain listing goes out",
+           asyncio.run(jobs.rank(two, ask=_down)) == ""
+           and "Kettle Support" in jobs.format_for_discord(two, ""))
     sent = jobs.format_for_discord([{"title": "AI Trainer", "company": "Scale Labs", "url": "https://x/2"}],
                                    "1 APPLY matches your daily kettle evaluation work")
     _check("and the reason never reaches the user", "AI Trainer" in sent and "kettle evaluation" not in sent, sent)

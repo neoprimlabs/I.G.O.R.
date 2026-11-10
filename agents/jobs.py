@@ -641,6 +641,10 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
 # in 1 of 4 runs on 20b low, 2 of 3 on 20b medium, and 2 of 4 on 120b low, which also picked physics and
 # materials science tutor roles. The live 11:30 run said None. As verdicts, 20b low still skipped it 3 of 4
 # ("no red teaming experience"); 20b medium gave it APPLY in 6 of 6 and nothing else.
+# Then a rehearsal on the deployed code skipped it ("not entry-level"): 6 of 7. A skip is final, as the
+# posting is marked seen, so the ranking votes twice and either APPLY counts; a miss then needs both.
+_RANK_VOTES = 2
+
 _RANK_SYSTEM = """You help one person decide which job postings are worth their time.
 
 You get their profile and a numbered list of postings, each with what it asks for where the listing says. Give every posting a verdict, one line each in the listing's order: its number, then APPLY or SKIP, then a reason of at most ten words. Example: 3 SKIP asks two years of nursing. Write nothing else.
@@ -722,7 +726,7 @@ def _asks(description: str) -> str:
 
 
 async def rank(found: list[dict], ask=None) -> str:
-    """One model call for the whole day's shortlist. Returns notes, or empty."""
+    """The day's shortlist judged _RANK_VOTES times. Returns the votes' notes together, or empty."""
     profile = _profile()
     if not profile or not found:
         return ""
@@ -734,21 +738,30 @@ async def rank(found: list[dict], ask=None) -> str:
         return (f"{i + 1}. {j['title']} - {j.get('company') or 'unknown company'}"
                 + (f"\n   Asks: {asks}" if asks else ""))
     listing = "\n".join(entry(i, j) for i, j in enumerate(found[:_MAX_RANKED]))
-    try:
-        if ask is not None:
-            return (await ask(profile, listing) or "").strip()
+    if ask is None:
         import openai
         import llm
         client = openai.AsyncOpenAI(api_key=config.GROQ_API_KEY,
                                     base_url="https://api.groq.com/openai/v1", max_retries=5)
-        out = await llm.complete(
-            client, config.MODELS["summary"], _RANK_SYSTEM,
-            f"Their profile:\n{profile}\n\nPostings:\n{listing}",
-            max_tokens=2048, label="Job ranking", reasoning_effort="medium")
-        return (out or "").strip()
-    except Exception as e:
-        logger.error("Job ranking failed - %s: %s", type(e).__name__, e)
-        return ""
+
+        async def ask(profile, listing):
+            return await llm.complete(
+                client, config.MODELS["summary"], _RANK_SYSTEM,
+                f"Their profile:\n{profile}\n\nPostings:\n{listing}",
+                max_tokens=2048, label="Job ranking", reasoning_effort="medium")
+    votes = []
+    # One after the other: two at once would ask for more than 20b's 8000 a minute.
+    for _ in range(_RANK_VOTES):
+        try:
+            out = (await ask(profile, listing) or "").strip()
+        except Exception as e:
+            logger.error("Job ranking failed - %s: %s", type(e).__name__, e)
+            continue
+        if out:
+            votes.append(out)
+    if len(votes) > 1:
+        logger.info("Job ranking votes: %s", " | ".join(str(_pick_numbers(v)) for v in votes))
+    return "\n".join(votes)
 
 
 def heartbeat(now: Optional[datetime] = None) -> str:

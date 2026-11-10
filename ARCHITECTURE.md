@@ -336,10 +336,10 @@ check-in on a subject of its last 3.
 plus `pause`, `resume`, `clear`. Code diffs each page's visible text, ignoring times;
 only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a day.
 
-The job watch reads RemoteOK, WWR, Remotive, and Greenhouse (each new post's page) and Ashby boards of AI-work
+The job watch reads RemoteOK, WWR, Remotive, and Greenhouse (each new post's page) and Ashby boards of AI
 hirers; code filters (and drops one asking more years than job_search.md's `## Most years asked`, overall
-or by field), 20b picks by what each asks, sent with them. A remote-only board's US location
-counts as open. React's `search` (`source: jobs`) reads them
+or by field), 20b judges each twice by its asks; an APPLY sends it. A remote-only
+board's US location is open. React's `search` (`source: jobs`) reads them
 live, pay as stated; a user's job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
 reads the n8n forum Jobs board, r/forhire [Hiring] and HN "Who is hiring?" contract
