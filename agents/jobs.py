@@ -635,9 +635,15 @@ def collect(now: Optional[datetime] = None, fetchers=None) -> list[dict]:
 # states, 20b still wrote "you have over a year ... and daily technical support duties"
 # (2026-10-30) of a job months old with no such duties. No instruction fixed it, so the
 # model no longer writes about the user: each pick goes out with the posting's own words.
+#
+# A verdict for every posting, at medium effort. 2026-11-09 the same 14 postings, asked for a list of
+# numbers or None, gave the one that fit (a remote AI red teamer role asking LLM and evaluation-tool use)
+# in 1 of 4 runs on 20b low, 2 of 3 on 20b medium, and 2 of 4 on 120b low, which also picked physics and
+# materials science tutor roles. The live 11:30 run said None. As verdicts, 20b low still skipped it 3 of 4
+# ("no red teaming experience"); 20b medium gave it APPLY in 6 of 6 and nothing else.
 _RANK_SYSTEM = """You help one person decide which job postings are worth their time.
 
-You get their profile and a numbered list of postings, each with what it asks for where the listing says. Reply with only the numbers of the postings worth applying to, best first, one per line, with no notes. If none are, reply with the single word None.
+You get their profile and a numbered list of postings, each with what it asks for where the listing says. Give every posting a verdict, one line each in the listing's order: its number, then APPLY or SKIP, then a reason of at most ten words. Example: 3 SKIP asks two years of nursing. Write nothing else.
 
 Rules:
 - Judge against the profile and what the posting asks. Count experience only as the profile's dates show it.
@@ -738,7 +744,7 @@ async def rank(found: list[dict], ask=None) -> str:
         out = await llm.complete(
             client, config.MODELS["summary"], _RANK_SYSTEM,
             f"Their profile:\n{profile}\n\nPostings:\n{listing}",
-            max_tokens=1024, label="Job ranking")
+            max_tokens=2048, label="Job ranking", reasoning_effort="medium")
         return (out or "").strip()
     except Exception as e:
         logger.error("Job ranking failed - %s: %s", type(e).__name__, e)
@@ -762,6 +768,7 @@ def heartbeat(now: Optional[datetime] = None) -> str:
 
 
 _PICK = re.compile(r"^\s*(\d+)(?:[.):]|\s*$)")
+_VERDICT = re.compile(r"^[\s*\-•]*(\d+)\**\s*[.):\-]?\s*\**\s*(APPLY|SKIP)\b", re.IGNORECASE)
 _OFFER = "Say the word on any of these and I will draft the application for you to send."
 
 
@@ -770,11 +777,15 @@ def _name(job: dict) -> str:
 
 
 def _pick_numbers(notes: str) -> list[int]:
-    """The numbers a ranking named, one to a line or several in one bare line. Anything
+    """The numbers a ranking gave APPLY, or named one to a line or several in one bare line. Anything
     written after a number is dropped."""
     numbers = []
     for line in (notes or "").splitlines():
-        if re.fullmatch(r"[\d\s.,;)]+", line):
+        verdict = _VERDICT.match(line)
+        if verdict:
+            if verdict.group(2).upper() == "APPLY":
+                numbers.append(verdict.group(1))
+        elif re.fullmatch(r"[\d\s.,;)]+", line):
             numbers += re.findall(r"\d+", line)
         else:
             m = _PICK.match(line)

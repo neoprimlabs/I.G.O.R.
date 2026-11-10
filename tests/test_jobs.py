@@ -384,6 +384,14 @@ def test_ranking_uses_a_profile_without_contact_details() -> None:
     _check("or several on one line", numbers("3, 7, 12") == [3, 7, 12], str(numbers("3, 7, 12")))
     _check("a note after a number changes nothing", numbers("2. A good match.\n5: Also fine.") == [2, 5])
     _check("a sentence that opens with a figure is not a pick", numbers("5 or more years is too many.") == [])
+    # 2026-11-09: asked for numbers or None, the ranking flipped between them on the same postings.
+    verdicts = "1 SKIP asks two years of nursing\n2. SKIP travel required\n3 APPLY kettle evaluation fits\n**4** - APPLY fits"
+    _check("as verdicts, only APPLY is a pick", numbers(verdicts) == [3, 4], str(numbers(verdicts)))
+    _check("verdicts that skip everything send nothing",
+           jobs.format_for_discord(found, "1 SKIP asks two years of nursing") == "")
+    _check("an APPLY verdict is shown", "worth a look" in jobs.format_for_discord(found, "1 APPLY fits"))
+    _check("the ranking is asked for a verdict on every posting",
+           "Give every posting a verdict" in jobs._RANK_SYSTEM and "None" not in jobs._RANK_SYSTEM.split("Rules:")[0])
     _check("and the listing still stands without notes", "worth a look" not in jobs.format_for_discord(found))
     # 2026-10-22: three postings went out under "(No postings worth applying to.)".
     _check("a ranking that picked nothing sends nothing",
@@ -835,7 +843,10 @@ def test_ranking_sees_what_a_posting_asks() -> None:
     _check("and a posting with nothing to quote is its title alone",
            seen.get("listing", "").endswith("2. AI Trainer - Scale Labs"), seen.get("listing", ""))
     system = jobs._RANK_SYSTEM
-    _check("it writes numbers, not notes", "only the numbers" in system and "no notes" in system)
+    _check("it gives verdicts with a short reason", "APPLY or SKIP" in system and "at most ten words" in system)
+    sent = jobs.format_for_discord([{"title": "AI Trainer", "company": "Scale Labs", "url": "https://x/2"}],
+                                   "1 APPLY matches your daily kettle evaluation work")
+    _check("and the reason never reaches the user", "AI Trainer" in sent and "kettle evaluation" not in sent, sent)
     _check("experience is counted from the profile's dates", "profile's dates" in system)
     _check("it leaves out years the profile cannot meet", "2 or more years" in system)
     _check("and a posting limited to another country", "country other than the United States" in system)
