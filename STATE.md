@@ -387,7 +387,19 @@ Handshake's Ashby board remote US AI red teamer roles; the general one pays $32-
 several LLMs and LLM APIs or evaluation tooling, no years. Both are read now; a new Greenhouse posting's own page
 is read before the years ceiling and ranking (the board gives titles only), and "experience using/working
 with" counts as an ask. Rehearsed on a throwaway copy (one 20b ranking, about 2000 tokens): 14 new postings, the
-ranking picked only the general red teamer role. The 11:30 run should send it; ranking varies, so check.
+ranking picked only the general red teamer role. **The real 11:30 run on 11-09 said None and sent nothing.**
+Measured on the same 14: a list of numbers or None gave the role in 1 of 4 runs on 20b low, 2 of 3 on 20b medium,
+2 of 4 on 120b low (which also picked physics and materials tutor roles); a verdict per posting on 20b low 1 of 4
+("no red teaming experience", though the profile names it), on 20b medium 6 of 7. The ranking now gives a verdict
+on every posting at medium effort and votes twice, either APPLY sending it, since a skip is final (62b50c9,
+028fd5e; about 7000 of 20b a day). The 14 were taken off `jobs_seen.json` (backup `jobs_seen.json.bak-20261110`)
+so the 11-10 run judges them again; rehearsed on the deployed code, both votes gave the role APPLY and nothing else.
+The 11-09 gig watch sent OpenTrain AI's "Backend Engineer, AI Coding Task Design", asking strong professional
+backend experience: `private/profile.md` described IGOR's 5300 lines without saying an AI coding tool writes them.
+It now carries the user's "zero software engineering experience" (11-05) and leaves out roles mainly needing
+professional programming, LLM use and evaluation still counting (backup `profile.md.bak-20261110`). The gig screen
+rehearsed on that day's five (120b, about 2400): OpenTrain skipped for "requires professional backend engineering",
+the n8n agency role kept. **Check 11-10:** the 11:30 job post carries the Handshake role, and the 11:45 gig post.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
