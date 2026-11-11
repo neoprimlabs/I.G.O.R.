@@ -299,14 +299,13 @@ retry, except for proof checks.
 React can only give a `brief`, written to be self-contained. When due,
 `compose.write` runs React fresh - no history, read-only tools (`search`,
 `fetch_url`, `memory_read`, `search_memory`), 180s timeout; a brief naming IGOR
-gets the self summary. If that fails or returns
-nothing, the tool-less `compose()` writes it; if that fails too, the brief itself is
-sent. Words the user dictated go in double quotes and are kept verbatim. A brief can ask
+gets the self summary and memory's file names; code lists the new files it names. Failing
+that, the tool-less `compose()` writes it, then the brief itself goes. Dictated words, in double quotes, stay verbatim. A brief can ask
 to speak only if something is so; the run answers `[SILENT]` and nothing goes (Hermes' cron).
 
 A second brief due within 5 minutes of a pending one is merged into it. A correction
 is `update`, which edits a pending message in place by id. `repeat` (daily, weekdays, weekly) moves
-the entry to its next local occurrence, so 09:00 stays 09:00 across
+the entry to its next local occurrence, so 09:00 survives
 daylight saving; an interval (3 hours at the shortest, 5 minutes with a script) steps by its
 minutes. `times` limits the runs; a run ending `[DONE]` on its own line ends the series (Hermes'
 LOOP_COMPLETE) and says so; one ending a line is dropped. After downtime: one late message, never a backlog; resuming

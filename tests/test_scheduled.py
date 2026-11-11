@@ -544,6 +544,23 @@ async def test_write_at_delivery() -> None:
         _check("and only read-only tools - nobody is watching when it runs",
                bool(tools) and not tools & banned, str(tools))
 
+        # 2026-11-10: an idea said it leverages files "you already maintain" that did not exist.
+        async def agent_names_files(message, context, **kw):
+            return ("Add memory/kettle_alerts.md, read by agents/compose.py, and list it in ARCHITECTURE.md. "
+                    "Then `kettle_alerts.md` feeds agents/*.py.")
+        react.handle = agent_names_files
+        idea = await compose.write("Practical idea for IGOR")
+        _check("a post about IGOR says which files it names are new",
+               idea.endswith("-# Files that exist today: agents/compose.py, ARCHITECTURE.md, agents/*.py. "
+                             "Not on file, so part of this idea: memory/kettle_alerts.md."), idea[-260:])
+        other = await compose.write("a deep philosophical question")
+        _check("a post about something else is left alone", "-#" not in other, other)
+        _check("as is one naming only files that exist",
+               compose._mark_new_files("Read agents/compose.py.") == "Read agents/compose.py.")
+        _check("or none", compose._mark_new_files("No files here.") == "No files here.")
+        _check("or one that ends the series",
+               compose._mark_new_files("Built memory/kettle_alerts.md.\n[DONE]").endswith("[DONE]"))
+
         react.handle = agent_raises
         _check("an agent that raises falls back to compose",
                await compose.write("x") == "composed fallback")

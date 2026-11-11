@@ -14,7 +14,9 @@ proactiveness does not track model capacity, so the larger model buys nothing he
 """
 
 import asyncio
+import fnmatch
 import logging
+import os
 import re
 from datetime import datetime
 from typing import Optional
@@ -138,6 +140,50 @@ _AREA_WORDS = dict(zip(_IGOR_AREAS, (
 _AREA_CHARS = 3500
 _AGENT_TIMEOUT_S = 180
 
+# 2026-11-10: a weekday idea said it "leverages files you already maintain (goals, drafts, budget alerts)"
+# and would read memory/budget_alert.md and memory/safety_log.md. Neither existed, with "anything you call
+# existing must appear in that summary" in its prompt. Code checks each file a post about IGOR names.
+_FILE_NAMED = re.compile(r"(?<![\w./*-])((?:[\w*.-]+/)*[\w*-]+\.(?:md|py|json|db|sh|txt|ya?ml))(?![\w/])")
+_NOT_WALKED = {"venv", "__pycache__", "node_modules"}
+
+
+def _files_on_record() -> list[str]:
+    root = str(config.BASE_DIR)
+    out = []
+    for here, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in _NOT_WALKED]
+        rel = os.path.relpath(here, root)
+        out += [(name if rel == "." else f"{rel}/{name}").replace(os.sep, "/") for name in files]
+    return out
+
+
+def _on_record(name: str, known: list[str]) -> bool:
+    name = name.lstrip("./")
+    if "/" in name:
+        return any(fnmatch.fnmatch(k, name) or fnmatch.fnmatch(k, f"*/{name}") for k in known)
+    return any(fnmatch.fnmatch(k.rsplit("/", 1)[-1], name) for k in known)
+
+
+def _mark_new_files(text: str) -> str:
+    """A line saying which files the post names exist and which it would add, when any would be new."""
+    if "[DONE]" in text or "[SILENT]" in text:
+        return text
+    names, bases = [], set()
+    for m in _FILE_NAMED.finditer(text):
+        base = m.group(1).rsplit("/", 1)[-1]
+        if base not in bases:
+            bases.add(base)
+            names.append(m.group(1))
+    if not names:
+        return text
+    known = _files_on_record()
+    new = [n for n in names if not _on_record(n, known)]
+    if not new:
+        return text
+    have = [n for n in names if n not in new]
+    return (f"{text}\n-# " + (f"Files that exist today: {', '.join(have)}. " if have else "")
+            + f"Not on file, so part of this idea: {', '.join(new)}.")
+
 
 def _area_detail(area: str) -> str:
     """The paragraphs of ARCHITECTURE.md past the self-summary that say most about the area, capped,
@@ -222,6 +268,11 @@ async def write(brief: str, now: Optional[datetime] = None,
                      "what the summary says it does. Everything else is part of your proposal and "
                      "must be described as new. It must fit the daily token budget too: nothing "
                      "that adds a model call to every message or to every item of anything.")
+            on_file = sorted(p.name for p in config.MEMORY_DIR.glob("*") if p.is_file()
+                             and p.suffix in (".md", ".json") and not p.name.startswith("research_"))
+            if on_file:
+                task += ("\n\nThe files in memory/ today, research reports aside: " + ", ".join(on_file)
+                         + ". Any other file you name is new, and part of your proposal.")
         if recent:
             area = _IGOR_AREAS[(now or datetime.now()).toordinal() % len(_IGOR_AREAS)]
             # 2026-10-28: "safety: approvals, ... checkpoints and rollback" came back as a
@@ -250,7 +301,9 @@ async def write(brief: str, now: Optional[datetime] = None,
                      type(e).__name__, e)
         text = None
     text = (text or "").strip()
-    if text:
-        return text
-    logger.warning("Scheduled-message agent returned nothing, falling back to compose")
-    return await compose(brief, now, bare) if bare else await compose(brief, now)
+    if not text:
+        logger.warning("Scheduled-message agent returned nothing, falling back to compose")
+        text = await compose(brief, now, bare) if bare else await compose(brief, now)
+    if text and _ABOUT_IGOR.search(brief):
+        text = _mark_new_files(text)
+    return text

@@ -59,6 +59,9 @@ def test_igor_records_are_handed_on() -> None:
     _check("no reminder nobody asked for", "Never suggest a reminder, a schedule or a task they did not ask for" in prompt)
     _check("and no example time to copy", "remind me tomorrow at 9am" not in prompt and "9pm" not in prompt)
     _check("nor a fact about their own life that nothing shows", "a shift, a day off, a time they are free" in prompt)
+    # A replay of the fixed prompt still opened "I'm sorry it's been difficult to find time" and advised.
+    _check("being busy is not hard news", "not having got to something yet is not one of these" in prompt
+           and "money, work, a loss" not in prompt)
     for made_up in (
         "Here is the status. The kettle watch last executed at 08:10 on Monday. No price data has been "
         "retrieved yet, so the result set is empty.",
