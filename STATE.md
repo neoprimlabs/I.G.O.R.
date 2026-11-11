@@ -399,7 +399,27 @@ backend experience: `private/profile.md` described IGOR's 5300 lines without say
 It now carries the user's "zero software engineering experience" (11-05) and leaves out roles mainly needing
 professional programming, LLM use and evaluation still counting (backup `profile.md.bak-20261110`). The gig screen
 rehearsed on that day's five (120b, about 2400): OpenTrain skipped for "requires professional backend engineering",
-the n8n agency role kept. **Check 11-10:** the 11:30 job post carries the Handshake role, and the 11:45 gig post.
+the n8n agency role kept. **11-10:** the 11:30 job post carried the Handshake role, 22 others not fitting.
+**From the 11-10 posts, fixed that night:** (1) After a check-in on n8n, Direct ordered "Set a reminder for
+tomorrow at 9 am" (its prompt's example time), then "Thursday at 7 pm, the end of your retail shift" on the user's
+stated day off (nothing on record says 7), then "I'll give you a reminder you can set yourself". Two prompt rules
+made Direct hand actions back as sentences to send. An action asked for is now LOOKUP, so React schedules it;
+no unasked reminder; no fact about the user's own schedule that nothing shows; being busy gets no apology
+(2e4422f, f57bbba). Replayed both turns on cut copies of the conversation (about 5700 each): no reminder, no 7
+pm; "when I'm off my retail job Thur" was still read as after a shift, which the words allow. (2) The check-in
+rested on `user.md` "Learning n8n now"; now "n8n not started yet (11-10)" (backup `user.md.bak-20261110`). That
+edit first took user.md to 1545 characters, past the 1500 Direct reads; now 1499. (3) The weekday idea said it
+"leverages files you already maintain" naming budget_alert.md and safety_log.md, which do not exist. The writer
+now gets memory's file names and code appends which files a post names exist and which are new (f57bbba);
+rehearsed (5342): the line was right. That rehearsal's idea, a bundler for messages due within five minutes,
+duplicates the existing merge despite the area detail: open. (4) The paper's "Curated Niche Data Subscriptions"
+showed revenue from two niche-website tools found by name on 11-02 while the paper had re-described the idea twice.
+The proof judge now gets the paper's description, the ledger keeps it as `checked_as`, and an idea whose
+description keeps under a quarter of its words is checked again (median kept 0.87 over 42 version pairs; the 5
+rewrites 0.12-0.17) (11dda84). All six shortlisted ideas lack `checked_as`, so the night of 11-11 rechecks them.
+Rehearsed on a copy (11315 of 20b): the judge dropped the niche tools and kept a data product; a year in "closed
+in 2018" made one closure "against", fixed so a year is not the figure (cab48c8), rescored offline as
+self-reported. **Check 11-11:** the night's proof labels and the digest.
 **Syntax checks on write, and more documents, built 11-01**, with 120b near its cap, so neither needs a model:
 `write_file` and `patch_file` parse a `.py` as they save it and report what the edit broke, kept as Hermes keeps
 it; PowerPoint, EPUB and OpenDocument attachments are read with the standard library; a zip that unpacks past
