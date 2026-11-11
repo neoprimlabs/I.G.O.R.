@@ -293,6 +293,8 @@ def test_what_counts_as_against() -> None:
     _check("though the page's title can name the idea", many("93% of them ultimately shut down for good", title="Birdhouse plans: a study"))
     _check("words with no figure are not data", not many("Recorded closure with no past end date", title="The birdhouse die-off"))
     _check("one business is not many", not many("Birdhouse plan shop lost 90% of sales and closed", scope="one"))
+    _check("a year is not the figure", not many("The Example Birdhouse Plan Marketplace closed in 2018"))
+    _check("though a figure beside a year still is", many("In 2025, 70% of birdhouse plan sellers earned under $50"))
 
 
 def test_reading_replies() -> None:

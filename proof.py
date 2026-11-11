@@ -419,7 +419,10 @@ def _kept(row: dict, results: list, sellers, today: str, idea: str = "") -> Opti
         source = _SELLER
     # "Against" is a strong word, so it takes a figure on this idea. Live 2026-11-01 it was first given
     # to API wrappers for "93% of startups ultimately shut down", from a firm selling shutdowns.
-    many = (str(row.get("scope", "")).strip().lower() == "many" and bool(re.search(r"\d", quote))
+    # A year is not that figure: rehearsed 2026-11-10, "Microsoft's Azure Data Marketplace closed in 2018" made
+    # a data-subscription idea "against" on one closure.
+    many = (str(row.get("scope", "")).strip().lower() == "many"
+            and bool(re.search(r"\d", re.sub(r"\b(?:19|20)\d\d\b", "", quote)))
             and _speaks_of(idea, f"{page.get('title', '')} {quote}"))
     return _restated({"url": page.get("url", ""), "quote": clean(quote), "what": what, "from": source,
                       "many": many, "product": clean(product), "at": today})
