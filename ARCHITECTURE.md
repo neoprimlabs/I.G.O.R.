@@ -206,9 +206,9 @@ One model call, no tool schemas, on `openai/gpt-oss-120b`, through the
 ends with `memory/user.md` (Hermes' USER.md) and how full it is; `memory_write` refuses
 a write past 1500 characters, judged on a batch's result, and lists the entries.
 
-It may not say IGOR lacks a capability. Facts it may lack
-(a product or event today, IGOR's own runs) get `LOOKUP`, as does a reply
-stating or deferring them or promising an action; React takes it, as Watches after a watch message. SelfDescribe adds `docs/HERMES_PARITY.md` when Hermes is named.
+It may not deny IGOR a capability. Facts it may lack
+(a product or event today, IGOR's runs) and actions asked get `LOOKUP`, as does a reply
+stating or deferring them or promising one; React takes it, as Watches after a watch message. SelfDescribe adds `docs/HERMES_PARITY.md` when Hermes is named.
 
 ### React
 

@@ -50,7 +50,15 @@ def test_igor_records_are_handed_on() -> None:
     _check("the prompt hands IGOR's records on", "what its watches and routines have run or found" in prompt
            and "a plan, not a record of what ran" in prompt)
     _check("and no longer offers to have a check run", "offer to have it run" not in prompt)
-    _check("a sentence to send is for an action only", "That sentence is for an action only" in prompt)
+    # 2026-11-10: told "Haven't had a chance to start that yet", Direct ordered "Set a reminder for tomorrow
+    # at 9 am" (the prompt's own example time), then "Thursday at 7 pm ... the end of your retail shift" on
+    # the user's stated day off, then "I'll give you a reminder you can set yourself". Nobody asked.
+    _check("an action asked for is handed on, not handed back",
+           "your entire reply is LOOKUP, as above: the part of I.G.O.R. that can act" in prompt
+           and "Never hand the doing back to them" in prompt and "sentence to send as its own message" not in prompt)
+    _check("no reminder nobody asked for", "Never suggest a reminder, a schedule or a task they did not ask for" in prompt)
+    _check("and no example time to copy", "remind me tomorrow at 9am" not in prompt and "9pm" not in prompt)
+    _check("nor a fact about their own life that nothing shows", "a shift, a day off, a time they are free" in prompt)
     for made_up in (
         "Here is the status. The kettle watch last executed at 08:10 on Monday. No price data has been "
         "retrieved yet, so the result set is empty.",
