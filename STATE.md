@@ -26,6 +26,23 @@ Last updated: **2026-11-09**
 
 ## Next action
 
+**Start 2026-11-11: move the main model's jobs to a Claude model.** Agreed with the user 11-10/11 after a week
+where most faults were gpt-oss not following its prompt (an invented 7 pm, the idea writer naming files that do
+not exist, the job ranking flipping between a pick and None on the same 14 postings). Which Claude model is not
+decided; code treats them alike, the model ID one setting per role. Measured 10-28 to 11-10 from the journal,
+the jobs that would move (Chat, React, Presence, Scheduled, Gig screening, Advocacy, the paper write) averaged
+27500 in and 5100 out a day: about $3-4 a month on Sonnet 5.5 ($2/$10 per MTok), about 20 cents on Haiku 5.5,
+$6.50-8 on Opus 5.5 (Anthropic list prices as of 2026-10). Router (qwen) and overnight research (20b) stay on
+Groq, free. Plan: Anthropic's own SDK, not an OpenAI-format gateway (Anthropic's guidance, and it is the
+bring-your-own-key groundwork for the public version, which stays free by default on Groq). Work: (1) a Claude
+path in `llm.create`/`complete` with per-model params in the `model_params` pattern (thinking and effort differ:
+Opus 5.5 cannot disable thinking, Sonnet 5.5 uses `between_tools`); (2) React's ~50 lines tied to the OpenAI
+tool-call format; (3) forced `tool_choice` (`force_tool`) is rejected by Sonnet 5.5 and Opus 5.5: code runs the
+forced tool itself and hands in the result; (4) Groq 120b stays the fallback when Claude fails or no key is set,
+so IGOR keeps running free. Check Hermes' provider configuration first. Code and offline tests need no key; live
+checks need `ANTHROPIC_API_KEY` in the server's `.env`, which the user adds. Then replay 11-09/11-10's bad turns
+on the new model before switching.
+
 **Showcase for AI agent engineer applications (started 2026-10-21).** The user is
 applying to AI agent engineer roles and wants IGOR shown off. Agreed story: "an
 always-on personal agent, run in production on free tiers, with the safety
