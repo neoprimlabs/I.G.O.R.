@@ -648,6 +648,12 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
     paper = proof.without_section(paper_path.read_text(encoding="utf-8"))
     ledger = proof.load(folder)
     sellers = proof.hosts(_links(paper))
+    about = proof.description(paper, idea)
+    entry = proof._find(ledger, idea)
+    if proof.stale(entry, about):
+        logger.info("Overnight: %s is checked again, against the paper's description of it now", idea)
+        proof.restart(entry, about)
+        proof.save(folder, ledger)
     start = work.overnight_tokens()
     stopped = ""
     for _ in range(min(proof.left(idea, ledger), searches_left)):
@@ -655,7 +661,7 @@ async def _proof_session(goal: dict, idea: str, state: dict, search, complete,
             stopped = "more searches when budget allows"
             break
         state["searches"] += 1
-        stopped = await proof.step(idea, ledger, search, complete, sellers)
+        stopped = await proof.step(idea, ledger, search, complete, sellers, about=about)
         proof.save(folder, ledger)
         if stopped:
             break
@@ -684,7 +690,8 @@ async def _research_session(goal: dict, state: dict, search, complete, night: st
     paper_path = folder / _PAPER
     # Test what is on the list before looking for more: 15 versions of only widening proved nothing.
     if proof.applies(goal["statement"]) and paper_path.exists():
-        idea = proof.next_idea(_shortlist_names(paper_path.read_text(encoding="utf-8")), proof.load(folder))
+        current = paper_path.read_text(encoding="utf-8")
+        idea = proof.next_idea(_shortlist_names(current), proof.load(folder), current)
         if idea:
             return await _proof_session(goal, idea, state, search, complete, searches_left, token_room)
     findings_path = folder / "findings.md"

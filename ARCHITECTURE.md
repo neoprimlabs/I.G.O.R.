@@ -417,28 +417,28 @@ connection a call, results treated as web text. None is configured yet.
 budget, or with no active goal. Otherwise it runs one session for the active goal
 reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed.
 A session is a fixed pipeline: model calls with no tools, web search by code (its only outbound call),
-files written by code only under `memory/work/` plus `next_action` in `memory/goals.md`. The paper write uses `OVERNIGHT_WRITE_MODEL`
+files written by code only in `memory/work/` and `next_action` in `goals.md`. The paper write uses `OVERNIGHT_WRITE_MODEL`
 (120b), the rest `OVERNIGHT_MODEL`; the budget counts both.
 
-**Research session**: up to 3 PLAN / SEARCH / DISTILL steps
+**Research session**: up to 3 PLAN/SEARCH/DISTILL steps
 append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
-sessions the goal's one living `paper.md` is written, then revised (under 7500 chars;
-code cuts the weakest-proven, then least-sourced sections, never the shortlist or unsure).
-Code checks a "What I am unsure about" heading, 3 distinct links from the
-findings or paper and a revision keeping a third of its links, one retry told why,
+sessions the goal's living `paper.md` is written, then revised (under 7500 chars;
+code cuts weakest-proven, then least-sourced sections, never shortlist or unsure).
+Code checks an unsure heading, 3 distinct links from the
+findings or paper, a revision keeping a third of its links, one retry told why,
 then the Evaluator (FAIL keeps a draft). Code drops "independent" said of sources and
 money brackets its sources lack, marking other such figures. 20b, not the writer, labels each shortlist
-item it can (unchecked if that fails; on an income goal, only the proof check); code sorts strongest first.
-A pass moves the old paper to `versions/`; the change note comes from headings.
+item (unchecked if that fails; on an income goal, the proof check only); code sorts strongest first.
+A pass moves the old paper to `versions/`; headings give the change note.
 
 **Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
-research widens: 3 Exa searches (TrustMRR, earnings data, failures). 20b says what each shows; code keeps a quote only if on the page, numbers
+research widens: 3 Exa searches (TrustMRR, earnings data, failures). 20b judges each against the idea's description; code keeps a quote only if on the page, numbers
 intact, money one earner received, $1000 to $20M, or a failure on this idea, and sets the source for personal
 posts, claims, cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
 `## Proof checked` for the paper's own ideas and the labels (independent, mixed, similar product, self-reported,
-no income shown, unchecked, against). Code drops a summary sentence crediting income to one without.
+no income shown, unchecked, against). Code drops summary credit for income not found.
 A checked idea renamed on the same pages gets its name back; a bracket or two added words
-make a new one.
+make a new one; one re-described (under 25% of words kept) is rechecked.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;

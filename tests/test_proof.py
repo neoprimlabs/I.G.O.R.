@@ -118,7 +118,7 @@ def _setup(paper=PAPER, statement=GOAL):
 
 
 def _full_entry(name="Kettle price alerts", evidence=None, read=3):
-    return {"name": name, "searches": 3, "read": read, "evidence": evidence or []}
+    return {"name": name, "searches": 3, "read": read, "evidence": evidence or [], "checked_as": ""}
 
 
 def _ev(what="earned", source="third party", url="https://news.example/a", quote="revenue of $40,000"):
@@ -696,7 +696,63 @@ def test_a_narrower_idea_is_its_own() -> None:
     _check("into an entry of its own", entry is not ledger["a"] and len(ledger) == 2 and entry["name"] == names[1])
 
 
+def test_proof_is_held_to_the_idea_described() -> None:
+    """2026-11-10: "Curated Niche Data Subscriptions" showed revenue from two niche-website tools, found on
+    the name alone, while the paper had rewritten the idea twice since the check (legal corpora, then
+    dataset resale). The judge now reads the paper's description, the ledger keeps it, and an idea whose
+    description has since changed past recognition is checked again."""
+    paper = ("# Paper\n\n## Kettle Data Feeds\nSell descaling schedules for office kettles to facilities teams "
+             "<https://feeds.example/a>.\n\n## Ranked shortlist\n1. **Kettle Data Feeds** - feeds\n\n"
+             "## What I am unsure about\nMuch.\n")
+    about = proof.description(paper, "Kettle Data Feeds")
+    _check("the paper's description of an idea, without its links",
+           about == "Sell descaling schedules for office kettles to facilities teams", about)
+    _check("and none for an idea with no section", proof.description(paper, "Rain gauge kits") == "")
+
+    stub = _Stub()
+    ledger: dict = {}
+    asyncio.run(proof.step("Kettle Data Feeds", ledger, stub.search, stub.complete, about=about))
+    entry = proof._find(ledger, "Kettle Data Feeds")
+    _check("the judge is told what the idea is", "As the paper describes it: Sell descaling schedules" in stub.judged[0][0],
+           stub.judged[0][0][:300])
+    _check("and the ledger keeps it", entry.get("checked_as") == about)
+
+    entry["searches"] = 3
+    _check("the same description is not stale", not proof.stale(entry, about))
+    reworded = "Sell descaling schedules for office kettles to facilities teams and cafes, priced monthly."
+    _check("nor is a reworded one", not proof.stale(entry, reworded))
+    rewritten = "Resell rare satellite imagery bundles bought on marketplace auctions to insurers."
+    _check("a rewritten idea is", proof.stale(entry, rewritten))
+    _check("proof checked before descriptions were kept is checked once more",
+           proof.stale({"name": "x", "searches": 3, "evidence": []}, about))
+    _check("but not one checked with no description to compare",
+           not proof.stale({"name": "x", "searches": 3, "evidence": [], "checked_as": ""}, rewritten))
+    _check("nor one never searched", not proof.stale({"name": "x", "searches": 0}, rewritten))
+
+    names = ["Kettle Data Feeds", "Rain gauge kits"]
+    changed = paper.replace("Sell descaling schedules for office kettles to facilities teams", rewritten)
+    _check("an idea never searched still goes first", proof.next_idea(names, ledger, changed) == "Rain gauge kits")
+    ledger["r"] = _full_entry("Rain gauge kits")
+    _check("then the rewritten one", proof.next_idea(names, ledger, changed) == "Kettle Data Feeds")
+    _check("and with the description as checked, none", proof.next_idea(names, ledger, paper) is None)
+    proof.restart(entry, rewritten)
+    _check("checked again from the start, against the new description",
+           entry["searches"] == 0 and entry["evidence"] == [] and entry["checked_as"] == rewritten)
+
+    overnight, folder, tmp = _setup(changed)
+    proof.save(folder, {"k": {"name": "Kettle Data Feeds", "searches": 3, "read": 3, "evidence": [_ev(source="verified")],
+                              "checked_as": about}})
+    stub = _Stub()
+    out = asyncio.run(overnight.tick(NIGHT_TIME, search=stub.search, complete=stub.complete))
+    saved = proof._find(proof.load(folder), "Kettle Data Feeds")
+    _check("a night checks the rewritten idea again", "proof checked: Kettle Data Feeds" in out and len(stub.searches) == 3, out)
+    _check("its old proof gone, the new description kept",
+           saved["checked_as"].startswith("Resell rare satellite") and not saved["evidence"], str(saved))
+    tmp.cleanup()
+
+
 if __name__ == "__main__":
+    test_proof_is_held_to_the_idea_described()
     test_labels()
     test_only_a_real_quote_counts()
     test_who_says_it()

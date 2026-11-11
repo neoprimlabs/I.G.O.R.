@@ -262,9 +262,10 @@ def labels_for(names: list[str], ledger: dict) -> dict:
     return out
 
 
-def next_idea(names: list[str], ledger: dict) -> Optional[str]:
-    """An idea a stopped session left unfinished, or else the first one not yet searched."""
-    fresh = None
+def next_idea(names: list[str], ledger: dict, paper: str = "") -> Optional[str]:
+    """An idea a stopped session left unfinished, else the first one not yet searched, else the first
+    whose proof was checked against another description (see stale)."""
+    fresh = changed = None
     for name in names:
         entry = _find(ledger, name)
         done = entry.get("searches", 0) if entry else 0
@@ -272,7 +273,9 @@ def next_idea(names: list[str], ledger: dict) -> Optional[str]:
             return name
         if not done and fresh is None:
             fresh = name
-    return fresh
+        if done and changed is None and paper and stale(entry, description(paper, name)):
+            changed = name
+    return fresh or changed
 
 
 def left(name: str, ledger: dict) -> int:
@@ -426,19 +429,61 @@ def _strength(row: dict) -> tuple:
     return ((_THIRD, _VERIFIED, _SELLER).index(row["from"]), row["what"] != "earned", not row.get("many"))
 
 
-def _request(name: str, results: list, ask: str) -> str:
+def _request(name: str, results: list, ask: str, about: str = "") -> str:
     blocks = [f"[{i}] {r.get('title', 'No title')}\nURL: {r.get('url', '')}\n{str(r.get('body', ''))[:_BODY_CAP]}"
               for i, r in enumerate(results, 1)]
-    return f"The idea: {name}\n{ask}\n\nExcerpts:\n\n" + "\n\n".join(blocks)
+    described = (f"As the paper describes it: {about}\nJudge \"of the same kind\" by this description, not by "
+                 "a word the names share.\n") if about else ""
+    return f"The idea: {name}\n{described}{ask}\n\nExcerpts:\n\n" + "\n\n".join(blocks)
+
+
+# 2026-11-10: "Curated Niche Data Subscriptions" showed revenue from Niche Traffic Kit and Niche Tools,
+# found on the name alone on 11-02, while the paper had since described the idea as selling legal corpora
+# and then reselling datasets. Over 42 same-named ideas in consecutive versions the description kept a
+# median 0.87 of its words; the five rewrites kept 0.12 to 0.17, and nothing else fell under 0.28.
+_ABOUT_CAP = 600
+_SAME_IDEA = 0.25
+
+
+def description(paper: str, name: str) -> str:
+    """The paper's section on an idea, without heading or links, or "" when it has none."""
+    words = _words(name)
+    best, best_score = "", _SAME_NAME
+    for part in re.split(r"(?m)^(?=## )", paper or "")[1:]:
+        heading, _, body = part.partition("\n")
+        other = _words(heading[3:])
+        score = len(words & other) / len(words | other) if words | other else 0
+        if score >= best_score:
+            best, best_score = body, score
+    return " ".join(re.sub(r"<?https?://\S+>?", "", best).split())[:_ABOUT_CAP]
+
+
+def _content(text: str) -> frozenset:
+    return frozenset(w for w in _words(text) if len(w) >= 4)
+
+
+def stale(entry: Optional[dict], about: str) -> bool:
+    """Checked against a different idea than the paper now describes, or before descriptions were kept."""
+    if not entry or not entry.get("searches"):
+        return False
+    if "checked_as" not in entry:
+        return True
+    was, now = _content(entry["checked_as"]), _content(about)
+    return bool(was and now) and len(was & now) / len(was | now) < _SAME_IDEA
+
+
+def restart(entry: dict, about: str) -> None:
+    entry.update(searches=0, read=0, evidence=[], checked_as=about)
 
 
 async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
-               now: Optional[datetime] = None) -> str:
+               now: Optional[datetime] = None, about: str = "") -> str:
     """One search for one idea: "", or why the session should stop. A failed search is not counted,
     since finding nothing and not looking are different results. An unreadable reply gets one more
     try on the same excerpts, then counts as searched but not read, so it cannot wedge the night."""
     now = now or datetime.now(timezone.utc)
     entry = _entry(ledger, name)
+    entry.setdefault("checked_as", about)
     form, domains, focus, ask = _FORMS[entry.get("searches", 0)]
     try:
         results = await search(form.format(name), max_results=_RESULTS, max_chars=_BODY_CAP, highlights=focus,
@@ -448,7 +493,7 @@ async def step(name: str, ledger: dict, search, complete, sellers=frozenset(),
         return "search failed"
     rows: Optional[list] = []
     if results:
-        request = _request(name, results, ask)
+        request = _request(name, results, ask, entry.get("checked_as") or about)
         for _ in range(2):
             reply = await complete(_JUDGE_SYSTEM, request, _JUDGE_TOKENS, cap=_JUDGE_CAP)
             rows = parse_judgement(reply)
