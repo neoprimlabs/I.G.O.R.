@@ -538,7 +538,8 @@ async def test_a_checkin_about_igor_itself_is_not_sent() -> None:
     _check("and the prompt says it first", "Never ask about I.G.O.R. itself" in presence._system_for("checkin"))
     for text in ("Did the recent code adjustments change the kettle drop detection as you hoped?",
                  "How is the late-night work on I.G.O.R. shaping up?", "Is the stock_watch behaving now?",
-                 "Any progress on the watch filter you were tuning?"):
+                 "Any progress on the watch filter you were tuning?",
+                 "Which part of the research feels most stalled at the moment?"):
         _check(f"caught: {text[:40]}", presence._about_itself(text) is not None)
     for text in ("How is your eye comfort today?", "Did you get some rest after the shift at the store?",
                  "How are your energy levels this afternoon?", "Did you watch the game last night?",

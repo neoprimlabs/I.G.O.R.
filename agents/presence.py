@@ -467,8 +467,10 @@ def _opening(text: str) -> str:
 _WHAT_IGOR_SENT = re.compile(r"\b(?:IGOR|I\.G\.O\.R\.)\s+sent\b|^\W*sent\b", re.IGNORECASE)
 # 2026-11-05 a check-in asked "How are you finding the entry-level opportunities you received earlier this
 # afternoon?": IGOR's own job list, in words the list above did not have.
+# 2026-11-15, the day after the user called the research a failure, "Which part of the research feels most
+# stalled at the moment?". Of 65 check-ins on record, research came up twice, both times IGOR's own.
 _ABOUT_ITS_OWN_POSTS = re.compile(
-    r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper|opportunit(?:y|ies)|"
+    r"\b(?:postings?|listings?|digest|proposals?|drafts?|been reviewed|the paper|research|opportunit(?:y|ies)|"
     r"you (?:received|got from me)|I (?:sent|found|shared|passed along|flagged))\b", re.IGNORECASE)
 # Five of the seven check-ins from 2026-11-03 to 11-08 asked the user to grade IGOR: "Did the recent code
 # adjustments impact the AOOSTAR drop detection", "Has the 12-hour interval for the price and stock watches been
