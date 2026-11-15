@@ -3,7 +3,7 @@
 **Rewrite this file. Never append to it.** History belongs in git log and
 GAMEPLAN's Progress Log. This file answers one question: what is true today?
 
-Last updated: **2026-11-09**
+Last updated: **2026-11-15**
 
 ---
 
@@ -26,7 +26,23 @@ Last updated: **2026-11-09**
 
 ## Next action
 
-**Start 2026-11-11: move the main model's jobs to a Claude model.** Agreed with the user 11-10/11 after a week
+**2026-11-15: role briefs deployed (d6ed69d); first real one waits on a job-watch APPLY.** The user judged the
+overnight paper a failure as an income finder ("ran long enough to say its a fail") but left it running since it is
+free; do not tune it further. Instead each posting the 11:30 job watch sends as APPLY is queued and briefed that night
+(`agents/briefs.py`, ARCHITECTURE "Role brief"), borrowing career-ops' code gates and capped research and Tavily's
+ground-truth-first. Rehearsed twice on the Handshake red teamer posting (`scripts/rehearse_brief.py`, about 6500 of
+20b and 3 searches each): the first found four faults (repost warning on the same link, the posting's own pay shown
+as others', cut-off quotes, a match quoting the profile's guidance section), all fixed; the second was clean and
+surfaced a real Business Insider report of Handshake contractor pay disputes. Seen: the profile names no models, so
+"experience using multiple LLMs" reads as a gap; a line naming them would fix it, the user's call. Check: the next
+morning digest after a pick (the brief attached, "Role brief:" in the Overnight section). ARCHITECTURE.md is at
+its size ceiling (36984 of the 37000 `test_read_file_paging` allows): the next addition must cut as much.
+**The Claude move below is on hold.** The user has only a Claude Pro subscription (11-12, it also runs Claude Code), no
+Console API credit, and said 11-12 "We aren't going to change anything at the moment." Options were IGOR through the
+headless `claude` CLI on Pro (Hermes' official DirectSDK plugin does this; shares Claude Code's limits, terms unclear for
+a personal bot, 1 GB fit unmeasured) or a small Console credit.
+
+**Was next, 2026-11-11: move the main model's jobs to a Claude model.** Agreed with the user 11-10/11 after a week
 where most faults were gpt-oss not following its prompt (an invented 7 pm, the idea writer naming files that do
 not exist, the job ranking flipping between a pick and None on the same 14 postings). Which Claude model is not
 decided; code treats them alike, the model ID one setting per role. Measured 10-28 to 11-10 from the journal,
