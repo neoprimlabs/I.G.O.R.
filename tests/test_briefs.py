@@ -24,9 +24,21 @@ NIGHT_TIME = datetime(2026, 11, 17, 2, 0, tzinfo=clock.USER_TZ)
 NIGHT = "2026-11-17"
 
 PROFILE = """# Profile
-- Two years of retail customer service, handling returns and complaints
-- Built a personal AI assistant that runs on a cloud server, using LLM APIs daily
+
+Contains no contact details. Sent to the model when ranking.
+
+## Work
+
+- Two years of retail customer service, handling returns and
+  complaints
+- Built a personal AI assistant that runs on a cloud server, using
+  LLM APIs daily
 - Tested language model outputs for made-up facts and wrote up each failure with evidence
+
+## Context for matching
+
+Treat Kubernetes administration and LLM APIs as direct fits even without
+experience in them.
 """
 
 DESCRIPTION = """<p>Quillfield builds tutoring software for community colleges.</p>
@@ -146,7 +158,31 @@ def test_gates() -> None:
     _check("a repost is flagged with its first date", any("Posted before" in w for w in warnings), str(warnings))
     _, warnings = briefs.gates(dict(JOB, title="Data Annotator"), NOW, status=_open)
     _check("a different title is not a repost", not any("Posted before" in w for w in warnings), str(warnings))
+    history.record("jobs", [("Data Annotator - Quillfield", "posted", "greenhouse", JOB["url"])],
+                   NOW - timedelta(days=20))
+    _, warnings = briefs.gates(dict(JOB, title="Data Annotator"), NOW, status=_open)
+    _check("the same posting judged again is not a repost", not any("Posted before" in w for w in warnings),
+           str(warnings))
     tmp.cleanup()
+
+
+def test_profile_lines_are_facts_whole() -> None:
+    from agents import briefs
+    lines = briefs.profile_lines(PROFILE)
+    _check("a wrapped bullet is one line",
+           "Built a personal AI assistant that runs on a cloud server, using LLM APIs daily" in lines, str(lines))
+    _check("the note above the first heading is left out", not any("contact details" in l for l in lines))
+    _check("guidance for the ranking is not offered as a fact", not any("direct fits" in l for l in lines),
+           str(lines))
+
+
+def test_cut_off_quotes_are_trimmed() -> None:
+    from agents import briefs
+    _check("a start mid-sentence is cut", briefs._whole("like. We connect job seekers with work.")
+           == "We connect job seekers with work.", briefs._whole("like. We connect job seekers with work."))
+    _check("a dangling next word is cut", briefs._whole("It launched in 2014. The")
+           == "It launched in 2014.", briefs._whole("It launched in 2014. The"))
+    _check("a fragment with no sentence start is dropped", briefs._whole("and the rest of it") is None)
 
 
 def test_posting_pay() -> None:
@@ -222,6 +258,30 @@ def test_run_writes_a_brief() -> None:
     _check("the profile's own words", "using LLM APIs daily" in text)
     _check("no em dash", "—" not in text)
     _check("the queue is empty after", briefs._load_queue() == [])
+    _check("the profile's guidance is never quoted", "direct fits" not in text)
+    tmp.cleanup()
+
+
+def test_pay_found_on_the_posting_itself_counts_as_the_posting() -> None:
+    briefs, tmp = _fresh()
+    briefs.queue([dict(JOB, description="<p>Quillfield builds tutoring software.</p>")], "1 APPLY", now=NOW)
+    item = briefs.next_due(NIGHT, NOW)
+
+    class _OwnPage(_Web):
+        async def search(self, query, **kw):
+            self.queries.append((query, kw))
+            return [{"title": "AI Evaluation Specialist - Quillfield", "url": JOB["url"],
+                     "body": "Compensation: $40 - $55 per hour at Quillfield."}]
+
+        async def complete(self, system, user, max_tokens, cap=None):
+            return "1 | Compensation: $40 - $55 per hour at Quillfield."
+    web = _OwnPage()
+    _, _, files = _run(briefs.run(item, web.search, web.complete, NIGHT, NOW, status=_open))
+    text = (config.MEMORY_DIR / files[0]).read_text(encoding="utf-8")
+    pay_in_posting = text.split("## Pay in the posting")[1].split("##")[0]
+    others = text.split("## Pay others report")[1].split("##")[0]
+    _check("shown as the posting's pay", "$40 - $55" in pay_in_posting, pay_in_posting)
+    _check("not as pay others report", "$40 - $55" not in others, others)
     tmp.cleanup()
 
 

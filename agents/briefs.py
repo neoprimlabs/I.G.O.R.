@@ -223,7 +223,9 @@ def _first_seen(item: dict, now: datetime) -> str:
         return ""
     import history
     name = _name(item)
-    rows = [r for r in history.changes(name, days=60, now=now) if r[1] == "jobs" and r[2] == name]
+    # A different link: rehearsed 2026-11-15, the Handshake post judged again on 11-10 had its own 11-09 row.
+    rows = [r for r in history.changes(name, days=60, now=now)
+            if r[1] == "jobs" and r[2] == name and r[5] and r[5] != item["url"]]
     if not rows:
         return ""
     first = datetime.fromtimestamp(min(r[0] for r in rows), timezone.utc)
@@ -286,6 +288,21 @@ def parse_quotes(reply: str) -> Optional[list[tuple[int, str]]]:
     return rows or None
 
 
+def _whole(words: str) -> Optional[str]:
+    """The quote without a cut-off start or end. _on_page widens a close match to word edges, and
+    rehearsed 2026-11-15 that gave "like. We're connecting..." and "...launched in 2014. The"."""
+    if words[:1].islower():
+        cut = re.search(r"[.!?]\s+(?=[A-Z0-9\"])", words)
+        if not cut:
+            return None
+        words = words[cut.end():]
+    if not re.search(r"[.!?\"')]$", words):
+        ends = list(re.finditer(r"[.!?](?=\s)", words))
+        if ends and len(words) - ends[-1].end() < 40:
+            words = words[:ends[-1].end()]
+    return words if len(words) >= 12 else None
+
+
 def keep_quotes(rows: list[tuple[int, str]], results: list[dict], kind: str) -> list[tuple[str, str]]:
     """(page's own words, url) for each row code can stand behind."""
     kept, seen = [], set()
@@ -296,6 +313,9 @@ def keep_quotes(rows: list[tuple[int, str]], results: list[dict], kind: str) -> 
         words = proof._on_page(quote, f"{page.get('title', '')} {str(page.get('body', ''))[:_BODY_CAP]}")
         if words is None:
             logger.info("Role brief quote not on its page, dropped: %s", quote[:80])
+            continue
+        words = _whole(words)
+        if words is None:
             continue
         if kind == "pay" and not proof._MONEY_RE.search(words):
             continue
@@ -350,12 +370,43 @@ def _stems(text: str) -> set:
 
 
 def profile_lines(profile: str) -> list[str]:
-    lines = []
-    for line in profile.splitlines():
-        line = line.strip().lstrip("-*#>").strip()
-        if len(line) >= 12 and line not in lines:
-            lines.append(line)
-    return lines
+    """The profile's facts, one bullet or sentence each, its hard wrapping joined.
+
+    Rehearsed 2026-11-15 the match quoted a wrapped line of the profile's "Context for matching", which
+    tells the ranking what to count, as proof of LLM API work. That section and the note above the first
+    heading are guidance, not facts, so they are not offered.
+    """
+    items, current = [], []
+    facts, bullet = False, False
+
+    def flush():
+        if current and facts:
+            text = " ".join(current)
+            items.extend([text] if bullet else re.split(r"(?<=[.!?])\s+(?=[A-Z])", text))
+        current.clear()
+
+    for raw in profile.splitlines():
+        line = raw.strip()
+        if line.startswith("## "):
+            flush()
+            facts = not line[3:].strip().lower().startswith("context")
+        elif line.startswith("#") or not line:
+            flush()
+        elif line.startswith(("- ", "* ")):
+            flush()
+            bullet = True
+            current.append(line[2:].strip())
+        else:
+            if not current:
+                bullet = False
+            current.append(line)
+    flush()
+    out = []
+    for item in items:
+        item = item.strip()
+        if 12 <= len(item) <= 320 and item not in out:
+            out.append(item)
+    return out
 
 
 def candidates(ask: str, lines: list[str]) -> list[str]:
@@ -464,7 +515,12 @@ async def run(item: dict, search, complete, night: str, now: Optional[datetime] 
     from agents import jobs
     asks = jobs.ask_lines(item.get("description", ""))[:_MAX_ASKS]
     table, table_read = await match(asks, jobs._profile(), complete) if asks else ([], True)
-    text = render(item, night, warnings, posting_pay(item.get("description", "")), parts, table, table_read)
+    own_pay = posting_pay(item.get("description", ""))
+    # Ashby's feed leaves compensation out of the description; the pay search then finds the posting itself.
+    if parts.get("pay"):
+        own_pay += [q for q, u in parts["pay"] if u == item["url"] and q not in own_pay]
+        parts["pay"] = [(q, u) for q, u in parts["pay"] if u != item["url"]]
+    text = render(item, night, warnings, own_pay, parts, table, table_read)
     path = _folder() / f"{night}-{_slug(item)}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
