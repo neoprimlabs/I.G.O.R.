@@ -337,7 +337,7 @@ only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a da
 
 The job watch reads RemoteOK, WWR, Remotive, and Greenhouse (each new post's page) and Ashby boards of AI
 hirers; code filters (and drops one asking more years than job_search.md's `## Most years asked`, overall
-or by field), 20b judges each twice by its asks; an APPLY sends it and queues a role brief for that night. A remote-only
+or by field), 20b judges each twice by its asks; an APPLY sends it. A remote-only
 board's US location is open. React's `search` (`source: jobs`) reads them
 live, pay as stated; a user's job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
@@ -414,31 +414,27 @@ connection a call, results treated as web text. None is configured yet.
 
 **Tick** (`monitor._overnight_tick`, cron at minute 20 of every hour, one instance):
 `overnight.tick()` returns at once outside 00:00-06:59 local, after a stop, at the
-budget, or with no active goal. A queued role brief runs first (below). Otherwise it runs one session for the active goal
+budget, or with no active goal. Otherwise it runs one session for the active goal
 reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed.
 A session is a fixed pipeline: model calls with no tools, web search by code (its only outbound call),
 files written by code only in `memory/work/` and `next_action` in `goals.md`. The paper write uses `OVERNIGHT_WRITE_MODEL`
 (120b), the rest `OVERNIGHT_MODEL`; the budget counts both.
 
-**Research session**: up to 3 PLAN/SEARCH/DISTILL steps
-append sourced findings to `memory/work/<goal>/findings.md`. At 12 new findings or 3
-sessions the goal's living `paper.md` is written, then revised (under 7500 chars;
-code cuts weakest-proven, then least-sourced sections, never shortlist or unsure).
-Code checks an unsure heading, 3 distinct links from the
-findings or paper, a revision keeping a third of its links, one retry told why,
-then the Evaluator (FAIL keeps a draft). Code drops "independent" said of sources and
-money brackets its sources lack, marking other such figures. 20b, not the writer, labels each shortlist
-item (unchecked if that fails; on an income goal, the proof check only); code sorts strongest first.
-A pass moves the old paper to `versions/`; headings give the change note.
+**Research session**: up to 3 PLAN/SEARCH/DISTILL steps append sourced findings to
+`memory/work/<goal>/findings.md`. At 12 new findings or 3 sessions the living `paper.md` is written,
+then revised (under 7500 chars; code cuts weakest-proven, then least-sourced sections, never shortlist
+or unsure). Code checks an unsure heading, 3 distinct links, a revision keeping a third of its links
+(one retry told why), then the Evaluator (FAIL keeps a draft); it drops "independent" said of sources
+and unsourced money brackets. 20b labels the shortlist (unchecked if that fails; income goals: the proof check only);
+code sorts it. The old paper moves to `versions/`; headings give the change note.
 
-**Proof session** (`proof.py`): on an income goal, shortlisted ideas are tested before
-research widens: 3 Exa searches (TrustMRR, earnings data, failures). 20b judges each against the idea's description; code keeps a quote only if on the page, numbers
-intact, money one earner received, $1000 to $20M, or a failure on this idea, and sets the source for personal
-posts, claims, cited hosts and TrustMRR. `proof.json` outlives revisions; code writes
-`## Proof checked` for the paper's own ideas and the labels (independent, mixed, similar product, self-reported,
-no income shown, unchecked, against). Code drops summary credit for income not found.
-A checked idea renamed on the same pages gets its name back; a bracket or two added words
-make a new one; one re-described (under 25% of words kept) is rechecked.
+**Proof session** (`proof.py`): on an income goal, shortlisted ideas get 3 Exa searches (TrustMRR,
+earnings data, failures) before research widens. 20b judges each against the idea's description; code
+keeps a quote only if on the page with numbers intact, money one earner received ($1000 to $20M) or a
+failure on this idea, and sets the source (personal post, claim, cited host, TrustMRR). `proof.json`
+outlives revisions; code writes `## Proof checked` for the paper's ideas and labels (independent, mixed,
+similar product, self-reported, no income shown, unchecked, against), and drops summary credit for
+income not found. Code matches a renamed checked idea and rechecks a re-described one.
 
 **Self-improvement session**: `corrections.md` entries and ERROR lines in
 `config.LOG_FILE` newer than `seen.json` go in as flattened, capped data (12, 25;
@@ -468,17 +464,8 @@ raises a `skill` proposal showing the steps. Only the user's own "approve" insta
 prompt indexes them under 200 tokens; `read_file` opens one and counts a use. The curator
 calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is deleted.
 
-**Role brief** (`agents/briefs.py`, from 2026-11-15): each posting the 11:30 job watch sends as APPLY is
-queued in `memory/work/briefs/queue.json` (kept 3 days, 2 attempts); at most 2 a night, one per tick, inside
-the night's budget. Code gates first, no model: a 404/410 posting is skipped, and a red flag (the gig watch's
-list), a staffing agency, the same title at the same company first seen over 2 days earlier, or an unreachable
-page become warnings. The posting is the ground truth: 3 fixed Exa searches (the company, its news in the last
-90 days, reported pay) keep only results naming the company, and 20b is told how the posting describes it and
-only copies sentences; code keeps one only if it is on the page, and pay only with a money figure. Pay in the
-posting is read by code. Requirements are `jobs.ask_lines`; code offers each the 3 profile lines sharing most
-words, 20b (medium) picks a letter or GAP, and the brief shows the profile's own line. An ask sharing no word is
-a gap without a call; an unreadable reply twice is "not checked", never a gap. The brief is
-`memory/work/briefs/<night>-<slug>.md`, logged as goal `role_brief`, kind `brief`. Nothing drafts an application.
+**Role brief** (`agents/briefs.py`, rules in its docstring): up to 2 job-watch APPLY picks a night, first
+in the tick, in budget: code gates, then quotes from 3 fixed searches that code finds on the page.
 
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
@@ -486,7 +473,7 @@ a gap without a call; an unreadable reply twice is "not checked", never a gap. T
 `daily cap 20b: <limit>`.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
-`digest_config.md` adds role briefs (sent as attachments, a skipped one with its reason), finished papers (sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
+`digest_config.md` adds role briefs and finished papers (both sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
 tokens and searches spent, and any early stop.
 
 ---
