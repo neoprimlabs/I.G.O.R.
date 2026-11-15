@@ -321,7 +321,9 @@ def _real_complete():
         writing = system in (_WRITE_SYSTEM, _REVISE_SYSTEM, memory_review.ROOM_SYSTEM)
         model = config.OVERNIGHT_WRITE_MODEL if writing else config.OVERNIGHT_MODEL
         # On low, 20b answered "seller" to all of it and called e-book generators the idea itself.
-        effort = ("medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM, memory_review.ROOM_SYSTEM)
+        from agents import briefs
+        effort = ("medium" if system in (proof._JUDGE_SYSTEM, memory_review.SYSTEM, memory_review.ROOM_SYSTEM,
+                                         briefs.MATCH_SYSTEM)
                   else _REASONING_EFFORT)
         return await llm.complete(
             research_loop._get_client(), model, system, user,
@@ -1132,6 +1134,17 @@ async def tick(now: Optional[datetime] = None, search=None, complete=None) -> st
             return "token budget spent"
         if searches >= config.OVERNIGHT_SEARCHES:
             return "search budget spent"
+        # A posting the job watch picked comes first: it is the night's one result the user can act on.
+        from agents import briefs
+        item = briefs.next_due(night, now)
+        if item is not None:
+            search = search or _real_search()
+            complete = complete or _real_complete()
+            start_tokens = work.overnight_tokens()
+            summary, made, files = await briefs.run(item, search, complete, night, now)
+            work.log_session(briefs.GOAL, "brief", summary, max(0, work.overnight_tokens() - start_tokens),
+                             made, files, files, now=now)
+            return f"{briefs.GOAL}: {summary}"
         goal = goals.next_to_work()
         if goal is None:
             return "no active goals"
@@ -1207,7 +1220,20 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
         drafts: dict[str, list[str]] = {}
         produced = False
         root = config.MEMORY_DIR.resolve()
+        brief_files: list[Path] = []
+        brief_lines: list[str] = []
         for e in entries:
+            if e.get("kind") == "brief":
+                summary = str(e.get("summary") or "")
+                for rel in e.get("finished") or []:
+                    path = (config.MEMORY_DIR / str(rel)).resolve()
+                    if root in path.parents and path.is_file() and path not in brief_files:
+                        brief_files.append(path)
+                        brief_lines.append(f"- {_paper_title(path)} (sent as a file)")
+                if summary.startswith("brief skipped: "):
+                    brief_lines.append(f"- Skipped {summary[len('brief skipped: '):]}")
+                produced = produced or bool(brief_lines)
+                continue
             for rel in e.get("files") or []:
                 rel_path = Path(str(rel))
                 if rel_path.name.startswith("draft-"):
@@ -1229,6 +1255,9 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
             return "", []
         tokens, searches = work.spent(night)
         lines = []
+        if brief_lines:
+            lines.append("Role brief:" if len(brief_lines) == 1 else "Role briefs:")
+            lines.extend(brief_lines)
         if papers:
             lines.append("Paper updated:" if len(papers) == 1 else "Papers updated:")
             lines.extend(f"- {_paper_title(p)} ({p.name})" + (f" - {notes[p]}" if p in notes else "")
@@ -1250,7 +1279,7 @@ def digest_section(night: str) -> tuple[str, list[Path]]:
         reason = work.stopped(night)
         if reason:
             lines.append(f"Stopped early: {reason}")
-        return "\n".join(lines), papers
+        return "\n".join(lines), brief_files + papers
     except Exception as e:
         logger.error("Overnight digest section failed - %s: %s", type(e).__name__, e)
         return "", []

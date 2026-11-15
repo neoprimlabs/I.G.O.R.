@@ -337,7 +337,7 @@ only a change reaches 20b, tool-less, which writes a line or `NO_REPLY`. 12 a da
 
 The job watch reads RemoteOK, WWR, Remotive, and Greenhouse (each new post's page) and Ashby boards of AI
 hirers; code filters (and drops one asking more years than job_search.md's `## Most years asked`, overall
-or by field), 20b judges each twice by its asks; an APPLY sends it. A remote-only
+or by field), 20b judges each twice by its asks; an APPLY sends it and queues a role brief for that night. A remote-only
 board's US location is open. React's `search` (`source: jobs`) reads them
 live, pay as stated; a user's job request forces that search first,
 with user.md in the prompt and no read_file. The gig watch (`agents/gigs.py`)
@@ -414,7 +414,7 @@ connection a call, results treated as web text. None is configured yet.
 
 **Tick** (`monitor._overnight_tick`, cron at minute 20 of every hour, one instance):
 `overnight.tick()` returns at once outside 00:00-06:59 local, after a stop, at the
-budget, or with no active goal. Otherwise it runs one session for the active goal
+budget, or with no active goal. A queued role brief runs first (below). Otherwise it runs one session for the active goal
 reviewed longest ago, logs it, and saves `next_action`. A failed session also marks its goal reviewed.
 A session is a fixed pipeline: model calls with no tools, web search by code (its only outbound call),
 files written by code only in `memory/work/` and `next_action` in `goals.md`. The paper write uses `OVERNIGHT_WRITE_MODEL`
@@ -468,13 +468,25 @@ raises a `skill` proposal showing the steps. Only the user's own "approve" insta
 prompt indexes them under 200 tokens; `read_file` opens one and counts a use. The curator
 calls no model: 14 days unused is stale, 30 moves to `.archive/`, nothing is deleted.
 
+**Role brief** (`agents/briefs.py`, from 2026-11-15): each posting the 11:30 job watch sends as APPLY is
+queued in `memory/work/briefs/queue.json` (kept 3 days, 2 attempts); at most 2 a night, one per tick, inside
+the night's budget. Code gates first, no model: a 404/410 posting is skipped, and a red flag (the gig watch's
+list), a staffing agency, the same title at the same company first seen over 2 days earlier, or an unreachable
+page become warnings. The posting is the ground truth: 3 fixed Exa searches (the company, its news in the last
+90 days, reported pay) keep only results naming the company, and 20b is told how the posting describes it and
+only copies sentences; code keeps one only if it is on the page, and pay only with a money figure. Pay in the
+posting is read by code. Requirements are `jobs.ask_lines`; code offers each the 3 profile lines sharing most
+words, 20b (medium) picks a letter or GAP, and the brief shows the profile's own line. An ask sharing no word is
+a gap without a call; an unreadable reply twice is "not checked", never a gap. The brief is
+`memory/work/briefs/<night>-<slug>.md`, logged as goal `role_brief`, kind `brief`. Nothing drafts an application.
+
 **Work folder and budget** (`work.py`): `memory/work/<goal>/` plus `log.json`
 (300 entries). Per night, `OVERNIGHT_TOKENS` 60000 (counted from the ledger under label
 `Overnight`) and `OVERNIGHT_SEARCHES` 12. A 429 stops the night; a daily-cap 429 logs
 `daily cap 20b: <limit>`.
 
 **Digest** (`overnight.digest_section`, no model call): an `overnight` section in
-`digest_config.md` adds finished papers (sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
+`digest_config.md` adds role briefs (sent as attachments, a skipped one with its reason), finished papers (sent as attachments), proof verdicts, the latest draft per goal, pending proposals,
 tokens and searches spent, and any early stop.
 
 ---

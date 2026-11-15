@@ -699,7 +699,17 @@ _ASKS_CHARS = 240
 
 
 def _asks(description: str) -> str:
-    """What a posting says it requires, years first, out of its HTML.
+    """What a posting says it requires, years first, as one line cut to _ASKS_CHARS."""
+    out = ""
+    for hit in ask_lines(description):
+        if len(out) + len(hit) + 2 > _ASKS_CHARS:
+            break
+        out += ("; " if out else "") + hit
+    return out
+
+
+def ask_lines(description: str) -> list[str]:
+    """What a posting says it requires, years first, out of its HTML, one sentence each.
 
     On 2026-10-30 the ranking told the user "you can apply" to a role asking for "8+
     years ... at least 5 years at the Principal Engineer level" and one asking for "3-6+
@@ -717,12 +727,7 @@ def _asks(description: str) -> str:
             and not _ASKS_HEADING.match(p) and _ASKS_RE.search(p)
             and not (_ELIGIBILITY.search(p) and not _YEARS_RE.search(p))]
     hits.sort(key=lambda p: not _YEARS_RE.search(p))
-    out = ""
-    for hit in hits:
-        if len(out) + len(hit) + 2 > _ASKS_CHARS:
-            break
-        out += ("; " if out else "") + hit
-    return out
+    return list(dict.fromkeys(hits))
 
 
 async def rank(found: list[dict], ask=None) -> str:

@@ -255,6 +255,9 @@ async def _job_watch() -> None:
             # Kept so "which of these fits me best" can be answered later. The
             # Discord message scrolls out of the context window within a few turns.
             jobs.record_found(found, notes)
+            if text:
+                from agents import briefs
+                briefs.queue(found, notes)
     except Exception as e:
         logger.error("Job watch failed - %s: %s", type(e).__name__, e)
 
